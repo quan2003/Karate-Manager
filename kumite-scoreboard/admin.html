@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="../logo.png" />
+    <title>Kumite Scoreboard - Admin</title>
+    <link rel="stylesheet" href="css/admin.css" />
+  </head>
+  <body>
+    <div class="main-container">
+      <!-- Left Panel - Controls -->
+      <div class="control-panel">
+        <!-- Mode Selection -->
+        <div
+          class="section"
+          style="background: #1a5f7a; padding: 15px; border-radius: 10px"
+        >
+          <h3 style="color: white; margin: 0 0 10px 0; text-align: center">
+            ⚙️ Chế Độ Thi Đấu
+          </h3>
+          <div class="btn-row" style="gap: 10px">
+            <button
+              class="btn btn-primary active"
+              id="individualModeBtn"
+              onclick="setMode('individual')"
+              style="flex: 1"
+            >
+              👤 Cá Nhân
+            </button>
+            <button
+              class="btn btn-primary"
+              id="teamModeBtn"
+              onclick="setMode('team')"
+              style="flex: 1"
+            >
+              👥 Đồng Đội
+            </button>
+          </div>
+        </div>
+
+        <!-- Upload Athletes Section -->
+        <div
+          class="section"
+          style="
+            background: rgba(76, 175, 80, 0.1);
+            border: 2px solid #4caf50;
+            padding: 15px;
+            border-radius: 10px;
+          "
+        >
+          <h3 style="color: #4caf50; margin: 0 0 10px 0">
+            📂 Upload Danh Sách VĐV
+          </h3>
+          <input
+            type="file"
+            id="athleteFile"
+            accept=".csv,.txt"
+            onchange="handleFileUpload(event)"
+            style="
+              width: 100%;
+              padding: 8px;
+              border: 2px dashed #4caf50;
+              border-radius: 5px;
+              background: rgba(76, 175, 80, 0.05);
+              margin-bottom: 10px;
+            "
+          />
+          <div
+            id="uploadStatus"
+            style="font-size: 0.9em; color: #ffd700; margin-bottom: 5px"
+          >
+            ℹ️ Format: VĐV, Đơn vị, Loại, Hạng mục
+          </div>
+          <div id="filterStatus" style="font-size: 0.85em; color: #38ef7d">
+            <!-- Filter status will show here -->
+          </div>
+        </div>
+
+        <!-- Team Round Info (Only for Team Mode) -->
+        <div
+          class="section"
+          id="teamRoundSection"
+          style="
+            display: none;
+            background: rgba(255, 215, 0, 0.1);
+            border: 2px solid #ffd700;
+          "
+        >
+          <h3 style="color: #ffd700; margin: 0 0 10px 0">
+            🔢 Quản Lý Round Đồng Đội
+          </h3>
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 10px;
+            "
+          >
+            <span style="font-weight: bold; color: white">Round hiện tại:</span>
+            <span
+              id="currentRoundDisplay"
+              style="font-size: 24px; font-weight: bold; color: #ffd700"
+              >1 / 5</span
+            >
+          </div>
+          <div class="btn-row" style="gap: 5px; margin-bottom: 10px">
+            <button
+              class="btn btn-success"
+              onclick="finishRound()"
+              style="flex: 1"
+            >
+              ✅ Kết Thúc Round
+            </button>
+            <button
+              class="btn btn-info"
+              onclick="viewRoundHistory()"
+              style="flex: 1"
+            >
+              📜 Xem Lịch Sử
+            </button>
+          </div>
+          <div
+            id="roundScoreDisplay"
+            style="
+              background: rgba(0, 0, 0, 0.3);
+              padding: 10px;
+              border-radius: 5px;
+              text-align: center;
+            "
+          >
+            <div style="font-size: 18px; font-weight: bold; color: white">
+              <span style="color: #ff4444"
+                >🔴 AKA: <span id="teamAkaWins">0</span></span
+              >
+              <span style="margin: 0 15px">-</span>
+              <span style="color: #4444ff"
+                >🔵 AO: <span id="teamAoWins">0</span></span
+              >
+            </div>
+          </div>
+        </div>
+
+        <!-- Timer Controls -->
+        <div class="section timer-controls">
+          <div class="timer-row">
+            <button
+              class="btn btn-lg"
+              id="startStopBtn"
+              onclick="toggleTimer()"
+            >
+              Start
+            </button>
+            <span class="timer-label">Seconds:</span>
+            <div class="timer-adjust">
+              <button class="btn btn-sm" onclick="adjustSeconds(1)">+</button>
+              <button class="btn btn-sm" onclick="adjustSeconds(-1)">-</button>
+            </div>
+            <input
+              type="number"
+              id="secondsInput"
+              class="seconds-input"
+              value="180"
+              onchange="setSeconds()"
+            />
+            <button class="btn btn-lg" onclick="resetTimer()">Reset</button>
+          </div>
+          <div class="timer-row" style="margin-top: 10px">
+            <span class="timer-label">Speed:</span>
+            <button class="btn btn-sm" onclick="setTimerSpeed(0.5)">
+              0.5x
+            </button>
+            <button class="btn btn-sm" onclick="setTimerSpeed(1)">1x</button>
+            <button class="btn btn-sm btn-primary" onclick="setTimerSpeed(2)">
+              2x
+            </button>
+            <button class="btn btn-sm" onclick="setTimerSpeed(5)">5x</button>
+            <button class="btn btn-sm" onclick="setTimerSpeed(10)">10x</button>
+            <span
+              id="timerSpeedLabel"
+              style="margin-left: 10px; font-weight: bold; color: #4caf50"
+              >1x</span
+            >
+          </div>
+        </div>
+
+        <!-- AKA Score Buttons -->
+        <div class="section score-buttons aka-buttons">
+          <div class="btn-row">
+            <button class="btn btn-aka" onclick="addPoint('aka', 'senshu')">
+              Senshu
+            </button>
+            <button class="btn btn-aka" onclick="addPoint('aka', 'ippon')">
+              Ippon
+            </button>
+            <button class="btn btn-aka" onclick="addPoint('aka', 'wazaari')">
+              Waza-ari
+            </button>
+            <button class="btn btn-aka" onclick="addPoint('aka', 'yuko')">
+              Yuko
+            </button>
+            <button class="btn btn-ao" onclick="addPoint('ao', 'yuko')">
+              Yuko
+            </button>
+            <button class="btn btn-ao" onclick="addPoint('ao', 'wazaari')">
+              Waza-ari
+            </button>
+            <button class="btn btn-ao" onclick="addPoint('ao', 'ippon')">
+              Ippon
+            </button>
+            <button class="btn btn-ao" onclick="addPoint('ao', 'senshu')">
+              Senshu
+            </button>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-aka-outline" onclick="redWins()">
+              Red Wins
+            </button>
+            <button
+              class="btn btn-aka-outline"
+              onclick="removePoint('aka', 'ippon')"
+            >
+              -Ippon
+            </button>
+            <button
+              class="btn btn-aka-outline"
+              onclick="removePoint('aka', 'wazaari')"
+            >
+              -Waza-ari
+            </button>
+            <button
+              class="btn btn-aka-outline"
+              onclick="removePoint('aka', 'yuko')"
+            >
+              -Yuko
+            </button>
+            <button
+              class="btn btn-ao-outline"
+              onclick="removePoint('ao', 'yuko')"
+            >
+              -Yuko
+            </button>
+            <button
+              class="btn btn-ao-outline"
+              onclick="removePoint('ao', 'wazaari')"
+            >
+              -Waza-ari
+            </button>
+            <button
+              class="btn btn-ao-outline"
+              onclick="removePoint('ao', 'ippon')"
+            >
+              -Ippon
+            </button>
+            <button class="btn btn-ao-outline" onclick="blueWins()">
+              Blue Wins
+            </button>
+          </div>
+
+          <!-- End Match & Save Result Row -->
+          <div
+            class="btn-row"
+            style="margin-top: 15px; justify-content: center; gap: 10px"
+          >
+            <button
+              class="btn"
+              onclick="finishMatch()"
+              id="finishMatchBtn"
+              style="
+                background: #1a5f7a;
+                color: white;
+                font-size: 18px;
+                font-weight: bold;
+                padding: 15px 40px;
+                box-shadow: 0 4px 15px rgba(26, 95, 122, 0.4);
+              "
+            >
+              📤 Gửi Kết Quả Về Sơ Đồ Thi Đấu
+            </button>
+          </div>
+        </div>
+        <!-- Penalty Section -->
+        <div class="section penalty-section">
+          <div class="penalty-row">
+            <span class="penalty-label aka-text">WARNING</span>
+            <label class="checkbox-container">
+              <input
+                type="checkbox"
+                id="akaC1"
+                onchange="togglePenalty('aka', 'C1')"
+              />
+              <span class="checkmark"></span>
+              <span class="checkbox-label">C1</span>
+            </label>
+            <label class="checkbox-container">
+              <input
+                type="checkbox"
+                id="akaC2"
+                onchange="togglePenalty('aka', 'C2')"
+              />
+              <span class="checkmark"></span>
+              <span class="checkbox-label">C2</span>
+            </label>
+            <label class="checkbox-container">
+              <input
+                type="checkbox"
+                id="akaC3"
+                onchange="togglePenalty('aka', 'C3')"
+              />
+              <span class="checkmark"></span>
+              <span class="checkbox-label">C3</span>
+            </label>
+            <label class="checkbox-container">
+              <input
+                type="checkbox"
+                id="akaHC"
+                onchange="togglePenalty('aka', 'HC')"
+              />
+              <span class="checkmark"></span>
+              <span class="checkbox-label">HC</span>
+            </label>
+            <label class="checkbox-container">
+              <input
+                type="checkbox"
+                id="akaH"
+                onchange="togglePenalty('aka', 'H')"
+              />
+              <span class="checkmark"></span>
+              <span class="checkbox-label">H</span>
+            </label>
+          </div>
+          <div class="penalty-row">
+            <span class="penalty-label ao-text">WARNING</span>
+            <label class="checkbox-container">
+              <input
+                type="checkbox"
+                id="aoC1"
+                onchange="togglePenalty('ao', 'C1')"
+              />
+              <span class="checkmark"></span>
+              <span class="checkbox-label">C1</span>
+            </label>
+            <label class="checkbox-container">
+              <input
+                type="checkbox"
+                id="aoC2"
+                onchange="togglePenalty('ao', 'C2')"
+              />
+              <span class="checkmark"></span>
+              <span class="checkbox-label">C2</span>
+            </label>
+            <label class="checkbox-container">
+              <input
+                type="checkbox"
+                id="aoC3"
+                onchange="togglePenalty('ao', 'C3')"
+              />
+              <span class="checkmark"></span>
+              <span class="checkbox-label">C3</span>
+            </label>
+            <label class="checkbox-container">
+              <input
+                type="checkbox"
+                id="aoHC"
+                onchange="togglePenalty('ao', 'HC')"
+              />
+              <span class="checkmark"></span>
+              <span class="checkbox-label">HC</span>
+            </label>
+            <label class="checkbox-container">
+              <input
+                type="checkbox"
+                id="aoH"
+                onchange="togglePenalty('ao', 'H')"
+              />
+              <span class="checkmark"></span>
+              <span class="checkbox-label">H</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Reset Button -->
+        <div class="section">
+          <button class="btn btn-reset" onclick="resetAll()">Reset All</button>
+        </div>
+        <!-- Settings Section -->
+        <div class="section settings-section">
+          <!-- Tournament Title -->
+          <div class="setting-row">
+            <label>Tên Giải:</label>
+            <input
+              type="text"
+              id="tournamentTitle"
+              value="GIẢI KARATE-DO SINH VIÊN TRƯỜNG ĐẠI HỌC CNTT VÀ TT VIỆT-HÀN MỞ RỘNG LẦN THỨ I - 2025"
+              oninput="updateTournamentTitle()"
+              placeholder="Tên giải đấu..."
+              style="flex: 1"
+            />
+          </div>
+          <!-- Event Title -->
+          <div class="setting-row">
+            <label>Thảm:</label>
+            <input
+              type="text"
+              id="eventTitle"
+              value="Thảm 1"
+              oninput="updateEventTitle()"
+              placeholder="VD: Thảm 1, Thảm 2..."
+              style="flex: 1"
+            />
+          </div>
+          <!-- Sponsor Text -->
+          <div class="setting-row">
+            <label>Nhà Tài Trợ:</label>
+            <input
+              type="text"
+              id="sponsorText"
+              value="NHÀ TÀI TRỢ"
+              oninput="updateSponsorText()"
+              placeholder="Nhập tên nhà tài trợ hoặc để trống..."
+              style="flex: 1"
+            />
+          </div>
+          <!-- Athlete Selection Dropdowns -->
+          <div class="setting-row">
+            <label>VĐV (AKA):</label>
+            <div style="flex: 1; position: relative">
+              <input
+                type="text"
+                id="redAthleteSearch"
+                placeholder="🔍 Tìm VĐV (Enter để chọn)..."
+                oninput="filterAthletes('aka')"
+                onkeydown="handleAthleteSearchKeyPress(event, 'aka')"
+                style="
+                  width: 100%;
+                  padding: 8px;
+                  padding-right: 30px;
+                  border: 2px solid #ddd;
+                  border-radius: 5px;
+                "
+              />
+              <button
+                onclick="clearAthleteSearch('aka')"
+                style="
+                  position: absolute;
+                  right: 5px;
+                  top: 50%;
+                  transform: translateY(-50%);
+                  background: none;
+                  border: none;
+                  cursor: pointer;
+                  font-size: 14px;
+                  color: #999;
+                "
+                title="Xóa tìm kiếm (ESC)"
+              >
+                ✖
+              </button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label></label>
+            <select
+              id="redAthleteSelect"
+              onchange="selectAthlete('aka')"
+              style="flex: 1"
+            >
+              <option value="">-- Chọn VĐV --</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label>Tên VĐV (AKA):</label>
+            <input
+              type="text"
+              id="redName"
+              value="AKA"
+              oninput="updateNames()"
+            />
+          </div>
+          <div class="setting-row">
+            <label>VĐV (AO):</label>
+            <div style="flex: 1; position: relative">
+              <input
+                type="text"
+                id="blueAthleteSearch"
+                placeholder="🔍 Tìm VĐV (Enter để chọn)..."
+                oninput="filterAthletes('ao')"
+                onkeydown="handleAthleteSearchKeyPress(event, 'ao')"
+                style="
+                  width: 100%;
+                  padding: 8px;
+                  padding-right: 30px;
+                  border: 2px solid #ddd;
+                  border-radius: 5px;
+                "
+              />
+              <button
+                onclick="clearAthleteSearch('ao')"
+                style="
+                  position: absolute;
+                  right: 5px;
+                  top: 50%;
+                  transform: translateY(-50%);
+                  background: none;
+                  border: none;
+                  cursor: pointer;
+                  font-size: 14px;
+                  color: #999;
+                "
+                title="Xóa tìm kiếm (ESC)"
+              >
+                ✖
+              </button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label></label>
+            <select
+              id="blueAthleteSelect"
+              onchange="selectAthlete('ao')"
+              style="flex: 1"
+            >
+              <option value="">-- Chọn VĐV --</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label>Tên VĐV (AO):</label>
+            <input
+              type="text"
+              id="blueName"
+              value="AO"
+              oninput="updateNames()"
+            />
+          </div>
+
+          <div class="setting-row">
+            <label>Nội dung thi đấu:</label>
+            <input
+              type="text"
+              id="category"
+              value="PENALTY"
+              oninput="updateCategory()"
+            />
+          </div>
+
+          <!-- Match Round Selection -->
+          <div class="setting-row">
+            <label>Vòng thi đấu:</label>
+            <select
+              id="matchRound"
+              style="
+                flex: 1;
+                padding: 10px;
+                border: 2px solid #ddd;
+                border-radius: 8px;
+                font-size: 14px;
+              "
+            >
+              <option value="">-- Chọn vòng --</option>
+              <option value="Chung Kết">🏆 Chung Kết (HCV/HCB)</option>
+              <option value="Bán Kết 1">🥉 Bán Kết 1 (HCĐ #1)</option>
+              <option value="Bán Kết 2">🥉 Bán Kết 2 (HCĐ #2)</option>
+              <option value="Tứ Kết">📍 Tứ Kết</option>
+              <option value="Vòng Loại">📝 Vòng Loại</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Panel - Preview -->
+      <div class="preview-panel">
+        <!-- Mini Display Preview -->
+        <div class="mini-display">
+          <div class="mini-header">
+            <div class="mini-category" id="previewCategory">PENALTY</div>
+          </div>
+          <div class="mini-competitor mini-aka">
+            <div class="mini-name aka-text" id="previewAkaName">AKA</div>
+            <div class="mini-penalties" id="previewAkaPenalties">
+              <span class="mini-penalty-btn">C1</span>
+              <span class="mini-penalty-btn">C2</span>
+              <span class="mini-penalty-btn">C3</span>
+              <span class="mini-penalty-btn">HC</span>
+              <span class="mini-penalty-btn">H</span>
+            </div>
+            <div class="mini-score-container">
+              <div class="mini-score aka-text" id="previewAkaScore">0</div>
+              <span class="mini-senshu-indicator aka-text" id="previewAkaSenshu"
+                >o</span
+              >
+            </div>
+          </div>
+          <div class="mini-competitor mini-ao">
+            <div class="mini-name ao-text" id="previewAoName">AO</div>
+            <div class="mini-penalties" id="previewAoPenalties">
+              <span class="mini-penalty-btn">C1</span>
+              <span class="mini-penalty-btn">C2</span>
+              <span class="mini-penalty-btn">C3</span>
+              <span class="mini-penalty-btn">HC</span>
+              <span class="mini-penalty-btn">H</span>
+            </div>
+            <div class="mini-score-container">
+              <div class="mini-score ao-text" id="previewAoScore">0</div>
+              <span class="mini-senshu-indicator ao-text" id="previewAoSenshu"
+                >o</span
+              >
+            </div>
+          </div>
+          <div class="mini-timer">
+            <div class="mini-event-title" id="previewEventTitle">Thảm 1</div>
+            <span class="mini-timer-main" id="previewTimer">03:00</span>
+            <span class="mini-timer-decimal">.0</span>
+          </div>
+        </div>
+
+        <!-- Custom Names Section -->
+        <div class="section custom-names">
+          <div class="names-row">
+            <label>Error Names:</label>
+            <input
+              type="text"
+              id="errorC1"
+              value="C1"
+              oninput="updateErrorNames()"
+            />
+            <input
+              type="text"
+              id="errorC2"
+              value="C2"
+              oninput="updateErrorNames()"
+            />
+            <input
+              type="text"
+              id="errorC3"
+              value="C3"
+              oninput="updateErrorNames()"
+            />
+            <input
+              type="text"
+              id="errorHC"
+              value="HC"
+              oninput="updateErrorNames()"
+            />
+            <input
+              type="text"
+              id="errorH"
+              value="H"
+              oninput="updateErrorNames()"
+            />
+          </div>
+          <div class="names-row">
+            <label>Point Names:</label>
+            <input
+              type="text"
+              id="pointSenshu"
+              value="Senshu"
+              oninput="updatePointNames()"
+            />
+            <input
+              type="text"
+              id="pointIppon"
+              value="Ippon"
+              oninput="updatePointNames()"
+            />
+            <input
+              type="text"
+              id="pointWazaAri"
+              value="Waza-ari"
+              oninput="updatePointNames()"
+            />
+            <input
+              type="text"
+              id="pointYuko"
+              value="Yuko"
+              oninput="updatePointNames()"
+            />
+          </div>
+        </div>
+
+        <!-- Additional Settings -->
+        <div class="section additional-settings">
+          <div class="setting-row">
+            <label>Font Scale: <span id="fontScaleLabel">100%</span></label>
+            <input
+              type="range"
+              id="fontScale"
+              min="50"
+              max="150"
+              value="100"
+              step="5"
+              oninput="updateFontScale()"
+              style="flex: 1; max-width: 200px"
+            />
+          </div>
+          <div class="setting-row">
+            <button class="btn" onclick="resetAllSettings()">
+              Reset All Settings
+            </button>
+            <button class="btn" onclick="setLanguage('en')">English</button>
+          </div>
+        </div>
+
+        <!-- Open Display Button -->
+        <div class="section">
+          <button
+            class="btn btn-primary btn-open-display"
+            onclick="openDisplay()"
+          >
+            📺 Open Display Window
+          </button>
+          <button
+            class="btn btn-open-display"
+            onclick="window.open('medals.html', '_blank')"
+            style="
+              background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+              margin-top: 10px;
+            "
+          >
+            🏆 Quản Lý Kết Quả & Huy Chương
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/admin.js"></script>
+    <script>
+      // ============================================
+      // AUTO-CLOSE DISPLAY WHEN ADMIN CLOSES
+      // ============================================
+
+      // Close display window when admin page is closed
+      window.addEventListener("beforeunload", function () {
+        // displayWindow is defined in admin.js
+        if (
+          typeof displayWindow !== "undefined" &&
+          displayWindow &&
+          !displayWindow.closed
+        ) {
+          displayWindow.close();
+        }
+      });
+    </script>
+
+    <!-- Author Footer -->
+    <div
+      style="
+        text-align: center;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 2px solid #e0e0e0;
+        color: #666;
+        font-size: 0.9em;
+      "
+    >
+      <p style="margin: 5px 0">
+        <strong>Tác giả:</strong> Trương Lưu Quân -
+        <a href="tel:0336440523" style="color: #667eea; text-decoration: none"
+          >0336.440.523</a
+        >
+      </p>
+      <p style="margin: 5px 0; color: #999; font-size: 0.85em">
+        Phát hành ngày 01/01/2026
+      </p>
+    </div>
+  </body>
+</html>

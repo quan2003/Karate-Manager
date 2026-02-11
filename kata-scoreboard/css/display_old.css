@@ -1,0 +1,423 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Arial', sans-serif;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: white;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ==================== HEADER SECTION ==================== */
+.header-section {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1.5vh 3vw;
+  text-align: center;
+  border-bottom: 3px solid rgba(255, 255, 255, 0.2);
+}
+
+.event-title {
+  font-size: 3.5vw;
+  font-weight: bold;
+  margin-bottom: 0.5vh;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+
+.match-info {
+  font-size: 1.8vw;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+}
+
+/* ==================== SCOREBOARD SECTION ==================== */
+.scoreboard-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2vh 0;
+  gap: 3vh;
+}
+
+.competitor {
+  display: flex;
+  margin: 0 5vw;
+  height: 25vh;
+  border-radius: 15px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  transition: transform 0.3s ease;
+  flex-direction: row;
+  position: relative;
+  border-right: none;
+}
+
+.competitor:hover {
+  transform: translateX(10px);
+}
+
+/* Color Bars */
+.color-box {
+  width: 8vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 4vw;
+  font-weight: bold;
+  opacity: 0.7;
+  height: auto;
+}
+
+.color-bar {
+  width: 8vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 4vw;
+  font-weight: bold;
+  opacity: 0.7;
+}
+
+.aka-bar {
+  background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%);
+  color: white;
+}
+
+.ao-bar {
+  background: linear-gradient(135deg, #0066ff 0%, #0044cc 100%);
+  color: white;
+}
+
+.aka-color {
+  background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%);
+  color: white;
+}
+
+.ao-color {
+  background: linear-gradient(135deg, #0066ff 0%, #0044cc 100%);
+  color: white;
+}
+
+/* Competitor Content */
+.competitor-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2vh 3vw;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.aka-competitor .competitor-content {
+  background: linear-gradient(90deg, rgba(255, 0, 0, 0.3) 0%, rgba(255, 0, 0, 0.1) 100%);
+}
+
+.ao-competitor .competitor-content {
+  background: linear-gradient(90deg, rgba(0, 102, 255, 0.3) 0%, rgba(0, 102, 255, 0.1) 100%);
+}
+
+.athlete-name {
+  font-size: 5vw;
+  font-weight: bold;
+  margin-bottom: 1vh;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #ffd700;
+}
+
+.unit-name {
+  font-size: 3vw;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+}
+
+/* ==================== FOOTER SECTION ==================== */
+.footer-section {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2vh 3vw;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 3px solid rgba(255, 255, 255, 0.2);
+  height: 15vh;
+}
+
+/* Timer Container */
+.timer-container {
+  flex: 0 0 35%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.timer {
+  font-size: 15vw;
+  font-weight: bold;
+  color: #00ff88;
+  text-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.1em;
+}
+
+/* Kata Container */
+.kata-container {
+  flex: 0 0 40%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5vw;
+}
+
+.kata-label {
+  font-size: 2.5vw;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.kata-name {
+  font-size: 3.5vw;
+  font-weight: bold;
+  color: #ffd700;
+  cursor: pointer;
+  padding: 1vh 2vw;
+  background: rgba(255, 215, 0, 0.1);
+  border-radius: 10px;
+  transition: all 0.3s ease;
+  user-select: none;
+  min-height: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.kata-name:hover {
+  background: rgba(255, 215, 0, 0.2);
+  transform: scale(1.05);
+}
+
+/* Logo Container */
+.logo-container {
+  flex: 0 0 25%;
+  text-align: right;
+}
+
+.logo-text {
+  font-size: 2.5vw;
+  font-weight: bold;
+  color: white;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.logo-subtext {
+  font-size: 1.3vw;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.1em;
+  margin-top: 0.5vh;
+}
+
+/* ==================== KATA DROPDOWN ==================== */
+.kata-dropdown {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 50vw;
+  max-height: 70vh;
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  display: none;
+  flex-direction: column;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.kata-dropdown.active {
+  display: flex;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -60%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+.kata-dropdown-header {
+  padding: 2vh 2vw;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+  font-size: 1em;
+  font-weight: normal;
+  text-align: left;
+  color: white;
+  border-radius: 0;
+}
+
+#kataSearch {
+  width: 100%;
+  padding: 1.5vh 2vw;
+  font-size: 1.8vw;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  outline: none;
+  transition: all 0.3s ease;
+  margin-top: 0;
+}
+
+#kataSearch::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+#kataSearch:focus {
+  border-color: #00ff88;
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+}
+
+.kata-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1vh 0;
+}
+
+.kata-item {
+  padding: 1.5vh 2vw;
+  font-size: 1.8vw;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-left: 4px solid transparent;
+  border-bottom: 1px solid #333;
+}
+
+.kata-item:hover {
+  background: rgba(0, 255, 136, 0.2);
+  border-left-color: #00ff88;
+  padding-left: 3vw;
+}
+
+.kata-item:last-child {
+  border-bottom: none;
+}
+
+.kata-item.hidden {
+  display: none;
+}
+
+/* Custom Scrollbar */
+.kata-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.kata-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.kata-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 136, 0.5);
+  border-radius: 10px;
+}
+
+.kata-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 136, 0.7);
+}
+
+/* ==================== RESPONSIVE DESIGN ==================== */
+@media (max-width: 1024px) {
+  .event-title {
+    font-size: 4vw;
+  }
+
+  .match-info {
+    font-size: 2.2vw;
+  }
+
+  .athlete-name {
+    font-size: 6vw;
+  }
+
+  .unit-name {
+    font-size: 3.5vw;
+  }
+
+  .timer {
+    font-size: 18vw;
+  }
+
+  .kata-label {
+    font-size: 3vw;
+  }
+
+  .kata-name {
+    font-size: 4vw;
+  }
+
+  .logo-text {
+    font-size: 3vw;
+  }
+
+  .logo-subtext {
+    font-size: 1.5vw;
+  }
+}
+
+@media (max-width: 768px) {
+  .footer-section {
+    flex-direction: column;
+    height: auto;
+    gap: 2vh;
+  }
+
+  .timer-container,
+  .kata-container,
+  .logo-container {
+    flex: 1 1 100%;
+    text-align: center;
+  }
+
+  .kata-dropdown {
+    width: 90vw;
+    max-height: 80vh;
+  }
+
+  #kataSearch {
+    font-size: 2.5vw;
+  }
+
+  .kata-item {
+    font-size: 2.5vw;
+  }
+}
+
+/* ==================== ANIMATIONS ==================== */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.timer.warning {
+  animation: pulse 1s infinite;
+  color: #ff6b6b;
+  text-shadow: 0 0 30px rgba(255, 107, 107, 0.5);
+}

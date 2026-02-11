@@ -1,0 +1,181 @@
+.bracket-page {
+  min-height: 100vh;
+}
+
+/* Breadcrumb with back link */
+.bracket-page .breadcrumb .back-link {
+  color: var(--color-primary);
+  font-weight: 600;
+  padding: 4px 12px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.bracket-page .breadcrumb .back-link:hover {
+  background: var(--color-primary);
+  color: white;
+  text-decoration: none;
+}
+
+.bracket-page .breadcrumb .breadcrumb-separator {
+  color: var(--color-border);
+  margin: 0 var(--spacing-2);
+}
+
+.container-fluid {
+  width: 100%;
+  padding: 0 var(--spacing-6);
+}
+
+.bracket-header {
+  margin-bottom: var(--spacing-4);
+}
+
+.bracket-info {
+  display: flex;
+  gap: var(--spacing-3);
+  margin-top: var(--spacing-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.bracket-info .complete {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.bracket-scroll-container {
+  overflow-x: auto;
+  padding-bottom: var(--spacing-6);
+  display: flex;
+  gap: var(--spacing-6);
+  align-items: flex-start;
+}
+
+@keyframes trophyBounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+/* Medal Table */
+.medal-table-container {
+  flex-shrink: 0;
+  position: sticky;
+  top: var(--spacing-4);
+}
+
+.medal-table {
+  width: 280px;
+  border-collapse: collapse;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border);
+  background: white;
+}
+
+.medal-table thead th {
+  background: var(--color-primary);
+  color: white;
+  padding: var(--spacing-3) var(--spacing-4);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  text-align: center;
+}
+
+.medal-table tbody td {
+  padding: var(--spacing-3) var(--spacing-4);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.medal-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.medal-gold {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 215, 0, 0.15),
+    rgba(255, 215, 0, 0.05)
+  );
+}
+
+.medal-silver {
+  background: linear-gradient(
+    135deg,
+    rgba(192, 192, 192, 0.2),
+    rgba(192, 192, 192, 0.08)
+  );
+}
+
+.medal-bronze {
+  background: linear-gradient(
+    135deg,
+    rgba(205, 127, 50, 0.15),
+    rgba(205, 127, 50, 0.05)
+  );
+}
+
+.medal-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.medal-athlete {
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.medal-club {
+  font-weight: 400;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+@media (max-width: 768px) {
+  .container-fluid {
+    padding: 0 var(--spacing-4);
+  }
+
+  .bracket-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .header-actions .btn {
+    width: 100%;
+  }
+
+  .bracket-info {
+    flex-wrap: wrap;
+  }
+
+  .bracket-scroll-container {
+    flex-direction: column;
+  }
+
+  .medal-table-container {
+    order: -1;
+    position: static;
+  }
+
+  .medal-table {
+    width: 100%;
+  }
+}

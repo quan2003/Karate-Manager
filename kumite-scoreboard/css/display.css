@@ -1,0 +1,576 @@
+﻿/* Kumite Scoreboard - Display CSS */
+
+:root {
+  --font-scale: 1;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Segoe UI", "Tahoma", "Arial", sans-serif;
+  background: #000;
+  color: white;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header Section */
+.header-section {
+  background: linear-gradient(180deg, #1a1a2e 0%, #16162a 100%);
+  padding: 1vh 2vw;
+  text-align: center;
+}
+
+.tournament-title {
+  font-size: calc(1.8vw * var(--font-scale));
+  font-weight: bold;
+  color: #ffd700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.3vh;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.category-title {
+  font-size: calc(3.5vw * var(--font-scale));
+  font-weight: bold;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Competitor Sections */
+.competitor-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5vh 2vw;
+  height: 22vh;
+}
+
+.aka-section {
+  background: linear-gradient(180deg, #2d1f14 0%, #241a10 100%);
+}
+
+.ao-section {
+  background: linear-gradient(180deg, #0a1525 0%, #071020 100%);
+}
+
+.competitor-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5vh;
+  flex: 1;
+}
+
+.competitor-name {
+  font-size: calc(2.8vw * var(--font-scale));
+  font-weight: bold;
+}
+
+.aka-name {
+  color: #ff0000;
+}
+
+.ao-name {
+  color: #00bfff;
+}
+
+/* Penalty Row */
+.penalty-row {
+  display: flex;
+  align-items: center;
+  gap: 1.5vw;
+}
+
+.warning-label {
+  font-size: calc(2vw * var(--font-scale));
+  font-weight: bold;
+  text-transform: uppercase;
+  min-width: 10vw;
+}
+
+.aka-warning {
+  color: #ff0000;
+}
+
+.ao-warning {
+  color: #00bfff;
+}
+
+/* Penalty Buttons */
+.penalty-buttons {
+  display: flex;
+  gap: 1vw;
+}
+
+.penalty-btn {
+  width: 10vw;
+  height: 6vh;
+  font-size: calc(2vw * var(--font-scale));
+  font-weight: bold;
+  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 25px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+/* C1, C2, C3 buttons are wider */
+.penalty-btn[id*="C1"],
+.penalty-btn[id*="C2"],
+.penalty-btn[id*="C3"] {
+  width: 13vw;
+}
+
+.penalty-btn.active {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: white;
+  color: white;
+}
+
+/* All penalties active state - yellow background */
+.penalty-btn.active {
+  background: #ffd700;
+  border-color: #ffd700;
+  color: #000;
+  font-weight: bold;
+}
+
+/* Score Container and Display */
+.score-container {
+  position: relative;
+  display: inline-block;
+}
+
+.score-display {
+  font-size: calc(12vw * var(--font-scale));
+  font-weight: bold;
+  font-family: "Arial Black", "Impact", sans-serif;
+  line-height: 1;
+  min-width: 10vw;
+  text-align: center;
+}
+
+.aka-score {
+  color: #ff0000;
+}
+
+.ao-score {
+  color: #00bfff;
+}
+
+/* Senshu Indicator - Absolute positioned superscript */
+.senshu-indicator {
+  display: none;
+  position: absolute;
+  top: 0;
+  right: -2vw;
+  font-size: calc(5vw * var(--font-scale));
+  font-weight: bold;
+  line-height: 1;
+}
+
+.aka-senshu {
+  color: #ff0000;
+}
+
+.ao-senshu {
+  color: #00bfff;
+}
+
+/* Timer Section - Logo BEN TRAI */
+.timer-section {
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 2vh 0;
+}
+
+.timer-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  position: relative;
+  padding: 0 2vw;
+  gap: 2vw;
+}
+
+/* Team mode layout - Event title bên trái, timer + logo giữa, team info bên phải */
+.timer-content > .event-title {
+  flex-shrink: 0;
+  order: 1;
+}
+
+.timer-content > .logo-container {
+  flex-shrink: 0;
+  order: 2;
+  position: absolute;
+  left: 50%;
+  transform: translateX(calc(-50% - 25vw));
+}
+
+.timer-content > .timer-display {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  order: 3;
+}
+
+.timer-content > .team-info-container {
+  flex-shrink: 0;
+  order: 4;
+  margin-left: auto;
+}
+
+/* Individual mode layout - Event và logo bên trái, timer ở giữa tuyệt đối */
+.timer-content.individual-mode {
+  justify-content: flex-start;
+}
+
+.timer-content.individual-mode > .event-title {
+  order: 1;
+}
+
+.timer-content.individual-mode > .logo-container {
+  order: 2;
+  /* margin-left: 0vw; */
+  position: static;
+  transform: none;
+}
+
+/* Individual mode - Timer ở giữa màn hình */
+.timer-content.individual-mode > .timer-display {
+  transform: translateX(-50%);
+}
+
+/* Event Title - Bên cạnh timer */
+.event-title {
+  font-size: calc(1.5vw * var(--font-scale));
+  font-weight: bold;
+  color: #ffd700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+  padding: 1.5vh 2vw;
+  background: rgba(0, 0, 0, 0.8);
+  border: 3px solid #ffd700;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.logo-container {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.logo-image {
+  max-height: 10vh;
+  max-width: 20vw;
+  height: auto;
+  width: auto;
+  object-fit: contain;
+  border-radius: 50%;
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+}
+
+/* Sponsor Text - Replace Logo */
+.sponsor-text {
+  font-size: 1.8vw;
+  font-weight: bold;
+  color: #ffd700;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  text-align: center;
+  padding: 0.5vh 2vw;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 215, 0, 0.1) 0%,
+    rgba(255, 215, 0, 0.05) 100%
+  );
+  border: 2px solid rgba(255, 215, 0, 0.3);
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 25vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timer-display {
+  display: flex;
+  align-items: baseline;
+  flex-shrink: 0;
+}
+
+/* Team Info Container - Bên phải timer - NGANG */
+.team-info-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2vw;
+  padding: 1.5vh 2vw;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.round-info {
+  text-align: center;
+  padding-right: 1.5vw;
+  border-right: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.round-label {
+  font-size: calc(1.2vw * var(--font-scale));
+  font-weight: bold;
+  color: #ffd700;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.3vh;
+}
+
+.round-number {
+  font-size: calc(2.2vw * var(--font-scale));
+  font-weight: bold;
+  color: white;
+}
+
+.team-score-info {
+  display: flex;
+  flex-direction: row;
+  gap: 1.5vw;
+  align-items: center;
+}
+
+.team-score-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5vw;
+}
+
+.team-score-label {
+  font-size: calc(1.5vw * var(--font-scale));
+  font-weight: bold;
+}
+
+.team-score-label.aka-label {
+  color: #ff0000;
+}
+
+.team-score-label.ao-label {
+  color: #00bfff;
+}
+
+.team-score-value {
+  font-size: calc(2.2vw * var(--font-scale));
+  font-weight: bold;
+  color: white;
+  min-width: 2vw;
+  text-align: center;
+}
+
+/* Timer font sizes - Same for both Individual and Team Mode */
+.timer-main {
+  font-size: calc(8vw * var(--font-scale));
+  font-weight: bold;
+  color: white;
+}
+
+.timer-decimal {
+  font-size: calc(3.5vw * var(--font-scale));
+  font-weight: bold;
+  color: #ffd700;
+}
+
+.timer-section.timer-warning .timer-main,
+.timer-section.timer-warning .timer-decimal {
+  color: #ff0000;
+  animation: pulse 0.5s infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Winner flash animation */
+@keyframes winnerFlash {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.winner-flash {
+  animation: winnerFlash 0.5s ease-in-out infinite;
+}
+
+/* Logo */
+.logo-image {
+  height: 15vh;
+  width: 15vh;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Senshu Indicator - Above Score */
+.senshu-indicator {
+  display: none;
+  font-size: 4vw;
+  font-weight: bold;
+  line-height: 1;
+  margin-bottom: 1vh;
+}
+
+.aka-senshu {
+  color: #ff0000;
+}
+
+.ao-senshu {
+  color: #00bfff;
+}
+
+/* Fullscreen Overlay for Score/Warning Display */
+.fullscreen-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.3s ease;
+}
+
+.fullscreen-overlay.show {
+  display: flex;
+}
+
+.fullscreen-overlay.aka-bg {
+  background: rgba(255, 0, 0, 0.95);
+}
+
+.fullscreen-overlay.ao-bg {
+  background: rgba(0, 100, 255, 0.95);
+}
+
+.fullscreen-overlay.warning-bg {
+  background: rgba(255, 215, 0, 0.95);
+}
+
+.fullscreen-overlay.senshu-aka-bg {
+  background: rgba(255, 0, 0, 0.95);
+}
+
+.fullscreen-overlay.senshu-ao-bg {
+  background: rgba(0, 100, 255, 0.95);
+}
+
+.fullscreen-content {
+  text-align: center;
+  animation: scaleIn 0.3s ease;
+}
+
+.fullscreen-action {
+  font-size: 15vw;
+  font-weight: bold;
+  color: white;
+  text-transform: uppercase;
+  text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
+  margin-bottom: 2vh;
+  letter-spacing: 0.05em;
+}
+
+.fullscreen-points {
+  font-size: 8vw;
+  font-weight: bold;
+  color: white;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  letter-spacing: 0.1em;
+}
+
+/* Senshu specific styling */
+.fullscreen-overlay.senshu-display .fullscreen-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3vh;
+}
+
+.fullscreen-senshu-box {
+  width: 30vw;
+  height: 30vw;
+  max-width: 400px;
+  max-height: 400px;
+  border: 8px solid white;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15vw;
+  font-weight: bold;
+  color: white;
+  text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
+  margin-bottom: 2vh;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}

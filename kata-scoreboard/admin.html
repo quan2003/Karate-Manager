@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="../logo.png" />
+    <title>Karate Scoreboard - Admin Panel</title>
+    <link rel="stylesheet" href="css/admin.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Logo Header -->
+      <div
+        style="
+          text-align: center;
+          padding: 15px;
+          background: #1a5f7a;
+          border-radius: 10px;
+          margin-bottom: 15px;
+        "
+      >
+        <img
+          src="../logo.png"
+          alt="Logo"
+          style="
+            max-width: 80px;
+            height: auto;
+            border-radius: 50%;
+            background: white;
+            padding: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+          "
+        />
+        <h2 style="color: white; margin-top: 10px; font-size: 1.2em">
+          KATA SCOREBOARD - ADMIN PANEL
+        </h2>
+      </div>
+
+      <h1>KARATE SCOREBOARD - ADMIN PANEL</h1>
+
+      <!-- TOP SECTION - Full Width -->
+      <div class="section full-width">
+        <h2>⚙️ Cài Đặt Chung</h2>
+        <div class="btn-group">
+          <button
+            class="btn btn-primary active"
+            onclick="setContentType('individual')"
+          >
+            Cá Nhân
+          </button>
+          <button class="btn btn-primary" onclick="setContentType('team')">
+            Đồng Đội
+          </button>
+          <button class="btn btn-warning" onclick="swapPositions()">
+            🔄 Đổi AKA ⇄ AO
+          </button>
+          <button class="btn btn-lg btn-primary" onclick="openDisplay()">
+            📺 Mở Display
+          </button>
+        </div>
+      </div>
+      <!-- Event Info - Full Width -->
+      <div class="section full-width">
+        <h2>📋 Thông Tin Trận Đấu</h2>
+        <div
+          style="display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 15px"
+        >
+          <div class="form-group">
+            <label>Tên Giải:</label>
+            <input
+              type="text"
+              id="tournamentTitle"
+              value="GIẢI KARATE-DO SINH VIÊN TRƯỜNG ĐẠI HỌC CNTT VÀ TT VIỆT-HÀN MỞ RỘNG LẦN THỨ I - 2025"
+              oninput="updateEventInfo()"
+            />
+          </div>
+          <div class="form-group">
+            <label>Thảm:</label>
+            <input
+              type="text"
+              id="eventTitle"
+              value="Thảm 1"
+              oninput="updateEventInfo()"
+            />
+          </div>
+          <div class="form-group">
+            <label>Nội Dung Thi Đấu:</label>
+            <input
+              type="text"
+              id="matchInfo"
+              value="KATA CÁ NHÂN NAM LỨA TUỔI 10 TUỔI ĐẾN 11 TUỔI"
+              oninput="updateEventInfo()"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- TWO COLUMN LAYOUT -->
+      <div class="admin-grid">
+        <!-- LEFT COLUMN - AKA -->
+        <div>
+          <div class="section competitor-section aka-section">
+            <h2>🔴 AKA (ĐỎ)</h2>
+
+            <!-- Kata Selection -->
+            <div class="form-group">
+              <label>Kata:</label>
+              <input
+                type="text"
+                id="akaKataSearch"
+                placeholder="Tìm kata..."
+                oninput="filterKata('aka')"
+              />
+              <select id="akaKataSelect" onchange="updateKataName('aka')">
+                <option value="">-- Chọn Kata --</option>
+                <option value="Anan">1. Anan</option>
+                <option value="Anan Dai">2. Anan Dai</option>
+                <option value="Ananko">3. Ananko</option>
+                <option value="Aoyagi">4. Aoyagi</option>
+                <option value="Bassai">5. Bassai</option>
+                <option value="Bassai Dai">6. Bassai Dai</option>
+                <option value="Bassai Sho">7. Bassai Sho</option>
+                <option value="Chatanyara Kusanku">
+                  8. Chatanyara Kusanku
+                </option>
+                <option value="Chibana No Kushanku">
+                  9. Chibana No Kushanku
+                </option>
+                <option value="Chinte">10. Chinte</option>
+                <option value="Chinto">11. Chinto</option>
+                <option value="Enpi">12. Enpi</option>
+                <option value="Fukyugata Ichi">13. Fukyugata Ichi</option>
+                <option value="Fukyugata Ni">14. Fukyugata Ni</option>
+                <option value="Gankaku">15. Gankaku</option>
+                <option value="Garyu">16. Garyu</option>
+                <option value="Gekisai (Geksai) 1">17. Gekisai 1</option>
+                <option value="Gekisai (Geksai) 2">18. Gekisai 2</option>
+                <option value="Gojushiho">19. Gojushiho</option>
+                <option value="Gojushiho Dai">20. Gojushiho Dai</option>
+                <option value="Gojushiho Sho">21. Gojushiho Sho</option>
+                <option value="Hakucho">22. Hakucho</option>
+                <option value="Hangetsu">23. Hangetsu</option>
+                <option value="Haufa (Haffa)">24. Haufa (Haffa)</option>
+                <option value="Heian Shodan">25. Heian Shodan</option>
+                <option value="Heian Nidan">26. Heian Nidan</option>
+                <option value="Heian Sandan">27. Heian Sandan</option>
+                <option value="Heian Yondan">28. Heian Yondan</option>
+                <option value="Heian Godan">29. Heian Godan</option>
+                <option value="Heiku">30. Heiku</option>
+                <option value="Ishimine Bassai">31. Ishimine Bassai</option>
+                <option value="Itosu Rohai Shodan">
+                  32. Itosu Rohai Shodan
+                </option>
+                <option value="Itosu Rohai Nidan">33. Itosu Rohai Nidan</option>
+                <option value="Itosu Rohai Sandan">
+                  34. Itosu Rohai Sandan
+                </option>
+                <option value="Jiin">35. Jiin</option>
+                <option value="Jion">36. Jion</option>
+                <option value="Jitte">37. Jitte</option>
+                <option value="Juroku">38. Juroku</option>
+                <option value="Kanchin">39. Kanchin</option>
+                <option value="Kanku Dai">40. Kanku Dai</option>
+                <option value="Kanku Sho">41. Kanku Sho</option>
+                <option value="Kanshu">42. Kanshu</option>
+                <option value="Kishimoto No Kushanku">
+                  43. Kishimoto No Kushanku
+                </option>
+                <option value="Kousoukun">44. Kousoukun</option>
+                <option value="Kousoukun Dai">45. Kousoukun Dai</option>
+                <option value="Kousoukun Sho">46. Kousoukun Sho</option>
+                <option value="Kururunfa">47. Kururunfa</option>
+                <option value="Kusanku">48. Kusanku</option>
+                <option value="Kyan No Chinto">49. Kyan No Chinto</option>
+                <option value="Kyan No Wanshu">50. Kyan No Wanshu</option>
+                <option value="Matsukaze">51. Matsukaze</option>
+                <option value="Matsumura Bassai">52. Matsumura Bassai</option>
+                <option value="Matsumura Rohai">53. Matsumura Rohai</option>
+                <option value="Meikyo">54. Meikyo</option>
+                <option value="Myojo">55. Myojo</option>
+                <option value="Naifanchin Shodan">56. Naifanchin Shodan</option>
+                <option value="Naifanchin Nidan">57. Naifanchin Nidan</option>
+                <option value="Naifanchin Sandan">58. Naifanchin Sandan</option>
+                <option value="Naihanchi">59. Naihanchi</option>
+                <option value="Nijushiho">60. Nijushiho</option>
+                <option value="Nipaipo">61. Nipaipo</option>
+                <option value="Niseishi">62. Niseishi</option>
+                <option value="Ohan">63. Ohan</option>
+                <option value="Ohan Dai">64. Ohan Dai</option>
+                <option value="Oyadomari No Passai">
+                  65. Oyadomari No Passai
+                </option>
+                <option value="Pachu">66. Pachu</option>
+                <option value="Paiku">67. Paiku</option>
+                <option value="Papuren">68. Papuren</option>
+                <option value="Jiin">69. Jiin</option>
+                <option value="Passai">69. Passai</option>
+                <option value="Pinan Shodan">70. Pinan Shodan</option>
+                <option value="Pinan Nidan">71. Pinan Nidan</option>
+                <option value="Pinan Sandan">72. Pinan Sandan</option>
+                <option value="Pinan Yondan">73. Pinan Yondan</option>
+                <option value="Pinan Godan">74. Pinan Godan</option>
+                <option value="Rohai">75. Rohai</option>
+                <option value="Saifa">76. Saifa</option>
+                <option value="Sanchin">77. Sanchin</option>
+                <option value="Sansai">78. Sansai</option>
+                <option value="Sanseiru">79. Sanseiru</option>
+                <option value="Sanseru">80. Sanseru</option>
+                <option value="Seichin">81. Seichin</option>
+                <option value="Seienchin (Seiyunchin)">82. Seienchin</option>
+                <option value="Seipai">83. Seipai</option>
+                <option value="Seiryu">84. Seiryu</option>
+                <option value="Seishan">85. Seishan</option>
+                <option value="Seisan (Sesan)">86. Seisan</option>
+                <option value="Shiho Kousoukun">87. Shiho Kousoukun</option>
+                <option value="Shinpa">88. Shinpa</option>
+                <option value="Shinsei">89. Shinsei</option>
+                <option value="Shisochin">90. Shisochin</option>
+                <option value="Sochin">91. Sochin</option>
+                <option value="Suparinpei">92. Suparinpei</option>
+                <option value="Tekki Shodan">93. Tekki Shodan</option>
+                <option value="Tekki Nidan">94. Tekki Nidan</option>
+                <option value="Tekki Sandan">95. Tekki Sandan</option>
+                <option value="Tensho">96. Tensho</option>
+                <option value="Tomari Bassai">97. Tomari Bassai</option>
+                <option value="Unshu">98. Unshu</option>
+                <option value="Unsu">99. Unsu</option>
+                <option value="Useishi">100. Useishi</option>
+                <option value="Wankan">101. Wankan</option>
+                <option value="Wanshu">102. Wanshu</option>
+              </select>
+            </div>
+
+            <!-- Individual Mode -->
+            <div id="akaInputIndividual">
+              <div class="form-group">
+                <label>VĐV:</label>
+                <select id="akaAthleteSelect" onchange="updateAkaDisplay()">
+                  <option value="">-- Chọn VĐV --</option>
+                </select>
+                <input
+                  type="text"
+                  id="akaAthleteName"
+                  placeholder="Hoặc nhập thủ công"
+                  onchange="updateAkaDisplay()"
+                />
+              </div>
+              <div class="form-group">
+                <label>Đơn vị:</label>
+                <input
+                  type="text"
+                  id="akaUnit"
+                  placeholder="Đơn vị"
+                  onchange="updateAkaDisplay()"
+                />
+              </div>
+            </div>
+
+            <!-- Team Mode -->
+            <div id="akaInputTeam" style="display: none">
+              <div class="form-group">
+                <label>Đơn vị:</label>
+                <select id="akaTeamSelect" onchange="updateAkaDisplay()">
+                  <option value="">-- Chọn Đơn Vị --</option>
+                </select>
+                <input
+                  type="text"
+                  id="akaTeamName"
+                  placeholder="Nhập tên đơn vị"
+                  onchange="updateAkaDisplay()"
+                />
+              </div>
+            </div>
+
+            <!-- Score Control -->
+            <div class="score-control">
+              <button class="btn btn-danger" onclick="adjustScore('aka', -1)">
+                -
+              </button>
+              <span class="score-display" id="akaScore">0</span>
+              <button class="btn btn-success" onclick="adjustScore('aka', 1)">
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN - AO -->
+        <div>
+          <div class="section competitor-section ao-section">
+            <h2>🔵 AO (XANH)</h2>
+
+            <!-- Kata Selection -->
+            <div class="form-group">
+              <label>Kata:</label>
+              <input
+                type="text"
+                id="aoKataSearch"
+                placeholder="Tìm kata..."
+                oninput="filterKata('ao')"
+              />
+              <select id="aoKataSelect" onchange="updateKataName('ao')">
+                <option value="">-- Chọn Kata --</option>
+                <option value="Anan">1. Anan</option>
+                <option value="Anan Dai">2. Anan Dai</option>
+                <option value="Ananko">3. Ananko</option>
+                <option value="Bassai Dai">6. Bassai Dai</option>
+                <option value="Chinte">10. Chinte</option>
+                <option value="Enpi">12. Enpi</option>
+                <option value="Gankaku">15. Gankaku</option>
+                <option value="Hangetsu">23. Hangetsu</option>
+                <option value="Heian Shodan">25. Heian Shodan</option>
+                <option value="Heian Nidan">26. Heian Nidan</option>
+                <option value="Heian Sandan">27. Heian Sandan</option>
+                <option value="Heian Yondan">28. Heian Yondan</option>
+                <option value="Heian Godan">29. Heian Godan</option>
+                <option value="Jion">36. Jion</option>
+                <option value="Jitte">37. Jitte</option>
+                <option value="Kanku Dai">40. Kanku Dai</option>
+                <option value="Kanku Sho">41. Kanku Sho</option>
+                <option value="Nijushiho">60. Nijushiho</option>
+                <option value="Sochin">91. Sochin</option>
+                <option value="Tekki Shodan">93. Tekki Shodan</option>
+                <option value="Unsu">99. Unsu</option>
+              </select>
+            </div>
+
+            <!-- Individual Mode -->
+            <div id="aoInputIndividual">
+              <div class="form-group">
+                <label>VĐV:</label>
+                <select id="aoAthleteSelect" onchange="updateAoDisplay()">
+                  <option value="">-- Chọn VĐV --</option>
+                </select>
+                <input
+                  type="text"
+                  id="aoAthleteName"
+                  placeholder="Hoặc nhập thủ công"
+                  onchange="updateAoDisplay()"
+                />
+              </div>
+              <div class="form-group">
+                <label>Đơn vị:</label>
+                <input
+                  type="text"
+                  id="aoUnit"
+                  placeholder="Đơn vị"
+                  onchange="updateAoDisplay()"
+                />
+              </div>
+            </div>
+
+            <!-- Team Mode -->
+            <div id="aoInputTeam" style="display: none">
+              <div class="form-group">
+                <label>Đơn vị:</label>
+                <select id="aoTeamSelect" onchange="updateAoDisplay()">
+                  <option value="">-- Chọn Đơn Vị --</option>
+                </select>
+                <input
+                  type="text"
+                  id="aoTeamName"
+                  placeholder="Nhập tên đơn vị"
+                  onchange="updateAoDisplay()"
+                />
+              </div>
+            </div>
+
+            <!-- Score Control -->
+            <div class="score-control">
+              <button class="btn btn-danger" onclick="adjustScore('ao', -1)">
+                -
+              </button>
+              <span class="score-display" id="aoScore">0</span>
+              <button class="btn btn-success" onclick="adjustScore('ao', 1)">
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Send Result Button -->
+      <div
+        style="
+          display: flex;
+          justify-content: center;
+          margin: 15px 0;
+          gap: 15px;
+        "
+      >
+        <button
+          class="btn btn-lg"
+          onclick="finishMatch()"
+          style="
+            background: #1a5f7a;
+            color: white;
+            font-weight: bold;
+            padding: 15px 40px;
+            font-size: 18px;
+            box-shadow: 0 4px 15px rgba(26, 95, 122, 0.4);
+          "
+        >
+          📤 Gửi Kết Quả Về Sơ Đồ Thi Đấu
+        </button>
+      </div>
+
+      <!-- BOTTOM SECTION - Full Width -->
+      <div class="admin-grid">
+        <!-- Upload File -->
+        <div class="section">
+          <h2>📁 Upload CSV</h2>
+          <div class="upload-area">
+            <input
+              type="file"
+              id="fileUpload"
+              accept=".csv"
+              onchange="handleFileUpload(event)"
+            />
+            <label for="fileUpload" class="upload-label">
+              <span>Chọn File CSV</span>
+            </label>
+            <div id="uploadStatus"></div>
+          </div>
+        </div>
+
+        <!-- Font Scale -->
+        <div class="section">
+          <h2>📏 Cỡ Chữ Display</h2>
+          <label>
+            Tỷ lệ:
+            <span id="globalFontScaleLabel" style="color: #ffd700">100%</span>
+          </label>
+          <input
+            type="range"
+            id="globalFontScale"
+            min="30"
+            max="150"
+            step="5"
+            value="100"
+            oninput="updateGlobalFontScale(this.value)"
+            style="width: 100%"
+          />
+          <button class="btn btn-secondary" onclick="resetGlobalFontScale()">
+            🔄 Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Timer Controls - Full Width -->
+      <div class="section full-width">
+        <h2>⏱️ Điều Khiển Thời Gian</h2>
+        <div class="time-display" id="timeDisplay">5:00</div>
+        <div class="time-controls">
+          <button class="btn btn-lg btn-success" onclick="startTimer()">
+            ▶ Start
+          </button>
+          <button class="btn btn-lg btn-warning" onclick="stopTimer()">
+            ⏸ Stop
+          </button>
+          <button class="btn btn-lg btn-info" onclick="resetTimer()">
+            🔄 Reset Time
+          </button>
+          <button class="btn btn-lg btn-danger" onclick="resetAll()">
+            🔄 Reset All
+          </button>
+        </div>
+        <div class="time-presets">
+          <button class="btn" onclick="setTime(90)">1:30</button>
+          <button class="btn" onclick="setTime(120)">2:00</button>
+          <button class="btn" onclick="setTime(180)">3:00</button>
+          <button class="btn" onclick="setTime(300)">5:00</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/admin.js"></script>
+    <script>
+      // ============================================
+      // AUTO-CLOSE DISPLAY WHEN ADMIN CLOSES
+      // ============================================
+
+      // Reference to display window
+      let displayWindow = null;
+
+      // Override openDisplay to track the window reference
+      const originalOpenDisplay = window.openDisplay;
+      window.openDisplay = function () {
+        displayWindow = window.open(
+          "display.html",
+          "KarateScoreboardDisplay",
+          "width=1920,height=1080,fullscreen=yes"
+        );
+        return displayWindow;
+      };
+
+      // Close display window when admin page is closed
+      window.addEventListener("beforeunload", function () {
+        if (displayWindow && !displayWindow.closed) {
+          displayWindow.close();
+        }
+      });
+    </script>
+
+    <!-- Author Footer -->
+    <div
+      style="
+        text-align: center;
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 2px solid #e0e0e0;
+        color: #666;
+        font-size: 0.9em;
+      "
+    >
+      <p style="margin: 5px 0">
+        <strong>Tác giả:</strong> Trương Lưu Quân -
+        <a href="tel:0336440523" style="color: #667eea; text-decoration: none"
+          >0336.440.523</a
+        >
+      </p>
+      <p style="margin: 5px 0; color: #999; font-size: 0.85em">
+        Phát hành ngày 01/01/2026
+      </p>
+    </div>
+  </body>
+</html>

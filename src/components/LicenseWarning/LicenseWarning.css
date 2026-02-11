@@ -1,0 +1,116 @@
+.license-warning-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+.license-warning-container {
+  background-color: #f0f0f0;
+  width: 600px;
+  max-width: 90vw;
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border: 1px solid #ccc;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.license-warning-header {
+  background-color: #ffffff;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.license-warning-title {
+  margin: 0;
+  font-weight: 500;
+}
+
+.license-warning-close {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #666;
+}
+
+/* Body */
+.license-warning-body {
+  padding: 1.5rem;
+  display: flex;
+  gap: 1.5rem;
+  background-color: #f0f0f0;
+}
+
+.license-warning-icon {
+  font-size: 3rem;
+  color: #3b82f6; /* Blue info color */
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 0.2rem;
+}
+
+.license-warning-message {
+  font-size: 0.95rem;
+  color: #333;
+  line-height: 1.5;
+}
+
+/* Footer (Buttons) */
+.license-warning-footer {
+  padding: 1rem;
+  background-color: #f0f0f0;
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.license-btn {
+  padding: 0.4rem 1rem;
+  font-size: 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  background-color: #fff;
+  transition: all 0.2s;
+  min-width: 80px;
+}
+
+.license-btn:hover {
+  background-color: #e6e6e6;
+  border-color: #adadad;
+}
+
+.btn-primary-install {
+  border-color: #0078d4; /* Windows blue border */
+  box-shadow: inset 0 0 0 1px #0078d4; /* Inner border to match Windows default button style slightly */
+  background-color: #e1f0fa; /* Light blue hint */
+}
+
+.btn-primary-install:hover {
+  background-color: #cce4f7;
+}
+
+.btn-cancel {
+  background-color: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.btn-cancel:hover {
+  background-color: #e5e7eb;
+}

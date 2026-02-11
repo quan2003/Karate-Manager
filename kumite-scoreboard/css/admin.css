@@ -1,0 +1,518 @@
+/* Kumite Scoreboard - Admin CSS */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background: #f0f0f0;
+  color: #333;
+  min-height: 100vh;
+}
+
+.main-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  height: 100vh;
+}
+
+/* Control Panel */
+.control-panel {
+  background: white;
+  padding: 15px;
+  overflow-y: auto;
+  border-right: 2px solid #ddd;
+}
+
+/* Preview Panel */
+.preview-panel {
+  background: #f5f5f5;
+  padding: 15px;
+  overflow-y: auto;
+}
+
+/* Section styling */
+.section {
+  background: white;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 15px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Timer Controls */
+.timer-controls {
+  background: #fafafa;
+}
+
+.timer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.timer-label {
+  font-weight: 500;
+  color: #666;
+}
+
+.timer-adjust {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.timer-adjust .btn-sm {
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.seconds-input {
+  width: 80px;
+  padding: 10px;
+  font-size: 16px;
+  text-align: center;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+}
+
+/* Buttons */
+.btn {
+  padding: 10px 15px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  background: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn:hover {
+  background: #f0f0f0;
+}
+
+.btn-lg {
+  padding: 12px 25px;
+  font-size: 16px;
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.btn-primary {
+  background: #4a90d9;
+  color: white;
+  border-color: #4a90d9;
+}
+
+.btn-primary:hover {
+  background: #357abd;
+}
+
+/* Score Buttons */
+.score-buttons {
+  padding: 10px;
+}
+
+.btn-row {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-aka {
+  background: #cc0000;
+  color: white;
+  border-color: #cc0000;
+}
+
+.btn-aka:hover {
+  background: #aa0000;
+}
+
+.btn-ao {
+  background: #0066cc;
+  color: white;
+  border-color: #0066cc;
+}
+
+.btn-ao:hover {
+  background: #0055aa;
+}
+
+.btn-aka-outline {
+  background: white;
+  color: #cc0000;
+  border-color: #cc0000;
+}
+
+.btn-aka-outline:hover {
+  background: #fff0f0;
+}
+
+.btn-ao-outline {
+  background: white;
+  color: #0066cc;
+  border-color: #0066cc;
+}
+
+.btn-ao-outline:hover {
+  background: #f0f5ff;
+}
+
+/* Penalty Section */
+.penalty-section {
+  background: #fafafa;
+}
+
+.penalty-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+}
+
+.penalty-label {
+  font-weight: bold;
+  font-size: 14px;
+  min-width: 80px;
+}
+
+.aka-text {
+  color: #cc0000;
+}
+
+.ao-text {
+  color: #0066cc;
+}
+
+/* Custom Checkbox */
+.checkbox-container {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-container input {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.checkbox-label {
+  font-weight: 500;
+  color: #333;
+}
+
+/* Reset Button */
+.btn-reset {
+  width: 100%;
+  padding: 15px;
+  font-size: 16px;
+  background: #666;
+  color: white;
+  border-color: #666;
+}
+
+.btn-reset:hover {
+  background: #555;
+}
+
+/* Settings Section */
+.settings-section {
+  background: #fafafa;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 10px;
+}
+
+.setting-row label {
+  min-width: 100px;
+  font-weight: 500;
+  color: #666;
+}
+
+.setting-row input[type="text"],
+.setting-row input[type="number"] {
+  flex: 1;
+  max-width: 250px;
+  padding: 10px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+/* CSV Upload Input */
+.setting-row input[type="file"] {
+  flex: 1;
+  padding: 8px;
+  border: 2px dashed #4caf50;
+  border-radius: 8px;
+  background: #f0f8f0;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.setting-row input[type="file"]:hover {
+  border-color: #45a049;
+  background: #e8f5e9;
+}
+
+.setting-row input[type="file"]::-webkit-file-upload-button {
+  padding: 6px 12px;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 500;
+  margin-right: 10px;
+  transition: background 0.3s ease;
+}
+
+.setting-row input[type="file"]::-webkit-file-upload-button:hover {
+  background: #45a049;
+}
+
+/* Dropdown Select Styling */
+.setting-row select {
+  flex: 1;
+  padding: 10px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #333;
+}
+
+.setting-row select:hover {
+  border-color: #4caf50;
+}
+
+.setting-row select:focus {
+  outline: none;
+  border-color: #4caf50;
+  box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+}
+
+.setting-row select option {
+  padding: 10px;
+  font-size: 14px;
+}
+
+/* Mini Display Preview */
+.mini-display {
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 15px;
+}
+
+.mini-header {
+  background: #1a1a2e;
+  padding: 10px;
+  text-align: center;
+}
+
+.mini-category {
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.mini-competitor {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 15px;
+}
+
+.mini-aka {
+  background: linear-gradient(135deg, #2d2018 0%, #3d2a1a 100%);
+}
+
+.mini-ao {
+  background: linear-gradient(135deg, #0a1628 0%, #122040 100%);
+}
+
+.mini-name {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.mini-score-container {
+  position: relative;
+  display: inline-block;
+}
+
+.mini-senshu-indicator {
+  display: none;
+  position: absolute;
+  top: 0;
+  right: -12px;
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.mini-penalties {
+  display: flex;
+  gap: 5px;
+}
+
+.mini-penalty-btn {
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 15px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  transition: all 0.3s ease;
+}
+
+/* C1, C2, C3 buttons are wider */
+.mini-penalty-btn[id*="mini"][id*="C1"],
+.mini-penalty-btn[id*="mini"][id*="C2"],
+.mini-penalty-btn[id*="mini"][id*="C3"] {
+  padding: 5px 16px;
+}
+
+.mini-penalty-btn.active {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: white;
+  color: white;
+}
+
+/* All penalties active state - yellow background */
+.mini-penalty-btn.active {
+  background: #ffd700;
+  border-color: #ffd700;
+  color: #000;
+  font-weight: bold;
+}
+
+.mini-score {
+  font-size: 32px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.mini-timer {
+  background: #000;
+  padding: 15px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+.mini-event-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #ffd700;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  background: rgba(255, 215, 0, 0.1);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  border-radius: 5px;
+}
+
+.mini-timer-main {
+  font-size: 36px;
+  font-weight: bold;
+  color: white;
+}
+
+.mini-timer-decimal {
+  font-size: 20px;
+  color: #ffd700;
+}
+
+/* Custom Names Section */
+.custom-names {
+  background: #fafafa;
+}
+
+.names-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.names-row label {
+  min-width: 100px;
+  font-weight: 500;
+  color: #666;
+}
+
+.names-row input {
+  width: 80px;
+  padding: 8px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  text-align: center;
+}
+
+/* Additional Settings */
+.additional-settings .setting-row {
+  flex-wrap: wrap;
+}
+
+.small-input {
+  width: 60px !important;
+  flex: none !important;
+}
+
+/* Open Display Button */
+.btn-open-display {
+  width: 100%;
+  padding: 15px;
+  font-size: 18px;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .main-container {
+    grid-template-columns: 1fr;
+  }
+
+  .control-panel {
+    border-right: none;
+    border-bottom: 2px solid #ddd;
+  }
+}
+
+@media (max-width: 768px) {
+  .btn-row {
+    justify-content: center;
+  }
+
+  .timer-row {
+    justify-content: center;
+  }
+
+  .penalty-row {
+    justify-content: center;
+  }
+}

@@ -1,0 +1,137 @@
+.license-splash-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+
+.license-splash-container {
+  width: 900px;
+  max-width: 95vw;
+  height: 600px;
+  max-height: 90vh;
+  background-color: #ffffff; /* White background requested */
+  display: flex;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+  color: #333333; /* Dark text for readability */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+/* Sidebar with Vertical Text */
+.license-sidebar {
+  width: 80px;
+  background-color: #f0f2f5; /* Light gray sidebar */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #e8e8e8;
+}
+
+.license-sidebar-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #1890ff; /* Brand color */
+  white-space: nowrap;
+  font-family: 'Impact', sans-serif;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+/* Main Content */
+.license-content {
+  flex: 1;
+  padding: 3rem 4rem;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.license-header {
+  margin-bottom: 2rem;
+  border-bottom: 2px solid #f0f0f0;
+  padding-bottom: 1rem;
+}
+
+.license-title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+  color: #1f1f1f;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.license-subtitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #595959;
+  text-transform: uppercase;
+}
+
+.license-body {
+  font-size: 0.95rem;
+  line-height: 1.8;
+  color: #434343;
+  flex: 1;
+  overflow-y: auto;
+  text-align: justify;
+}
+
+.license-body p {
+  margin-bottom: 1.5rem;
+}
+
+.license-body strong {
+  color: #1890ff;
+}
+
+.license-contact {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background-color: #f9f9f9;
+  border-radius: 6px;
+  border-left: 4px solid #1890ff;
+  font-size: 0.9rem;
+  color: #595959;
+}
+
+/* Footer & Button */
+.license-footer {
+  margin-top: auto;
+  padding-top: 1.5rem;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid #f0f0f0;
+}
+
+.license-accept-btn {
+  background: #1890ff; /* Blue button */
+  border: none;
+  color: white;
+  padding: 0.6rem 3rem;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.3);
+  transition: all 0.2s;
+}
+
+.license-accept-btn:hover {
+  background: #40a9ff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.4);
+}

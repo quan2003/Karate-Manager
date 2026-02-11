@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="../logo.png" />
+    <title>Kumite Scoreboard - Display</title>
+    <link rel="stylesheet" href="css/display.css" />
+  </head>
+  <body>
+    <!-- Header Section with Category -->
+    <div class="header-section">
+      <div class="tournament-title" id="tournamentTitle">
+        GIẢI KARATE-DO SINH VIÊN TRƯỜNG ĐẠI HỌC CNTT VÀ TT VIỆT-HÀN MỞ RỘNG LẦN
+        THỨ I - 2025
+      </div>
+      <div class="category-title" id="categoryTitle">PENALTY</div>
+    </div>
+    <!-- AKA (Red) Section -->
+    <div class="competitor-section aka-section">
+      <div class="competitor-content">
+        <div class="competitor-name aka-name" id="akaName">AKA</div>
+        <div class="penalty-row">
+          <span class="warning-label aka-warning" id="akaWarningLabel"
+            >WARNING</span
+          >
+          <div class="penalty-buttons">
+            <button class="penalty-btn" id="akaC1">C1</button>
+            <button class="penalty-btn" id="akaC2">C2</button>
+            <button class="penalty-btn" id="akaC3">C3</button>
+            <button class="penalty-btn" id="akaHC">HC</button>
+            <button class="penalty-btn" id="akaH">H</button>
+          </div>
+        </div>
+      </div>
+      <div class="score-container">
+        <div class="score-display aka-score" id="akaScore">0</div>
+        <span class="senshu-indicator aka-senshu" id="akaSenshuIndicator"
+          >o</span
+        >
+      </div>
+    </div>
+    <!-- AO (Blue) Section -->
+    <div class="competitor-section ao-section">
+      <div class="competitor-content">
+        <div class="competitor-name ao-name" id="aoName">AO</div>
+        <div class="penalty-row">
+          <span class="warning-label ao-warning" id="aoWarningLabel"
+            >WARNING</span
+          >
+          <div class="penalty-buttons">
+            <button class="penalty-btn" id="aoC1">C1</button>
+            <button class="penalty-btn" id="aoC2">C2</button>
+            <button class="penalty-btn" id="aoC3">C3</button>
+            <button class="penalty-btn" id="aoHC">HC</button>
+            <button class="penalty-btn" id="aoH">H</button>
+          </div>
+        </div>
+      </div>
+      <div class="score-container">
+        <div class="score-display ao-score" id="aoScore">0</div>
+        <span class="senshu-indicator ao-senshu" id="aoSenshuIndicator">o</span>
+      </div>
+    </div>
+    <!-- Timer Section -->
+    <div class="timer-section">
+      <div class="timer-content">
+        <!-- Event Title bên trái -->
+        <div class="event-title" id="eventTitle">THẢM 1</div>
+        <!-- Sponsor Text -->
+        <div class="sponsor-text" id="sponsorText">NHÀ TÀI TRỢ</div>
+        <div class="timer-display">
+          <span class="timer-main" id="timerMain">03:00</span>
+          <span class="timer-decimal" id="timerDecimal">.0</span>
+        </div>
+        <!-- Team Mode Info bên phải timer -->
+        <div
+          class="team-info-container"
+          id="teamInfoContainer"
+          style="display: none"
+        >
+          <div class="round-info">
+            <div class="round-label">ROUND</div>
+            <div class="round-number" id="roundNumber">1/5</div>
+          </div>
+          <div class="team-score-info">
+            <div class="team-score-row">
+              <span class="team-score-label aka-label">AKA</span>
+              <span class="team-score-value" id="teamAkaWins">0</span>
+            </div>
+            <div class="team-score-row">
+              <span class="team-score-label ao-label">AO</span>
+              <span class="team-score-value" id="teamAoWins">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fullscreen Score/Warning Overlay -->
+    <div class="fullscreen-overlay" id="fullscreenOverlay">
+      <div class="fullscreen-content">
+        <div class="fullscreen-action" id="fullscreenAction">YUKO</div>
+        <div class="fullscreen-points" id="fullscreenPoints">1 POINT</div>
+      </div>
+    </div>
+
+    <script src="js/display.js"></script>
+  </body>
+</html>

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="../logo.png" />
+    <title>Karate Scoreboard - Display</title>
+    <link rel="stylesheet" href="css/display_new.css" />
+  </head>
+  <body>
+    <!-- Header Section -->
+    <div class="header-section">
+      <div class="tournament-title" id="tournamentTitle">
+        GIẢI KARATE-DO SINH VIÊN TRƯỜNG ĐẠI HỌC CNTT VÀ TT VIỆT-HÀN MỞ RỘNG LẦN
+        THỨ I - 2025
+      </div>
+      <div class="match-info" id="matchInfo">
+        KATA CÁ NHÂN NAM LỨA TUỔI 10 TUỔI ĐẾN 11 TUỔI
+      </div>
+    </div>
+    <!-- AKA Competitor (Red) -->
+    <div class="competitor-row aka-row" id="akaRow">
+      <div class="color-box aka-color">
+        <span class="score-number hidden" id="akaScore">0</span>
+      </div>
+      <div class="competitor-info">
+        <div class="athlete-name" id="akaAthlete">AKA</div>
+        <div class="unit-name" id="akaUnit">ĐƠN VỊ</div>
+      </div>
+      <div class="kata-name-display" id="akaKataDisplay">KATA NAME</div>
+    </div>
+    <!-- Timer Overlay (Shows when timer is running) -->
+    <div class="timer-overlay" id="timerOverlay" style="display: none">
+      <div class="timer-content">
+        <div class="timer-display" id="timer">5:00</div>
+      </div>
+    </div>
+    <!-- AO Competitor (Blue) -->
+    <div class="competitor-row ao-row" id="aoRow">
+      <div class="color-box ao-color">
+        <span class="score-number hidden" id="aoScore">0</span>
+      </div>
+      <div class="competitor-info">
+        <div class="athlete-name" id="aoAthlete">AO</div>
+        <div class="unit-name" id="aoUnit">ĐƠN VỊ</div>
+      </div>
+      <div class="kata-name-display" id="aoKataDisplay">KATA NAME</div>
+    </div>
+    <!-- Footer Section -->
+    <div class="footer-section">
+      <!-- Event Title bên trái -->
+      <div class="event-title" id="eventTitle">Thảm 1</div>
+      <div class="logo-container">
+        <div class="sponsor-text" id="sponsorText">NHÀ TÀI TRỢ</div>
+      </div>
+    </div>
+
+    <!-- Kata Dropdown (Hidden by default) -->
+    <div class="kata-dropdown" id="kataDropdown">
+      <div class="kata-dropdown-header">
+        <input
+          type="text"
+          id="kataSearch"
+          placeholder="Tìm kiếm kata (gõ số hoặc tên)..."
+          oninput="filterKata()"
+        />
+      </div>
+      <div class="kata-list" id="kataList">
+        <div class="kata-item" data-value="Anan">1 Anan</div>
+        <div class="kata-item" data-value="Anan Dai">2 Anan Dai</div>
+        <div class="kata-item" data-value="Ananko">3 Ananko</div>
+        <div class="kata-item" data-value="Aoyagi">4 Aoyagi</div>
+        <div class="kata-item" data-value="Bassai">5 Bassai</div>
+        <div class="kata-item" data-value="Bassai Dai">6 Bassai Dai</div>
+        <div class="kata-item" data-value="Bassai Sho">7 Bassai Sho</div>
+        <div class="kata-item" data-value="Chatanyara Kusanku">
+          8 Chatanyara Kusanku
+        </div>
+        <div class="kata-item" data-value="Chibana No Kushanku">
+          9 Chibana No Kushanku
+        </div>
+        <div class="kata-item" data-value="Chinte">10 Chinte</div>
+        <div class="kata-item" data-value="Chinto">11 Chinto</div>
+        <div class="kata-item" data-value="Enpi">12 Enpi</div>
+        <div class="kata-item" data-value="Fukyugata Ichi">
+          13 Fukyugata Ichi
+        </div>
+        <div class="kata-item" data-value="Fukyugata Ni">14 Fukyugata Ni</div>
+        <div class="kata-item" data-value="Gankaku">15 Gankaku</div>
+        <div class="kata-item" data-value="Garyu">16 Garyu</div>
+        <div class="kata-item" data-value="Gekisai (Geksai) 1">
+          17 Gekisai (Geksai) 1
+        </div>
+        <div class="kata-item" data-value="Gekisai (Geksai) 2">
+          18 Gekisai (Geksai) 2
+        </div>
+        <div class="kata-item" data-value="Gojushiho">19 Gojushiho</div>
+        <div class="kata-item" data-value="Gojushiho Dai">20 Gojushiho Dai</div>
+        <div class="kata-item" data-value="Gojushiho Sho">21 Gojushiho Sho</div>
+        <div class="kata-item" data-value="Hakucho">22 Hakucho</div>
+        <div class="kata-item" data-value="Hangetsu">23 Hangetsu</div>
+        <div class="kata-item" data-value="Haufa (Haffa)">24 Haufa (Haffa)</div>
+        <div class="kata-item" data-value="Heian Shodan">25 Heian Shodan</div>
+        <div class="kata-item" data-value="Heian Nidan">26 Heian Nidan</div>
+        <div class="kata-item" data-value="Heian Sandan">27 Heian Sandan</div>
+        <div class="kata-item" data-value="Heian Yondan">28 Heian Yondan</div>
+        <div class="kata-item" data-value="Heian Godan">29 Heian Godan</div>
+        <div class="kata-item" data-value="Heiku">30 Heiku</div>
+        <div class="kata-item" data-value="Ishimine Bassai">
+          31 Ishimine Bassai
+        </div>
+        <div class="kata-item" data-value="Itosu Rohai Shodan">
+          32 Itosu Rohai Shodan
+        </div>
+        <div class="kata-item" data-value="Itosu Rohai Nidan">
+          33 Itosu Rohai Nidan
+        </div>
+        <div class="kata-item" data-value="Itosu Rohai Sandan">
+          34 Itosu Rohai Sandan
+        </div>
+        <div class="kata-item" data-value="Jiin">35 Jiin</div>
+        <div class="kata-item" data-value="Jion">36 Jion</div>
+        <div class="kata-item" data-value="Jitte">37 Jitte</div>
+        <div class="kata-item" data-value="Juroku">38 Juroku</div>
+        <div class="kata-item" data-value="Kanchin">39 Kanchin</div>
+        <div class="kata-item" data-value="Kanku Dai">40 Kanku Dai</div>
+        <div class="kata-item" data-value="Kanku Sho">41 Kanku Sho</div>
+        <div class="kata-item" data-value="Kanshu">42 Kanshu</div>
+        <div class="kata-item" data-value="Kishimoto No Kushanku">
+          43 Kishimoto No Kushanku
+        </div>
+        <div class="kata-item" data-value="Kousoukun">44 Kousoukun</div>
+        <div class="kata-item" data-value="Kousoukun Dai">45 Kousoukun Dai</div>
+        <div class="kata-item" data-value="Kousoukun Sho">46 Kousoukun Sho</div>
+        <div class="kata-item" data-value="Kururunfa">47 Kururunfa</div>
+        <div class="kata-item" data-value="Kusanku">48 Kusanku</div>
+        <div class="kata-item" data-value="Kyan No Chinto">
+          49 Kyan No Chinto
+        </div>
+        <div class="kata-item" data-value="Kyan No Wanshu">
+          50 Kyan No Wanshu
+        </div>
+        <div class="kata-item" data-value="Matsukaze">51 Matsukaze</div>
+        <div class="kata-item" data-value="Matsumura Bassai">
+          52 Matsumura Bassai
+        </div>
+        <div class="kata-item" data-value="Matsumura Rohai">
+          53 Matsumura Rohai
+        </div>
+        <div class="kata-item" data-value="Meikyo">54 Meikyo</div>
+        <div class="kata-item" data-value="Myojo">55 Myojo</div>
+        <div class="kata-item" data-value="Naifanchin Shodan">
+          56 Naifanchin Shodan
+        </div>
+        <div class="kata-item" data-value="Naifanchin Nidan">
+          57 Naifanchin Nidan
+        </div>
+        <div class="kata-item" data-value="Naifanchin Sandan">
+          58 Naifanchin Sandan
+        </div>
+        <div class="kata-item" data-value="Naihanchi">59 Naihanchi</div>
+        <div class="kata-item" data-value="Nijushiho">60 Nijushiho</div>
+        <div class="kata-item" data-value="Nipaipo">61 Nipaipo</div>
+        <div class="kata-item" data-value="Niseishi">62 Niseishi</div>
+        <div class="kata-item" data-value="Ohan">63 Ohan</div>
+        <div class="kata-item" data-value="Ohan Dai">64 Ohan Dai</div>
+        <div class="kata-item" data-value="Oyadomari No Passai">
+          65 Oyadomari No Passai
+        </div>
+        <div class="kata-item" data-value="Pachu">66 Pachu</div>
+        <div class="kata-item" data-value="Paiku">67 Paiku</div>
+        <div class="kata-item" data-value="Papuren">68 Papuren</div>
+        <div class="kata-item" data-value="Passai">69 Passai</div>
+        <div class="kata-item" data-value="Pinan Shodan">70 Pinan Shodan</div>
+        <div class="kata-item" data-value="Pinan Nidan">71 Pinan Nidan</div>
+        <div class="kata-item" data-value="Pinan Sandan">72 Pinan Sandan</div>
+        <div class="kata-item" data-value="Pinan Yondan">73 Pinan Yondan</div>
+        <div class="kata-item" data-value="Pinan Godan">74 Pinan Godan</div>
+        <div class="kata-item" data-value="Rohai">75 Rohai</div>
+        <div class="kata-item" data-value="Saifa">76 Saifa</div>
+        <div class="kata-item" data-value="Sanchin">77 Sanchin</div>
+        <div class="kata-item" data-value="Sansai">78 Sansai</div>
+        <div class="kata-item" data-value="Sanseiru">79 Sanseiru</div>
+        <div class="kata-item" data-value="Sanseru">80 Sanseru</div>
+        <div class="kata-item" data-value="Seichin">81 Seichin</div>
+        <div class="kata-item" data-value="Seienchin (Seiyunchin)">
+          82 Seienchin (Seiyunchin)
+        </div>
+        <div class="kata-item" data-value="Seipai">83 Seipai</div>
+        <div class="kata-item" data-value="Seiryu">84 Seiryu</div>
+        <div class="kata-item" data-value="Seishan">85 Seishan</div>
+        <div class="kata-item" data-value="Seisan (Sesan)">
+          86 Seisan (Sesan)
+        </div>
+        <div class="kata-item" data-value="Shiho Kousoukun">
+          87 Shiho Kousoukun
+        </div>
+        <div class="kata-item" data-value="Shinpa">88 Shinpa</div>
+        <div class="kata-item" data-value="Shinsei">89 Shinsei</div>
+        <div class="kata-item" data-value="Shisochin">90 Shisochin</div>
+        <div class="kata-item" data-value="Sochin">91 Sochin</div>
+        <div class="kata-item" data-value="Suparinpei">92 Suparinpei</div>
+        <div class="kata-item" data-value="Tekki Shodan">93 Tekki Shodan</div>
+        <div class="kata-item" data-value="Tekki Nidan">94 Tekki Nidan</div>
+        <div class="kata-item" data-value="Tekki Sandan">95 Tekki Sandan</div>
+        <div class="kata-item" data-value="Tensho">96 Tensho</div>
+        <div class="kata-item" data-value="Tomari Bassai">97 Tomari Bassai</div>
+        <div class="kata-item" data-value="Unshu">98 Unshu</div>
+        <div class="kata-item" data-value="Unsu">99 Unsu</div>
+        <div class="kata-item" data-value="Useishi">100 Useishi</div>
+        <div class="kata-item" data-value="Wankan">101 Wankan</div>
+        <div class="kata-item" data-value="Wanshu">102 Wanshu</div>
+      </div>
+    </div>
+
+    <script src="js/display_new.js"></script>
+  </body>
+</html>

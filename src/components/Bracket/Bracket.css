@@ -1,0 +1,338 @@
+/* ============================================
+   BRACKET - Kiểu đường nối đơn giản ─│
+   ============================================ */
+
+.bracket-container {
+  width: 100%;
+  overflow-x: auto;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.bracket-container.print-mode {
+  background: white;
+}
+
+/* Layout các vòng */
+.bracket-rounds {
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Mỗi cột vòng đấu */
+.bracket-round {
+  display: flex;
+  flex-direction: column;
+  margin-right: 40px;
+}
+
+/* Header vòng */
+.round-header {
+  text-align: center;
+  padding: 8px 16px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  min-width: 200px;
+}
+
+.round-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1e293b;
+  text-transform: uppercase;
+}
+
+.round-count {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* Container các trận */
+.round-matches {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Mỗi trận đấu */
+.match-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ô VĐV */
+.athlete-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px 0 12px;
+  background: linear-gradient(
+    to right,
+    #fee2e2 0%,
+    #ffffff 50%
+  ); /* Gradient Đỏ nhạt -> Trắng */
+  border: 1px solid #fca5a5;
+  border-left: 4px solid #dc2626; /* Viền trái đỏ đậm */
+  border-right: none;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+/* VĐV thứ 2 - Sang màu XANH DƯƠNG (Standard Karate) */
+.athlete-slot.athlete-slot-2 {
+  background: linear-gradient(
+    to right,
+    #dbeafe 0%,
+    #ffffff 50%
+  ); /* Gradient Xanh nhạt -> Trắng */
+  border: 1px solid #93c5fd;
+  border-left: 4px solid #2563eb; /* Viền trái xanh đậm */
+  border-right: none;
+  margin-top: 0;
+}
+
+.athlete-slot:hover {
+  filter: brightness(0.95);
+  transform: translateX(1px);
+}
+
+.athlete-slot.winner {
+  font-weight: 700;
+  color: #000;
+}
+
+/* Thanh đai màu - ẩn vì đã dùng border-left */
+.belt-mark {
+  display: none;
+}
+
+.belt-mark.aka {
+  background: #dc2626;
+}
+
+.belt-mark.ao {
+  background: #2563eb;
+}
+
+/* Nội dung ô */
+.flag {
+  font-size: 11px;
+  margin-left: 4px;
+  opacity: 0.9;
+}
+
+.name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.club {
+  font-size: 10px;
+  color: #64748b;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* ============================================
+   ĐƯỜNG NỐI - SportData Style
+   │ dọc từ cạnh phải 2 VĐV, rồi ─ ngang ra ngoài
+   Sử dụng CSS variables để điều chỉnh theo vòng
+   ============================================ */
+
+/* Connector: đường dọc + đường ngang */
+.connector {
+  position: absolute;
+  right: -40px;
+  top: 0;
+  width: 40px;
+  pointer-events: none;
+}
+
+/* Đường dọc │ nối 2 VĐV */
+.connector::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--line-top, 24px);
+  width: 1px;
+  height: var(--line-height, 50px);
+  background: #64748b; /* Màu xám đậm hơn chút */
+}
+
+/* Đường ngang ─ từ giữa ra vòng sau */
+.connector::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--line-center, 49px);
+  width: 100%;
+  height: 1px;
+  background: #64748b;
+}
+
+/* Connector cho trận chung kết - nối đến ô vô địch */
+.champion-connector {
+  width: 40px; /* Giữ nguyên width */
+  right: -40px; /* Giữ nguyên vị trí như connector thường */
+}
+
+.champion-connector::before {
+  /* Giữ đường dọc như các vòng trước */
+  left: 0;
+}
+
+.champion-connector::after {
+  left: 0;
+  width: 140px; /* Kéo dài đường ngang đến ô vô địch */
+}
+
+/* ============================================
+   Ô VÔ ĐỊCH (HCV) - CHAMPION SLOT
+   ============================================ */
+
+.champion-slot {
+  position: absolute;
+  right: -200px; /* Sau đường ngang 140px + padding */
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px 0 12px;
+  background: linear-gradient(
+    to right,
+    #e5e7eb 0%,
+    #ffffff 50%
+  ); /* Gradient bạc nhạt -> Trắng */
+  border: 1px solid #9ca3af;
+  border-left: 4px solid #6b7280; /* Viền trái bạc đậm */
+  border-right: none;
+  font-size: 12px;
+  min-width: 150px;
+}
+
+.champion-icon {
+  font-size: 14px;
+}
+
+.champion-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.champion-club {
+  font-size: 10px;
+  color: #64748b;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* ============================================
+   SỐ TRẬN TRÊN ĐƯỜNG NỐI
+   ============================================ */
+
+.match-number {
+  position: absolute;
+  right: 5px; /* Dịch sang trái một chút (vào trong 6px so với center cũ) */
+  top: var(--line-center, 49px);
+  transform: translateY(-50%);
+  font-size: 15px; /* Chữ to hơn */
+  font-weight: 700;
+  color: #000;
+  background: #fff;
+  border-radius: 50%;
+  width: 20px; /* To hơn */
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border: 2px solid #ef4444; /* Viền đỏ dày hơn */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.match-number.completed {
+  background: #fff;
+  border-color: #10b981;
+  color: #000;
+}
+
+/* Số trận cho vòng chung kết */
+.match-number.final-match {
+  right: 5px; /* Giống các số khác */
+}
+
+/* ============================================
+   EMPTY STATE
+   ============================================ */
+
+.bracket-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  text-align: center;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 2px dashed #cbd5e1;
+  border-radius: 8px;
+}
+
+/* ============================================
+   PRINT MODE
+   ============================================ */
+
+.print-mode .athlete-slot {
+  border-color: #333;
+}
+
+.print-mode .name {
+  color: #000;
+}
+
+.print-mode .connector::before,
+.print-mode .connector::after {
+  background: #333;
+}
+
+.print-mode .round-header {
+  background: #d1d5db;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 768px) {
+  .bracket-round {
+    margin-right: 30px;
+  }
+
+  .round-header {
+    min-width: 150px;
+  }
+
+  .athlete-slot {
+    font-size: 11px;
+  }
+
+  .club {
+    display: none;
+  }
+
+  .connector {
+    width: 15px;
+  }
+}

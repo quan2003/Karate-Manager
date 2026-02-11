@@ -1,0 +1,152 @@
+.match-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  min-width: 220px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.match-card:hover:not(.is-bye) {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-2px);
+}
+
+.match-card.is-bye {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.match-card.has-winner {
+  border-color: var(--color-success);
+}
+
+.match-round {
+  padding: var(--spacing-2) var(--spacing-3);
+  background: var(--color-bg-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.match-athletes {
+  display: flex;
+  flex-direction: column;
+}
+
+.match-athlete {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-3);
+  position: relative;
+  transition: all var(--transition-fast);
+}
+
+.match-athlete:first-child {
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* Belt color indicator */
+.belt-indicator {
+  width: 4px;
+  height: 100%;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.match-athlete.aka {
+  background: var(--color-aka-bg);
+}
+
+.match-athlete.aka .belt-indicator {
+  background: var(--color-aka);
+}
+
+.match-athlete.ao {
+  background: var(--color-ao-bg);
+}
+
+.match-athlete.ao .belt-indicator {
+  background: var(--color-ao);
+}
+
+.match-athlete.winner {
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.match-athlete.winner .belt-indicator {
+  background: var(--color-success);
+}
+
+.match-athlete.bye {
+  background: var(--color-bg-tertiary);
+  opacity: 0.6;
+}
+
+.match-athlete.bye .athlete-name {
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+.athlete-flag {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.athlete-name {
+  flex: 1;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: var(--spacing-2);
+}
+
+.athlete-club {
+  font-weight: 400;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  margin-left: var(--spacing-1);
+}
+
+.athlete-seed {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-warning);
+  background: rgba(245, 158, 11, 0.15);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.athlete-score {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  min-width: 24px;
+  text-align: center;
+}
+
+.match-action-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--spacing-2);
+  background: var(--color-bg-tertiary);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.match-card:hover .match-action-hint {
+  opacity: 1;
+}

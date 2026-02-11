@@ -1,0 +1,56 @@
+.trial-watermark {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.5;
+  font-family: 'Arial', sans-serif;
+  border: 2px solid rgba(255, 0, 0, 0.3);
+  padding: 10px 20px;
+  border-radius: 8px;
+  transform: rotate(-5deg);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(2px);
+}
+
+.trial-content {
+  text-align: center;
+}
+
+.trial-title {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: rgba(255, 0, 0, 0.4);
+  letter-spacing: 0.1em;
+  line-height: 1;
+}
+
+.trial-subtitle {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: rgba(255, 0, 0, 0.4);
+  text-transform: uppercase;
+  margin-top: 5px;
+}
+
+/* Optional: Full screen diagonal watermark pattern? 
+   User asked for "Watermark", usually implies unobtrusive but visible.
+   Let's stick to corner for now, or maybe a centered overlay if they want it annoying.
+   "Watermark" usually implies background text. 
+   Let's add a centralized faint background text too.
+*/
+
+.trial-background-text {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  font-size: 10vw;
+  font-weight: 900;
+  color: rgba(0, 0, 0, 0.03);
+  pointer-events: none;
+  z-index: 0;
+  white-space: nowrap;
+  user-select: none;
+}

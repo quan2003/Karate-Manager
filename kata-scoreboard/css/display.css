@@ -1,0 +1,335 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Tahoma", "Arial", sans-serif;
+  background: #000;
+  color: white;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ==================== HEADER SECTION ==================== */
+.header-section {
+  background: rgba(50, 50, 50, 0.9);
+  padding: 1.5vh 2vw;
+  text-align: center;
+  border-bottom: 2px solid #333;
+}
+
+.event-title {
+  font-size: 4vw;
+  font-weight: bold;
+  margin-bottom: 0.5vh;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: white;
+}
+
+.match-info {
+  font-size: 2vw;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+}
+
+/* ==================== COMPETITOR ROWS ==================== */
+.competitor-row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 2px solid #333;
+  position: relative;
+  height: 30vh;
+}
+
+.aka-row {
+  background: #000;
+  border-top: 2px solid #ff0000;
+}
+
+.ao-row {
+  background: #000;
+  border-top: 2px solid #0000ff;
+}
+
+/* Color Box - 15% width with SCORE inside */
+.color-box {
+  width: 15vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12vw;
+  font-weight: bold;
+  position: relative;
+}
+
+.aka-color {
+  background: #9b0300;
+  color: white;
+}
+
+.ao-color {
+  background: #2a41ff;
+  color: white;
+}
+
+.score-number {
+  font-family: "Arial Black", "Arial", sans-serif;
+  font-size: 12vw;
+  font-weight: bold;
+  color: white;
+  text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* Hide score by default - only show when > 0 */
+.score-number.hidden {
+  display: none;
+}
+
+/* Competitor Info - Takes remaining space */
+.competitor-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2vh 3vw;
+  background: #000;
+  position: relative;
+}
+
+.athlete-name {
+  font-size: 4.5vw;
+  font-weight: bold;
+  margin-bottom: 1vh;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: white;
+  line-height: 1.2;
+}
+
+.unit-name {
+  font-size: 3.2vw;
+  color: white;
+  font-weight: normal;
+}
+
+/* Kata Name Display - Positioned at bottom right */
+.kata-name-display {
+  position: absolute;
+  right: 2vw;
+  bottom: 2vh;
+  font-size: 2.5vw;
+  font-weight: bold;
+  color: #c0c0c0; /* Silver color */
+  padding: 0.5vh 1.5vw;
+  background: rgba(0, 0, 0, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+/* Winner Highlighting */
+.competitor-row.winner {
+  position: relative;
+  box-shadow: 0 0 30px rgba(255, 215, 0, 0.8),
+    inset 0 0 20px rgba(255, 215, 0, 0.3);
+  border: 3px solid #ffd700;
+  animation: winnerGlow 2s ease-in-out infinite;
+}
+
+@keyframes winnerGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.8),
+      inset 0 0 20px rgba(255, 215, 0, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 50px rgba(255, 215, 0, 1),
+      inset 0 0 30px rgba(255, 215, 0, 0.5);
+  }
+}
+
+.competitor-row.winner .athlete-name,
+.competitor-row.winner .unit-name {
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+}
+
+/* ==================== TIMER OVERLAY ==================== */
+.timer-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timer-content {
+  background: rgba(0, 0, 0, 0.95);
+  border: 5px solid #ffd700;
+  border-radius: 20px;
+  padding: 40px 80px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+}
+
+.timer-display {
+  font-size: 15vw;
+  font-weight: bold;
+  color: #ffd700;
+  text-shadow: none;
+  font-family: "Arial Black", "Arial", sans-serif;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-align: center;
+}
+
+.timer-display.warning {
+  color: #ff0000;
+  animation: none;
+}
+
+.timer-content.warning {
+  border-color: #ff0000;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes timerWarning {
+  0%,
+  100% {
+    text-shadow: none;
+  }
+  50% {
+    text-shadow: none;
+  }
+}
+
+/* Old timer section - deprecated */
+.timer-section {
+  display: none;
+}
+
+.timer {
+  font-size: 18vw;
+  font-weight: bold;
+  color: #00ff00;
+  text-shadow: 0 0 30px rgba(0, 255, 0, 0.5);
+  font-family: "Courier New", monospace;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+.timer.warning {
+  color: #ff0000;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* ==================== FOOTER SECTION ==================== */
+.footer-section {
+  background: #000;
+  padding: 2vh 2vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 2px solid #333;
+  position: relative;
+}
+
+/* Event Title - BÊN TRÁI LOGO */
+.event-title {
+  position: absolute;
+  left: 2vw;
+  font-size: 2vw;
+  font-weight: bold;
+  color: #ffd700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+  padding: 0.8vh 2vw;
+  background: rgba(255, 215, 0, 0.12);
+  border: 2px solid rgba(255, 215, 0, 0.35);
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.logo-container {
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-image {
+  max-height: 18vh;
+  max-width: 30vw;
+  height: auto;
+  width: auto;
+  object-fit: contain;
+  border-radius: 50%;
+  padding: 10px;
+  background: white;
+}
+
+.logo-text {
+  font-size: 3vw;
+  font-weight: bold;
+  color: white;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.logo-subtext {
+  font-size: 1.5vw;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.1em;
+  margin-top: 0.5vh;
+}
+
+/* ==================== KATA DROPDOWN (Hidden) ==================== */
+.kata-dropdown {
+  display: none;
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 1024px) {
+  .event-title {
+    font-size: 5vw;
+  }
+
+  .match-info {
+    font-size: 2.5vw;
+  }
+
+  .athlete-name {
+    font-size: 6vw;
+  }
+
+  .unit-name {
+    font-size: 3.5vw;
+  }
+
+  .score-box {
+    font-size: 20vw;
+  }
+
+  .timer {
+    font-size: 20vw;
+  }
+}

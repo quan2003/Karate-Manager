@@ -1,0 +1,76 @@
+/* License Badge - góc dưới trái */
+.license-badge {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  z-index: 9000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+  cursor: default;
+}
+
+.license-badge:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* Trial badge - màu cam/vàng */
+.license-badge.trial {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 1px solid #f59e0b;
+  color: #92400e;
+}
+
+/* Active/Full badge - màu xanh lá */
+.license-badge.active {
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+  border: 1px solid #10b981;
+  color: #065f46;
+}
+
+/* Expired badge - màu đỏ */
+.license-badge.expired {
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  border: 1px solid #ef4444;
+  color: #991b1b;
+}
+
+.badge-icon {
+  font-size: 16px;
+}
+
+.badge-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.badge-label {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-detail {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+/* Hide on small screens */
+@media (max-width: 600px) {
+  .license-badge {
+    bottom: 10px;
+    left: 10px;
+    padding: 6px 10px;
+  }
+  
+  .badge-detail {
+    display: none;
+  }
+}
