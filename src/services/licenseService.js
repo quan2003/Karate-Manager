@@ -99,7 +99,7 @@ export async function generateLicenseKey(options) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        secret: "admin_secret_key_change_me", // Cần khớp với server
+        secret: "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a", // Đã khớp với VPS
         type: options.type,
         days: options.customDuration,
         maxMachines: options.customMachines,
@@ -146,7 +146,7 @@ export async function validateLicenseKey(licenseKey, currentMachineId = null) {
     const response = await fetch(`${SERVER_URL}/api/license/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: licenseKey, machineId }),
+      body: JSON.stringify({ key: licenseKey.trim(), machineId }),
     });
 
     const result = await response.json();
@@ -356,7 +356,7 @@ export function exportLicenseFile(licenseInfo) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `license.txt`;
+    a.download = `license.lic`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
