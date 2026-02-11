@@ -575,7 +575,7 @@ function generateBracketHTML(category, tournamentName = "") {
       html += `<span class="pdf-name">${athlete2?.name || ""}</span>`;
       if (athlete2?.club)
         html += `<span class="pdf-club">(${athlete2.club})</span>`;
-      html += `</div>`;      // Connectors (Right side) - đồng bộ với desktop
+      html += `</div>`; // Connectors (Right side) - đồng bộ với desktop
       const lineTop = cellHeight;
       const lineHeight = athleteGap;
       const lineCenter = cellHeight + athleteGap / 2;
@@ -595,7 +595,9 @@ function generateBracketHTML(category, tournamentName = "") {
         html += `</div>`;
 
         // Ô VÔ ĐỊCH (HCV)
-        html += `<div class="pdf-champion-slot" style="top: ${lineCenter - cellHeight / 2}px;">`;
+        html += `<div class="pdf-champion-slot" style="top: ${
+          lineCenter - cellHeight / 2
+        }px;">`;
         html += `<span class="pdf-champion-icon">🥇</span>`;
         html += `<span class="pdf-champion-name">${winner?.name || ""}</span>`;
         if (winner?.club)

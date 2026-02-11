@@ -158,10 +158,15 @@ export default function BracketPage() {
   const handleExportPDF = async () => {
     setExporting(true);
     try {
-      await exportBracketToPDF(category, tournament.name, `${category.name}_so_do.pdf`, {
-        paperSize: category.bracket.size <= 16 ? "a4" : "a3",
-        orientation: "landscape",
-      });
+      await exportBracketToPDF(
+        category,
+        tournament.name,
+        `${category.name}_so_do.pdf`,
+        {
+          paperSize: category.bracket.size <= 16 ? "a4" : "a3",
+          orientation: "landscape",
+        }
+      );
     } catch (error) {
       alert("Lỗi khi xuất PDF: " + error.message);
     } finally {
@@ -206,11 +211,14 @@ export default function BracketPage() {
   );
   const bronzeMedalists = semiFinalMatches
     .map((m) => getLoser(m))
-    .filter((a) => a !== null);  return (
+    .filter((a) => a !== null);
+  return (
     <div className="page bracket-page">
       <div className="container-fluid">
         <nav className="breadcrumb">
-          <Link to={`/category/${category.id}`} className="back-link">← Quay lại</Link>
+          <Link to={`/category/${category.id}`} className="back-link">
+            ← Quay lại
+          </Link>
           <span className="breadcrumb-separator">|</span>
           <Link to="/admin">Quản lý giải đấu</Link>
           <span>/</span>

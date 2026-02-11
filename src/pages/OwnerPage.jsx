@@ -101,7 +101,7 @@ export default function OwnerPage() {
   const handleMachineCountChange = (count) => {
     const newCount = Math.max(1, Math.min(10, parseInt(count) || 1));
     const currentMachineIds = [...formData.machineIds];
-    
+
     while (currentMachineIds.length < newCount) {
       currentMachineIds.push("");
     }
@@ -120,7 +120,7 @@ export default function OwnerPage() {
   const handleMachineIdChange = (index, value) => {
     const newMachineIds = [...formData.machineIds];
     newMachineIds[index] = value;
-    
+
     // Auto-detect version for first machine ID
     if (index === 0 && value.trim()) {
       const nextVersion = getNextVersionForMachine(value.trim());
@@ -138,36 +138,42 @@ export default function OwnerPage() {
   };
 
   // Generate new license key
-  const handleGenerateLicense = () => {
+  const handleGenerateLicense = async () => {
     // Validate at least one Machine ID is required
-    const validMachineIds = formData.machineIds.filter(id => id && id.trim());
-    if (validMachineIds.length === 0) {
-      alert("⚠️ Bạn phải nhập ít nhất 1 ID máy tính của khách hàng để tạo license!");
-      return;
+    // const validMachineIds = formData.machineIds.filter((id) => id && id.trim());
+    // if (validMachineIds.length === 0) {
+    //   alert(
+    //     "⚠️ Bạn phải nhập ít nhất 1 ID máy tính của khách hàng để tạo license!"
+    //   );
+    //   return;
+    // }
+
+    try {
+      const license = await generateLicenseKey({
+        type: formData.licenseType,
+        organizationName: formData.organizationName,
+        customDuration: formData.customDuration
+          ? parseInt(formData.customDuration)
+          : null,
+        customMachines: formData.customMachines
+          ? parseInt(formData.customMachines)
+          : null,
+        targetMachineIds: [], // Server handles Machine ID binding
+        version: formData.keyVersion,
+      });
+
+      setGeneratedLicense(license);
+      saveGeneratedLicense(license);
+      setLicenseHistory(getGeneratedLicenses());
+
+      // Auto increment version for next key
+      setFormData((prev) => ({
+        ...prev,
+        keyVersion: prev.keyVersion + 1,
+      }));
+    } catch(err) {
+      alert("Lỗi tạo License: " + err.message);
     }
-
-    const license = generateLicenseKey({
-      type: formData.licenseType,
-      organizationName: formData.organizationName,
-      customDuration: formData.customDuration
-        ? parseInt(formData.customDuration)
-        : null,
-      customMachines: formData.customMachines
-        ? parseInt(formData.customMachines)
-        : null,
-      targetMachineIds: validMachineIds,
-      version: formData.keyVersion,
-    });
-
-    setGeneratedLicense(license);
-    saveGeneratedLicense(license);
-    setLicenseHistory(getGeneratedLicenses());
-    
-    // Auto increment version for next key
-    setFormData(prev => ({
-      ...prev,
-      keyVersion: prev.keyVersion + 1,
-    }));
   };
 
   // Copy license key to clipboard
@@ -187,8 +193,8 @@ export default function OwnerPage() {
   };
 
   // Validate a license key
-  const handleValidateKey = () => {
-    const result = validateLicenseKey(validateInput);
+  const handleValidateKey = async () => {
+    const result = await validateLicenseKey(validateInput);
     setValidateResult(result);
   };
 
@@ -284,7 +290,8 @@ export default function OwnerPage() {
               <div className="panel-header">
                 <h2>🔑 TẠO LICENSE MỚI</h2>
                 <p>Tạo license key cho Admin sử dụng phần mềm</p>
-              </div>              {/* License Type Cards */}
+              </div>{" "}
+              {/* License Type Cards */}
               <div className="license-type-cards">
                 {Object.entries(LICENSE_CONFIG)
                   .filter(([type]) => type !== LICENSE_TYPES.TRIAL) // Hide Trial option
@@ -328,7 +335,6 @@ export default function OwnerPage() {
                     </div>
                   ))}
               </div>
-
               {/* Organization Name */}
               <div className="form-group">
                 <label>TÊN TỔ CHỨC / KHÁCH HÀNG</label>
@@ -345,7 +351,6 @@ export default function OwnerPage() {
                   }
                 />
               </div>
-
               {/* Custom Settings */}
               <div className="form-row">
                 <div className="form-group">
@@ -387,25 +392,51 @@ export default function OwnerPage() {
                       })
                     }
                   />
-                  <small style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                  <small style={{ color: "#64748b", fontSize: "0.75rem" }}>
                     * Tăng version khi reset/gia hạn
                   </small>
                 </div>
               </div>
-
               {/* Machine IDs Input - Dynamic based on machine count */}
               <div className="form-group">
                 <label>
-                  ID MÁY TÍNH KHÁCH HÀNG <span style={{ color: '#ef4444' }}>*</span>
-                  <span style={{ color: '#64748b', fontWeight: 'normal', marginLeft: '8px' }}>
-                    ({formData.machineIds.filter(id => id.trim()).length}/{formData.customMachines} máy)
+                  ID MÁY TÍNH KHÁCH HÀNG{" "}
+                  <span style={{ color: "#ef4444" }}>*</span>
+                  <span
+                    style={{
+                      color: "#64748b",
+                      fontWeight: "normal",
+                      marginLeft: "8px",
+                    }}
+                  >
+                    ({formData.machineIds.filter((id) => id.trim()).length}/
+                    {formData.customMachines} máy)
                   </span>
                 </label>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.5rem",
+                  }}
+                >
                   {formData.machineIds.map((machineId, index) => (
-                    <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ color: '#64748b', minWidth: '80px', fontSize: '0.85rem' }}>
+                    <div
+                      key={index}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: "#64748b",
+                          minWidth: "80px",
+                          fontSize: "0.85rem",
+                        }}
+                      >
                         Máy {index + 1}:
                       </span>
                       <input
@@ -413,13 +444,15 @@ export default function OwnerPage() {
                         className="input-dark"
                         placeholder={`VD: KRT-7F... (ID máy ${index + 1})`}
                         value={machineId}
-                        onChange={(e) => handleMachineIdChange(index, e.target.value)}
+                        onChange={(e) =>
+                          handleMachineIdChange(index, e.target.value)
+                        }
                         style={{ flex: 1 }}
                       />
                     </div>
                   ))}
                 </div>
-                
+
                 <small
                   style={{
                     color: "#f59e0b",
@@ -427,21 +460,26 @@ export default function OwnerPage() {
                     display: "block",
                   }}
                 >
-                  ⚠️ Bắt buộc nhập ít nhất 1 ID máy. Key tạo ra sẽ <strong>CHỈ</strong> hoạt động trên các máy có ID này.
+                  ⚠️ Bắt buộc nhập ít nhất 1 ID máy. Key tạo ra sẽ{" "}
+                  <strong>CHỈ</strong> hoạt động trên các máy có ID này.
                 </small>
               </div>
-
               <button
                 className="action-btn btn-generate"
                 onClick={handleGenerateLicense}
-                disabled={!formData.machineIds.some(id => id.trim())}
+                disabled={!formData.machineIds.some((id) => id.trim())}
                 style={{
-                  opacity: formData.machineIds.some(id => id.trim()) ? 1 : 0.5,
-                  cursor: formData.machineIds.some(id => id.trim()) ? 'pointer' : 'not-allowed'
+                  opacity: formData.machineIds.some((id) => id.trim())
+                    ? 1
+                    : 0.5,
+                  cursor: formData.machineIds.some((id) => id.trim())
+                    ? "pointer"
+                    : "not-allowed",
                 }}
               >
                 ⚡ TẠO LICENSE KEY (Version {formData.keyVersion})
-              </button>              {/* Generated License Display */}
+              </button>{" "}
+              {/* Generated License Display */}
               {generatedLicense && (
                 <div className="generated-license">
                   <h3>✅ License đã tạo thành công!</h3>
@@ -460,30 +498,41 @@ export default function OwnerPage() {
                       <strong>{formatDate(generatedLicense.expiryDate)}</strong>
                     </span>
                     <span>
-                      Version:{" "}
-                      <strong>v{generatedLicense.version || 1}</strong>
+                      Version: <strong>v{generatedLicense.version || 1}</strong>
                     </span>
                     <span>
                       Số máy:{" "}
-                      <strong>{generatedLicense.machineIds?.length || 1}</strong>
+                      <strong>
+                        {generatedLicense.machineIds?.length || 1}
+                      </strong>
                     </span>
                   </div>
-                  {generatedLicense.machineIds && generatedLicense.machineIds.length > 0 && (
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#64748b' }}>
-                      <strong>Máy được phép:</strong>{" "}
-                      {generatedLicense.machineIds.map((id, i) => (
-                        <span key={i} style={{ 
-                          background: '#1e293b', 
-                          padding: '2px 6px', 
-                          borderRadius: '4px', 
-                          marginLeft: '4px',
-                          fontFamily: 'monospace'
-                        }}>
-                          {id}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  {generatedLicense.machineIds &&
+                    generatedLicense.machineIds.length > 0 && (
+                      <div
+                        style={{
+                          marginTop: "0.5rem",
+                          fontSize: "0.85rem",
+                          color: "#64748b",
+                        }}
+                      >
+                        <strong>Máy được phép:</strong>{" "}
+                        {generatedLicense.machineIds.map((id, i) => (
+                          <span
+                            key={i}
+                            style={{
+                              background: "#1e293b",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              marginLeft: "4px",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {id}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   <div className="license-actions">
                     <button
                       className="action-btn btn-copy"
@@ -500,7 +549,6 @@ export default function OwnerPage() {
                   </div>
                 </div>
               )}
-
               {/* Validate Existing Key */}
               <div className="validate-section">
                 <h3>🔍 Kiểm tra License Key</h3>

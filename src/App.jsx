@@ -10,7 +10,7 @@ import BracketPage from "./pages/BracketPage";
 import CoachPage from "./pages/CoachPage";
 import SecretaryPage from "./pages/SecretaryPage";
 import OwnerPage from "./pages/OwnerPage";
-import { initializeTrialIfNeeded } from "./services/licenseService";
+import { initializeTrialIfNeeded, revalidateLicenseWithServer } from "./services/licenseService";
 import TrialWatermark from "./components/TrialWatermark/TrialWatermark";
 import LicenseBadge from "./components/LicenseBadge/LicenseBadge";
 import LicenseGuard from "./components/LicenseGuard";
@@ -18,8 +18,10 @@ import "./index.css";
 
 function App() {
   // Tự động kích hoạt Trial khi người dùng mới tải ứng dụng
+  // Kiểm tra lại với Server mỗi khi mở app
   useEffect(() => {
     initializeTrialIfNeeded();
+    revalidateLicenseWithServer();
   }, []);
 
   return (

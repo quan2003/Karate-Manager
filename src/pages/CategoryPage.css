@@ -126,11 +126,11 @@
     flex-direction: column;
     width: 100%;
   }
-  
+
   .header-actions .btn {
     width: 100%;
   }
-  
+
   .bracket-notice {
     flex-direction: column;
     gap: var(--spacing-3);
