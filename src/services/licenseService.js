@@ -361,4 +361,38 @@ export function exportLicenseFile(licenseInfo) {
     a.click();
     document.body.removeChild(a);
 }
-export async function importLicenseFile() { throw new Error("Tính năng import chưa hỗ trợ Online Mode"); }
+export function importLicenseFile() {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".lic,.txt";
+        
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const content = event.target.result;
+          // Extract Key from format "LICENSE KEY: XXXXX..."
+          const match = content.match(/LICENSE KEY:\s*([^\r\n]+)/);
+          
+          if (match && match[1]) {
+            const key = match[1].trim();
+            // Validate & Activate
+            const result = await activateLicense(key, generateMachineId());
+            resolve(result);
+          } else {
+             resolve({ valid: false, error: "File license không đúng định dạng" });
+          }
+        } catch (err) {
+          resolve({ valid: false, error: "Lỗi đọc file: " + err.message });
+        }
+      };
+      reader.readAsText(file);
+    };
+
+    input.click();
+  });
+}
