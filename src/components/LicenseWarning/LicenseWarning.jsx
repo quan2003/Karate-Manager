@@ -54,22 +54,23 @@ export default function LicenseWarning({ type, onCancel, onSuccess }) {
     }
   };
 
-  const handleManualActivate = () => {
+  const handleManualActivate = async () => {
     if (!manualKey.trim()) {
       alert("Vui lòng nhập License Key!");
       return;
     }
 
-    // Gán ID máy nếu key yêu cầu (tùy thuộc vào việc key có check hay không,
-    // hàm activateLicense sẽ gọi validateLicenseKey, hàm này sẽ check logic tmid)
-    // Nhưng activateLicense cần tham số machineId để lưu vào storage
-    const result = activateLicense(manualKey.trim(), machineId);
+    try {
+      const result = await activateLicense(manualKey.trim(), machineId);
 
-    if (result.valid) {
-      alert("Kích hoạt bản quyền thành công!");
-      if (onSuccess) onSuccess();
-    } else {
-      alert(`Lỗi kích hoạt: ${result.error || "Key không hợp lệ"}`);
+      if (result.valid) {
+        alert("Kích hoạt bản quyền thành công!");
+        if (onSuccess) onSuccess();
+      } else {
+        alert(`Lỗi kích hoạt: ${result.error || "Key không hợp lệ"}`);
+      }
+    } catch (err) {
+      alert(`Lỗi hệ thống: ${err.message}`);
     }
   };
 
@@ -83,13 +84,16 @@ export default function LicenseWarning({ type, onCancel, onSuccess }) {
 
     try {
       const imported = await importLicenseFile(file);
-      const result = activateLicense(imported.raw, machineId);
-
-      if (result.valid) {
-        alert("Cài đặt bản quyền thành công!");
-        if (onSuccess) onSuccess();
+      if (imported.valid) {
+          // importLicenseFile already calls activateLicense internally in new version? 
+          // Check licenseService implementation. 
+          // Based on previous view, importLicenseFile calls activateLicense internally and returns result.
+          // let's double check importLicenseFile implementation in licenseService.js
+          // Yes, importLicenseFile calls activateLicense. So imported IS the result.
+           alert("Cài đặt bản quyền thành công!");
+           if (onSuccess) onSuccess();
       } else {
-        alert(`Lỗi kích hoạt: ${result.error}`);
+           alert(`Lỗi kích hoạt: ${imported.error}`);
       }
     } catch (err) {
       alert(`Lỗi đọc file: ${err.message}`);

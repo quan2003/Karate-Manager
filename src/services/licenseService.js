@@ -355,6 +355,48 @@ export async function getAllLicensesFromServer() {
   }
 }
 
+export async function revokeLicense(key) {
+  try {
+    const secret = "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
+    const response = await fetch(`${SERVER_URL}/api/license/revoke`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret, key }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+export async function resetLicenseMachines(key) {
+  try {
+    const secret = "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
+    const response = await fetch(`${SERVER_URL}/api/license/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret, key }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+export async function extendLicense(key, days) {
+  try {
+    const secret = "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
+    const response = await fetch(`${SERVER_URL}/api/license/extend`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret, key, days }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
 export function saveGeneratedLicense(licenseInfo) {
   const licenses = getGeneratedLicenses();
   licenses.unshift({ ...licenseInfo, generatedAt: new Date().toISOString() });

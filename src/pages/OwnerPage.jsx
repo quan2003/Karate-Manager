@@ -9,6 +9,9 @@ import {
   getGeneratedLicenses,
   saveGeneratedLicense,
   getAllLicensesFromServer,
+  revokeLicense,
+  resetLicenseMachines,
+  extendLicense,
   exportLicenseFile,
   resetAllLicenseData,
   getCurrentLicense,
@@ -41,10 +44,10 @@ export default function OwnerPage() {
     }
   }, [role, navigate]);
 
-  // Load license history
-  useEffect(() => {
+  // Function to refresh list
+  const refreshList = () => {
     if (activeTab === TABS.LICENSE_HISTORY) {
-        setLicenseHistory([]); // Clear old list
+        setLicenseHistory([]); 
         getAllLicensesFromServer().then(serverLicenses => {
             const adapted = serverLicenses.map(l => ({
                 raw: l.raw_key || l.key,
@@ -56,14 +59,55 @@ export default function OwnerPage() {
                     mm: l.max_machines,
                     mt: 1
                 },
-                status: l.status
+                status: l.status,
+                activatedMachines: l.activated_machines || [] 
             }));
             setLicenseHistory(adapted);
         });
     } else {
         setLicenseHistory(getGeneratedLicenses());
     }
+  };
+
+  // Load license history
+  useEffect(() => {
+    refreshList();
   }, [activeTab]);
+
+  // Handlers for management actions
+  const handleRevoke = async (key) => {
+    if (!window.confirm("BẠN CÓ CHẮC CHẮN MUỐN THU HỒI LICENSE NÀY?\nKhách hàng sẽ không thể sử dụng phần mềm ngay lập tức.")) return;
+    const res = await revokeLicense(key);
+    if (res.success) {
+        alert("Đã thu hồi thành công!");
+        refreshList();
+    } else {
+        alert("Lỗi: " + res.message);
+    }
+  };
+
+  const handleResetMachine = async (key) => {
+    if (!window.confirm("Reset danh sách thiết bị?\nCho phép khách hàng kích hoạt lại trên máy mới.")) return;
+    const res = await resetLicenseMachines(key);
+    if (res.success) {
+        alert("Đã reset thiết bị thành công!");
+        refreshList();
+    } else {
+         alert("Lỗi: " + res.message);
+    }
+  };
+
+  const handleExtend = async (key) => {
+    const days = prompt("Nhập số ngày muốn gia hạn thêm:", "30");
+    if (!days) return;
+    const res = await extendLicense(key, parseInt(days));
+    if (res.success) {
+        alert(`Đã gia hạn thêm ${days} ngày!`);
+        refreshList();
+    } else {
+         alert("Lỗi: " + res.message);
+    }
+  };
 
   // Local state for editing form
   const [formData, setFormData] = useState({
@@ -621,36 +665,18 @@ export default function OwnerPage() {
               </div>
             </div>
           )}
-
           {/* LICENSE HISTORY TAB */}
           {activeTab === TABS.LICENSE_HISTORY && (
             <div className="panel history-panel">
               <div className="panel-header">
                 <h2>📜 LỊCH SỬ LICENSE (SERVER ONLINE)</h2>
-                <p>Danh sách các license key đang có trong PostgreSQL Database</p>
+                <p>Quản lý trực tiếp trên PostgreSQL Database</p>
                 <button 
                     className="action-btn btn-secondary" 
                     style={{marginLeft: 'auto', padding: '0.5rem 1rem', fontSize: '0.8rem'}}
-                    onClick={() => {
-                        setLicenseHistory([]);
-                        getAllLicensesFromServer().then(serverLicenses => {
-                            const adapted = serverLicenses.map(l => ({
-                                raw: l.raw_key || l.key,
-                                generatedAt: l.created_at,
-                                expiryDate: l.expiry_date,
-                                data: {
-                                    t: l.type,
-                                    o: l.client_name,
-                                    mm: l.max_machines,
-                                    mt: 1
-                                },
-                                status: l.status
-                            }));
-                            setLicenseHistory(adapted);
-                        });
-                    }}
+                    onClick={refreshList}
                 >
-                    🔄 Tải lại danh sách
+                    🔄 Tải lại
                 </button>
               </div>
 
@@ -661,21 +687,20 @@ export default function OwnerPage() {
               ) : (
                 <div className="license-history-list">
                   {licenseHistory.map((license, index) => (
-                    <div key={index} className="history-item" style={{opacity: license.status === 'revoked' ? 0.5 : 1}}>
+                    <div key={index} className="history-item" style={{opacity: license.status === 'revoked' ? 0.6 : 1, borderLeft: license.status === 'revoked' ? '4px solid red' : '4px solid #10b981'}}>
                       <div className="history-item-header">
                         <span
                           className="license-type-badge"
                           style={{
                             backgroundColor:
-                              LICENSE_CONFIG[license.data.t]?.color || '#64748b',
+                              license.status === 'revoked' ? '#ef4444' : (LICENSE_CONFIG[license.data.t]?.color || '#64748b'),
                           }}
                         >
-                          {LICENSE_CONFIG[license.data.t]?.name || license.data.t}
+                          {license.status === 'revoked' ? 'ĐÃ THU HỒI' : (LICENSE_CONFIG[license.data.t]?.name || license.data.t)}
                         </span>
                         <span className="history-date">
                           {formatDate(license.generatedAt)}
                         </span>
-                         {license.status === 'revoked' && <span style={{color: 'red', fontWeight: 'bold', marginLeft: '10px'}}>(ĐÃ THU HỒI)</span>}
                       </div>
                       <div className="history-item-body">
                         <div className="history-org">
@@ -683,30 +708,14 @@ export default function OwnerPage() {
                         </div>
                         <div className="history-key">
                           <code title={license.raw}>
-                            {license.raw ? license.raw.substring(0, 30) + "..." : "N/A"}
+                            {license.raw ? license.raw.substring(0, 25) + "..." : "N/A"}
                           </code>
                           <button
                             className="btn-copy-small"
                             onClick={(e) => {
-                              e.stopPropagation();
-                              if (navigator.clipboard) {
-                                navigator.clipboard
-                                  .writeText(license.raw)
-                                  .then(() =>
-                                    alert("Đã copy Key vào bộ nhớ tạm!")
-                                  )
-                                  .catch((err) => alert("Lỗi copy: " + err));
-                              } else {
-                                // Fallback
-                                const textArea =
-                                  document.createElement("textarea");
-                                textArea.value = license.raw;
-                                document.body.appendChild(textArea);
-                                textArea.select();
-                                document.execCommand("Copy");
-                                textArea.remove();
-                                alert("Đã copy Key!");
-                              }
+                              e.stopPropagation(); // Avoid triggering row click if any
+                              navigator.clipboard.writeText(license.raw);
+                              alert("Đã copy Key!");
                             }}
                             title="Copy License Key"
                           >
@@ -714,10 +723,39 @@ export default function OwnerPage() {
                           </button>
                         </div>
                         <div className="history-details">
-                          <span>Hết hạn: {formatDate(license.expiryDate)}</span>
+                          <span>Hết hạn: <strong>{formatDate(license.expiryDate)}</strong></span>
                           <span>
-                             {license.data.mm} máy
+                             Máy: {license.activatedMachines?.length || 0}/{license.data.mm}
                           </span>
+                        </div>
+                        
+                        {/* Server Management Actions */}
+                        <div style={{marginTop: '10px', display: 'flex', gap: '8px', borderTop: '1px solid #334155', paddingTop: '8px'}}>
+                            {license.status !== 'revoked' && (
+                                <>
+                                    <button 
+                                        onClick={() => handleExtend(license.raw)}
+                                        style={{padding: '4px 8px', fontSize: '0.75rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'}}
+                                    >
+                                        📅 Gia hạn
+                                    </button>
+                                    <button 
+                                        onClick={() => handleResetMachine(license.raw)}
+                                        style={{padding: '4px 8px', fontSize: '0.75rem', background: '#f59e0b', color: 'black', border: 'none', borderRadius: '4px', cursor: 'pointer'}}
+                                    >
+                                        � Reset Máy
+                                    </button>
+                                    <button 
+                                        onClick={() => handleRevoke(license.raw)}
+                                        style={{padding: '4px 8px', fontSize: '0.75rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginLeft: 'auto'}}
+                                    >
+                                        🚫 Thu Hồi
+                                    </button>
+                                </>
+                            )}
+                            {license.status === 'revoked' && (
+                                <span style={{fontSize: '0.8rem', color: '#ef4444', fontStyle: 'italic'}}>License này đã bị vô hiệu hóa vĩnh viễn.</span>
+                            )}
                         </div>
                       </div>
                     </div>
