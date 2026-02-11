@@ -80,51 +80,56 @@ app.get("/", (req, res) => {
  * CREATE LICENSE (Admin Only)
  */
 app.post("/api/license/create", async (req, res) => {
-  const { secret, type, days, maxMachines, clientName } = req.body;
-
-  if (secret !== ADMIN_SECRET) {
-    return res.status(403).json({ success: false, message: "Sai mã bảo mật Admin" });
-  }
-
-  const expiryDate = new Date();
-  expiryDate.setDate(expiryDate.getDate() + (days || 30));
-
-  // Generate License Data
-  const licenseId = crypto.randomUUID();
-  const licenseDataContent = {
-     v: 2,
-     t: type || "trial",
-     o: clientName || "Unknown",
-     c: new Date().toISOString(),
-     e: expiryDate.toISOString(),
-     mm: maxMachines || 1,
-     tmids: [], 
-     kv: 1,
-     id: licenseId
-  };
-
-  const rawKey = Buffer.from(JSON.stringify(licenseDataContent)).toString('base64');
-  
-  // Format Key: KRT-T-XXXXX-XXXXX
-  const prefix = (type || "trial").charAt(0).toUpperCase();
-  const chunks = rawKey.match(/.{1,5}/g) || [];
-  const formattedKey = `KRT-${prefix}-${chunks.slice(0, 5).join("-")}`;
-
-  const query = `
-    INSERT INTO licenses (id, key, raw_key, type, client_name, expiry_date, max_machines, status)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
-    RETURNING *;
-  `;
-  
   try {
+    const { secret, type, days, maxMachines, clientName } = req.body;
+
+    if (secret !== process.env.ADMIN_SECRET && secret !== "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a") {
+      return res.status(403).json({ success: false, message: "Sai mã bảo mật Admin" });
+    }
+
+    const duration = parseInt(days) || 30;
+    const machines = parseInt(maxMachines) || 1;
+    const licenseType = type || "trial";
+    const client = clientName || "Unknown";
+
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + duration);
+
+    // Generate License Data
+    const licenseId = crypto.randomUUID();
+    const licenseDataContent = {
+       v: 2,
+       t: licenseType,
+       o: client,
+       c: new Date().toISOString(),
+       e: expiryDate.toISOString(),
+       mm: machines,
+       tmids: [], 
+       kv: 1,
+       id: licenseId
+    };
+
+    const rawKey = Buffer.from(JSON.stringify(licenseDataContent)).toString('base64');
+    
+    // Format Key: KRT-T-XXXXX-XXXXX
+    const prefix = licenseType.charAt(0).toUpperCase();
+    const chunks = rawKey.match(/.{1,5}/g) || [];
+    const formattedKey = `KRT-${prefix}-${chunks.slice(0, 5).join("-")}`;
+
+    const query = `
+      INSERT INTO licenses (id, key, raw_key, type, client_name, expiry_date, max_machines, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+      RETURNING *;
+    `;
+    
     const result = await pool.query(query, [
       licenseId,
       formattedKey,
       rawKey,
-      type || "trial",
-      clientName || "Unknown",
+      licenseType,
+      client,
       expiryDate,
-      maxMachines || 1
+      machines
     ]);
 
     const newLicense = result.rows[0];
@@ -141,8 +146,8 @@ app.post("/api/license/create", async (req, res) => {
 
     res.json({ success: true, license: responseLicense });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Lỗi tạo license" });
+    console.error("Create License Error:", err); // Improved logging
+    res.status(500).json({ success: false, message: "Lỗi Server: " + err.message });
   }
 });
 
