@@ -8,6 +8,7 @@ import {
   validateLicenseKey,
   getGeneratedLicenses,
   saveGeneratedLicense,
+  getAllLicensesFromServer,
   exportLicenseFile,
   resetAllLicenseData,
   getCurrentLicense,
@@ -42,8 +43,28 @@ export default function OwnerPage() {
 
   // Load license history
   useEffect(() => {
-    setLicenseHistory(getGeneratedLicenses());
+    if (activeTab === TABS.LICENSE_HISTORY) {
+        setLicenseHistory([]); // Clear old list
+        getAllLicensesFromServer().then(serverLicenses => {
+            const adapted = serverLicenses.map(l => ({
+                raw: l.raw_key || l.key,
+                generatedAt: l.created_at,
+                expiryDate: l.expiry_date,
+                data: {
+                    t: l.type,
+                    o: l.client_name,
+                    mm: l.max_machines,
+                    mt: 1
+                },
+                status: l.status
+            }));
+            setLicenseHistory(adapted);
+        });
+    } else {
+        setLicenseHistory(getGeneratedLicenses());
+    }
   }, [activeTab]);
+
   // Local state for editing form
   const [formData, setFormData] = useState({
     licenseType: LICENSE_TYPES.TOURNAMENT,
@@ -605,31 +626,56 @@ export default function OwnerPage() {
           {activeTab === TABS.LICENSE_HISTORY && (
             <div className="panel history-panel">
               <div className="panel-header">
-                <h2>📜 LỊCH SỬ LICENSE ĐÃ TẠO</h2>
-                <p>Danh sách các license key đã phát hành</p>
+                <h2>📜 LỊCH SỬ LICENSE (SERVER ONLINE)</h2>
+                <p>Danh sách các license key đang có trong PostgreSQL Database</p>
+                <button 
+                    className="action-btn btn-secondary" 
+                    style={{marginLeft: 'auto', padding: '0.5rem 1rem', fontSize: '0.8rem'}}
+                    onClick={() => {
+                        setLicenseHistory([]);
+                        getAllLicensesFromServer().then(serverLicenses => {
+                            const adapted = serverLicenses.map(l => ({
+                                raw: l.raw_key || l.key,
+                                generatedAt: l.created_at,
+                                expiryDate: l.expiry_date,
+                                data: {
+                                    t: l.type,
+                                    o: l.client_name,
+                                    mm: l.max_machines,
+                                    mt: 1
+                                },
+                                status: l.status
+                            }));
+                            setLicenseHistory(adapted);
+                        });
+                    }}
+                >
+                    🔄 Tải lại danh sách
+                </button>
               </div>
 
               {licenseHistory.length === 0 ? (
                 <div className="empty-state">
-                  <p>Chưa có license nào được tạo</p>
+                  <p>Đang tải dữ liệu từ server hoặc chưa có license nào...</p>
                 </div>
               ) : (
                 <div className="license-history-list">
                   {licenseHistory.map((license, index) => (
-                    <div key={index} className="history-item">
+                    <div key={index} className="history-item" style={{opacity: license.status === 'revoked' ? 0.5 : 1}}>
                       <div className="history-item-header">
                         <span
                           className="license-type-badge"
                           style={{
                             backgroundColor:
-                              LICENSE_CONFIG[license.data.t]?.color,
+                              LICENSE_CONFIG[license.data.t]?.color || '#64748b',
                           }}
                         >
-                          {LICENSE_CONFIG[license.data.t]?.name}
+                          {LICENSE_CONFIG[license.data.t]?.name || license.data.t}
                         </span>
                         <span className="history-date">
                           {formatDate(license.generatedAt)}
                         </span>
+                         {license.status === 'revoked' && <span style={{color: 'red', fontWeight: 'bold', marginLeft: '10px'}}>(ĐÃ THU HỒI)</span>}
                       </div>
                       <div className="history-item-body">
                         <div className="history-org">
@@ -637,7 +683,7 @@ export default function OwnerPage() {
                         </div>
                         <div className="history-key">
                           <code title={license.raw}>
-                            {license.raw.substring(0, 30)}...
+                            {license.raw ? license.raw.substring(0, 30) + "..." : "N/A"}
                           </code>
                           <button
                             className="btn-copy-small"
@@ -670,12 +716,12 @@ export default function OwnerPage() {
                         <div className="history-details">
                           <span>Hết hạn: {formatDate(license.expiryDate)}</span>
                           <span>
-                            {license.data.mt} giải • {license.data.mm} máy
+                             {license.data.mm} máy
                           </span>
                         </div>
                       </div>
                     </div>
-                  ))}{" "}
+                  ))}
                 </div>
               )}
             </div>

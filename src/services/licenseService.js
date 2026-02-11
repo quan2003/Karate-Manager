@@ -340,6 +340,21 @@ export function getGeneratedLicenses() {
   } catch (e) { return []; }
 }
 
+export async function getAllLicensesFromServer() {
+  try {
+    const secret = "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
+    const response = await fetch(`${SERVER_URL}/api/license/list?secret=${secret}`);
+    const data = await response.json();
+    if (data.success) {
+      return data.licenses || [];
+    }
+    return [];
+  } catch (e) {
+    console.error("Fetch license error:", e);
+    return [];
+  }
+}
+
 export function saveGeneratedLicense(licenseInfo) {
   const licenses = getGeneratedLicenses();
   licenses.unshift({ ...licenseInfo, generatedAt: new Date().toISOString() });

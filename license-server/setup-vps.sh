@@ -1,63 +1,77 @@
 #!/bin/bash
 
-# --- CONFIG ---
-APP_DIR="/root/karate-license-server"
-NODE_VERSION="20"
-PM2_APP_NAME="karate-license-api"
+# Exit immediately if a command exits with a non-zero status
+set -e
 
-echo ">>> DEPLOYING LICENSE SERVER TO VPS (Simplified) <<<"
+echo ">>> STARTING VPS SETUP FOR POSTGRESQL LICENSE SERVER <<<"
 
-# 1. Update system & Install Requirements
-echo ">>> Updating system..."
-apt-get update -y
-apt-get install -y curl git ufw
+# 1. Update & Upgrade System
+echo "[1/6] Updating system packages..."
+apt-get update && apt-get upgrade -y
 
-# 2. Install NodeJS (if not present)
+# 2. Install Node.js (if not installed)
 if ! command -v node &> /dev/null; then
-    echo ">>> Installing Node.js ${NODE_VERSION}..."
-    curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash -
+    echo "[2/6] Installing Node.js..."
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
     apt-get install -y nodejs
 else
-    echo ">>> Node.js already installed: $(node -v)"
+    echo "[2/6] Node.js already installed."
 fi
 
-# 3. Setup UFW Firewall
-echo ">>> Configuring Firewall (ufw)..."
+# 3. Install PM2
+if ! command -v pm2 &> /dev/null; then
+    echo "[3/6] Installing PM2..."
+    npm install -g pm2
+else
+    echo "[3/6] PM2 already installed."
+fi
+
+# 4. Install & Configure PostgreSQL
+echo "[4/6] Installing PostgreSQL..."
+apt-get install -y postgresql postgresql-contrib
+
+# Start PostgreSQL service
+systemctl start postgresql
+systemctl enable postgresql
+
+# Create Database and User (Idempotent)
+echo "Configuring Database..."
+sudo -u postgres psql -c "SELECT 1 FROM pg_database WHERE datname = 'karate_license_db'" | grep -q 1 || \
+sudo -u postgres psql -c "CREATE DATABASE karate_license_db;"
+
+sudo -u postgres psql -c "SELECT 1 FROM pg_roles WHERE rolname = 'postgres'" | grep -q 1 || \
+sudo -u postgres psql -c "CREATE USER postgres WITH PASSWORD 'postgres';" 
+
+# Note: We are using the default 'postgres' user for simplicity in this script, 
+# but in production, you should create a dedicated user.
+# Let's verify password for 'postgres' user is set to something known or configured via env
+# For now, we will assume standard config or allow "peer" auth for local connections if configured.
+# Force password set:
+sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';"
+
+echo "PostgreSQL installed and configured."
+
+# 5. Firewall Setup (UFW)
+echo "[5/6] Configuring Firewall..."
 ufw allow OpenSSH
+ufw allow 2000/tcp # API Port
 ufw allow 80/tcp
 ufw allow 443/tcp
-ufw allow 2000/tcp  # License API Port
-echo "y" | ufw enable
-ufw status
+# ufw enable # Uncomment to auto-enable (warning: might drop ssh if not careful)
+echo "Firewall rules updated. Run 'ufw enable' manually if needed."
 
-# 4. Install Global Tools
-echo ">>> Installing PM2..."
-npm install -g pm2 pnpm
-
-# 5. Setup Application Directory
-echo ">>> Setting up application directory at ${APP_DIR}..."
-mkdir -p "${APP_DIR}"
-
-# 6. Copy Files (You should scp/upload files separately or git clone)
-# For this script, assume files are present or will be uploaded. 
-# Better: Just prepare the environment.
-
-# 7. Install Dependencies & Start
-cd "${APP_DIR}" || exit
-if [ -f "package.json" ]; then
-    echo ">>> Installing dependencies..."
-    npm install --production
-
-    echo ">>> Starting Server with PM2..."
-    pm2 delete "${PM2_APP_NAME}" || true
-    pm2 start ecosystem.config.cjs --env production
-
-    echo ">>> Saving PM2 list..."
-    pm2 save
-    pm2 startup
-else
-    echo ">>> WARN: No package.json found in ${APP_DIR}. Upload your code first!"
+# 6. Setup Project Directory
+APP_DIR="/root/karate-license-server"
+if [ ! -d "$APP_DIR" ]; then
+    echo "[6/6] Creating app directory..."
+    mkdir -p "$APP_DIR"
 fi
 
 echo ">>> SETUP COMPLETE! <<<"
-echo "Make sure to create a .env file with your ADMIN_SECRET!"
+echo "Make sure to update your .env file with PG_CONNECTION details!"
+echo "Recommended .env content:"
+echo "PG_USER=postgres"
+echo "PG_HOST=localhost"
+echo "PG_DATABASE=karate_license_db"
+echo "PG_PASSWORD=postgres"
+echo "PG_PORT=5432"

@@ -1,321 +1,327 @@
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
-const fs = require("fs");
-const path = require("path");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 const dotenv = require("dotenv");
 const crypto = require("crypto");
+const { Pool } = require("pg");
 
 // Load Environment Variables
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 2000;
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "admin_secret_key_change_me"; // Should ideally be a strong secret
+const ADMIN_SECRET = process.env.ADMIN_SECRET || "admin_secret_key_change_me";
 
-// --- Rate Limiter ---
+// --- PostgreSQL Setup ---
+const pool = new Pool({
+  user: process.env.PG_USER || "postgres",
+  host: process.env.PG_HOST || "localhost",
+  database: process.env.PG_DATABASE || "karate_license_db",
+  password: process.env.PG_PASSWORD || "postgres",
+  port: process.env.PG_PORT ? parseInt(process.env.PG_PORT) : 5432,
+});
+
+// Test Connection & Initialize Schema
+pool.query("SELECT NOW()", (err, res) => {
+  if (err) {
+    console.error("Lỗi kết nối PostgreSQL:", err.stack);
+  } else {
+    console.log("Kết nối PostgreSQL thành công:", res.rows[0].now);
+    initializeSchema();
+  }
+});
+
+const initializeSchema = async () => {
+  const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS licenses (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      key TEXT UNIQUE NOT NULL,
+      raw_key TEXT,
+      type VARCHAR(50) NOT NULL,
+      client_name VARCHAR(255),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      expiry_date TIMESTAMPTZ NOT NULL,
+      max_machines INTEGER DEFAULT 1,
+      activated_machines TEXT[] DEFAULT '{}',
+      status VARCHAR(20) DEFAULT 'active',
+      history JSONB DEFAULT '[]'::jsonb
+    );
+  `;
+  try {
+    await pool.query(createTableQuery);
+    console.log("Schema initialized successfully.");
+  } catch (err) {
+    console.error("Error creating schema:", err);
+  }
+};
+
+// --- Middleware ---
 const limiter = rateLimit({
   windowMs: process.env.WINDOW_MS || 15 * 60 * 1000,
-  max: process.env.MAX_REQUESTS || 100, // Limit each IP
+  max: process.env.MAX_REQUESTS || 100,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// --- Middleware ---
 app.use(limiter);
-app.use(cors({ origin: "*" })); // Adjust in production
+app.use(cors({ origin: "*" }));
 app.use(morgan("combined"));
 app.use(bodyParser.json());
 
-// --- Database (File-based JSON) ---
-const DB_FILE = path.join(__dirname, "licenses.json");
-
-// Helper: Get DB
-const getDb = () => {
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({ licenses: [] }, null, 2));
-  }
-  return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
-};
-
-// Helper: Save DB
-const saveDb = (data) => {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-};
-
-// Start clean DB if not exists
-getDb();
-
 // --- Routes ---
 
-/**
- * Health Check
- */
 app.get("/", (req, res) => {
-  res.send("Karate License Server is RUNNING");
+  res.send("Karate License Server (PostgreSQL) is RUNNING");
 });
 
 /**
- * CREATE LICENSE (Admin Protected)
+ * CREATE LICENSE (Admin Only)
  */
-app.post("/api/license/create", (req, res) => {
+app.post("/api/license/create", async (req, res) => {
   const { secret, type, days, maxMachines, clientName } = req.body;
 
   if (secret !== ADMIN_SECRET) {
-    return res
-      .status(403)
-      .json({ success: false, message: "Sai mã bảo mật Admin" });
+    return res.status(403).json({ success: false, message: "Sai mã bảo mật Admin" });
   }
 
-  const db = getDb();
   const expiryDate = new Date();
   expiryDate.setDate(expiryDate.getDate() + (days || 30));
 
-  // Generate unique ID
+  // Generate License Data
   const licenseId = crypto.randomUUID();
-
-  // Create license object (matching v2 schema somewhat, but simpler for server logic)
-  // The client generates complex keys. Here we just store records.
-  // Actually, the client expects the server to return a KEY.
-  // We need to implement key generation here or accept a generated one.
-  // Based on previous code, the server generated a simple key.
-  // But the NEW client code expects complex keys.
-  // The new client `generateLicenseKey` calls this endpoint.
-  // AND the new client code `generateLicenseKey` seems to generate the key LOCALLY if it's offline?
-  // No, the client code I wrote earlier calls this endpoint to get a key.
-  // Wait, let's re-read the client service I just wrote.
-  // `generateLicenseKey` (client) constructs the key LOCALLY using `crypto` and `base64`.
-  // It effectively IGNORES the server for generation logic in the latest client file I wrote (Step 112).
-  // Wait, I need to check `src/services/licenseService.js`.
-  
-  // Checking client implementation...
-  // In `src/services/licenseService.js` (Step 112), `generateLicenseKey` constructs the key LOCALLY.
-  // It does NOT call the server.
-  // The server is only used for `validateLicenseKey` (verification) and `activateLicense`.
-  // So the *creation* logic seems to have moved to client-side (Owner Page).
-  // BUT the user asked for "API create license".
-  // If the Owner Page generates the key locally, it should probably SEND it to the server to save it.
-  // Currently, `saveGeneratedLicense` in client just saves to localStorage.
-  // This is a disconnect.
-  // The Owner Page should call the server to SAVE the generated key.
-  // OR the server should generate it.
-  
-  // Let's implement the server to Support BOTH.
-  // 1. Generate new key if requested.
-  // 2. Save a provided key (if client generated it).
-  
-  // For now, I will stick to what the previous server code did (Generate) but enhanced.
-  // However, since the Client code (OwnerPage) I updated might use local generation, 
-  // I should provide an endpoint to SYNC generated keys.
-  
-  // Let's assume the standard flow:
-  // Admin -> Client App (Owner Page) -> Call Server /api/license/create -> Server generates & saves -> Returns Key -> Client displays.
-  
-  // I'll implement Key Generation logic here too, using the same algorithm if possible, or a simpler one.
-  // Actually, to align with the "Offline-first but synced" approach, or "Online-first", 
-  // ensuring the server is the source of truth is better.
-  
-  // I will implement generation here.
-  
-  const licenseKey = `KRT-${type.toUpperCase().substring(0, 1)}-${Math.random()
-    .toString(36)
-    .substring(2, 7)
-    .toUpperCase()}-${Math.random()
-    .toString(36)
-    .substring(2, 7)
-    .toUpperCase()}`;
-
-  const newLicense = {
-    id: licenseId,
-    key: licenseKey, // Simple key for now, or use the complex structure if I port the libs.
-    // To match the client's complex key expectation, I should ideally use that.
-    // But for now, let's just use a simple string. The client's `validateLicenseKey` can handle simple strings?
-    // The client's `validateLicenseKey` tries to decode Base64. If it fails, it returns error.
-    // So the Server MUST generate a Base64 encoded key matching the schema.
-    
-    // I will use a simple Base64 generator here to match the client's v2 schema.
-    type: type || "trial",
-    clientName: clientName || "Unknown",
-    createdAt: new Date().toISOString(),
-    expiryDate: expiryDate.toISOString(),
-    maxMachines: maxMachines || 1,
-    activatedMachines: [],
-    status: "active",
-    history: [], // For audit
-  };
-
-  // Generate Base64 Key (Simplified version of client logic)
   const licenseDataContent = {
      v: 2,
-     t: newLicense.type,
-     o: newLicense.clientName,
-     c: newLicense.createdAt,
-     e: newLicense.expiryDate,
-     mm: newLicense.maxMachines,
-     tmids: [], // No specific machine lock initially
+     t: type || "trial",
+     o: clientName || "Unknown",
+     c: new Date().toISOString(),
+     e: expiryDate.toISOString(),
+     mm: maxMachines || 1,
+     tmids: [], 
      kv: 1,
-     id: newLicense.id
+     id: licenseId
   };
-  const encoded =  Buffer.from(JSON.stringify(licenseDataContent)).toString('base64');
-  // Add prefix
-  const prefix = newLicense.type.charAt(0).toUpperCase();
-  // Chunking
-  const chunks = encoded.match(/.{1,5}/g) || [];
-  newLicense.key = `KRT-${prefix}-${chunks.slice(0, 5).join("-")}`; // Truncated for readability or full?
-  // Client uses full raw?
-  // Client `generateLicenseKey` returns `raw` (full base64) and `key` (formatted). 
-  // The server should return both. 
-  // Actually, let's just return the full object.
-  // IMPORTANT: The server must store the FULL raw key or the essential data to validate.
+
+  const rawKey = Buffer.from(JSON.stringify(licenseDataContent)).toString('base64');
   
-  newLicense.raw = encoded; // Store full encoded string
+  // Format Key: KRT-T-XXXXX-XXXXX
+  const prefix = (type || "trial").charAt(0).toUpperCase();
+  const chunks = rawKey.match(/.{1,5}/g) || [];
+  const formattedKey = `KRT-${prefix}-${chunks.slice(0, 5).join("-")}`;
 
-  db.licenses.unshift(newLicense);
-  saveDb(db);
+  const query = `
+    INSERT INTO licenses (id, key, raw_key, type, client_name, expiry_date, max_machines, status)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+    RETURNING *;
+  `;
+  
+  try {
+    const result = await pool.query(query, [
+      licenseId,
+      formattedKey,
+      rawKey,
+      type || "trial",
+      clientName || "Unknown",
+      expiryDate,
+      maxMachines || 1
+    ]);
 
-  res.json({ success: true, license: newLicense });
+    const newLicense = result.rows[0];
+    
+    // Convert DB structure to API response structure (to support existing client)
+    const responseLicense = {
+        key: newLicense.key,
+        raw: newLicense.raw_key,
+        type: newLicense.type,
+        clientName: newLicense.client_name,
+        expiryDate: newLicense.expiry_date,
+        maxMachines: newLicense.max_machines
+    };
+
+    res.json({ success: true, license: responseLicense });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Lỗi tạo license" });
+  }
 });
 
 /**
- * VERIFY LICENSE (Public/Client)
- * This is called by the App when entering a key.
+ * VERIFY LICENSE (Client App)
  */
-app.post("/api/license/verify", (req, res) => {
+app.post("/api/license/verify", async (req, res) => {
   const { key, machineId } = req.body;
 
   if (!key || !machineId) {
-    return res.status(400).json({ success: false, message: "Thiếu thông tin" });
+    return res.status(400).json({ success: false, message: "Thiếu thông tin key hoặc machineId" });
   }
 
-  const db = getDb();
+  // Find License
+  const query = `SELECT * FROM licenses WHERE key = $1 OR raw_key = $1`;
   
-  // Find by exact match on Raw Key or Formatted Key
-  // Or check if the key decodes to a valid ID in our DB?
-  // For simplicity, we compare `key` against stored `key` or `raw`.
-  const license = db.licenses.find((l) => l.key === key || l.raw === key);
+  try {
+    const result = await pool.query(query, [key]);
+    
+    if (result.rows.length === 0) {
+      return res.json({ success: false, valid: false, message: "License không tồn tại" });
+    }
 
-  if (!license) {
-    return res.json({ success: false, valid: false, message: "License không tồn tại hệ thống" });
-  }
+    const license = result.rows[0];
 
-  // Check Status
-  if (license.status !== "active") {
-    return res.json({ success: false, valid: false, message: "License đã bị vô hiệu hóa" });
-  }
+    // Check Status
+    if (license.status !== 'active') {
+      return res.json({ success: false, valid: false, message: "License đã bị vô hiệu hóa/thu hồi" });
+    }
 
-  // Check Expiry
-  if (new Date() > new Date(license.expiryDate)) {
-    return res.json({ success: false, valid: false, message: "License đã hết hạn", expired: true });
-  }
+    // Check Expiry
+    if (new Date() > new Date(license.expiry_date)) {
+      return res.json({ success: false, valid: false, message: "License đã hết hạn", expired: true });
+    }
 
-  // Check Machine ID
-  const isActivatedOnThisMachine = license.activatedMachines.includes(machineId);
+    // Check Machine ID
+    const activatedMachines = license.activated_machines || [];
+    const isActivated = activatedMachines.includes(machineId);
 
-  if (isActivatedOnThisMachine) {
-    return res.json({
-      success: true,
-      valid: true,
-      message: "License hợp lệ",
-      data: license,
-    });
-  }
+    if (isActivated) {
+      return res.json({
+        success: true,
+        valid: true,
+        message: "License hợp lệ",
+        data: {
+            type: license.type,
+            clientName: license.client_name,
+            expiryDate: license.expiry_date,
+            maxMachines: license.max_machines
+        }
+      });
+    }
 
-  // Limit Check
-  if (license.activatedMachines.length < license.maxMachines) {
-    // Activate new machine
-    license.activatedMachines.push(machineId);
-    saveDb(db);
-    return res.json({
-      success: true,
-      valid: true,
-      message: "Kích hoạt thành công thiết bị mới",
-      data: license,
-    });
-  } else {
-    return res.json({
-      success: false,
-      valid: false,
-      message: `Đã đạt giới hạn số máy (${license.maxMachines})`,
-    });
+    // Check Limit & Activate New Machine
+    if (activatedMachines.length < license.max_machines) {
+      const updateQuery = `
+        UPDATE licenses 
+        SET activated_machines = array_append(activated_machines, $1)
+        WHERE id = $2
+        RETURNING *;
+      `;
+      const updateResult = await pool.query(updateQuery, [machineId, license.id]);
+      const updatedLicense = updateResult.rows[0];
+
+      return res.json({
+        success: true,
+        valid: true,
+        message: "Kích hoạt thành công thiết bị mới",
+        data: {
+            type: updatedLicense.type,
+            clientName: updatedLicense.client_name,
+            expiryDate: updatedLicense.expiry_date,
+            maxMachines: updatedLicense.max_machines
+        }
+      });
+    } else {
+      return res.json({
+        success: false,
+        valid: false,
+        message: `Đã đạt giới hạn số máy (${license.max_machines})`,
+      });
+    }
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Lỗi xác thực license" });
   }
 });
 
 /**
  * LIST LICENSES (Admin)
  */
-app.get("/api/license/list", (req, res) => {
-    const { secret } = req.query; // Simple query param auth
+app.get("/api/license/list", async (req, res) => {
+    const { secret } = req.query;
     if (secret !== ADMIN_SECRET) return res.status(403).json({ success: false });
 
-    const db = getDb();
-    res.json({ success: true, count: db.licenses.length, licenses: db.licenses });
+    try {
+        const result = await pool.query("SELECT * FROM licenses ORDER BY created_at DESC");
+        res.json({ success: true, count: result.rows.length, licenses: result.rows });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
 });
 
 /**
  * RESET MACHINES (Admin)
  */
-app.post("/api/license/reset", (req, res) => {
+app.post("/api/license/reset", async (req, res) => {
   const { secret, key } = req.body;
-  
-  if (secret !== ADMIN_SECRET) {
-    return res.status(403).json({ success: false, message: "Sai mã bảo mật" });
-  }
+  if (secret !== ADMIN_SECRET) return res.status(403).json({ success: false });
 
-  const db = getDb();
-  const license = db.licenses.find((l) => l.key === key || l.raw === key);
-
-  if (license) {
-    license.activatedMachines = [];
-    saveDb(db);
-    res.json({ success: true, message: "Đã reset danh sách máy" });
-  } else {
-    res.status(404).json({ success: false, message: "License không tìm thấy" });
+  try {
+      const result = await pool.query(
+          "UPDATE licenses SET activated_machines = '{}' WHERE key = $1 OR raw_key = $1 RETURNING *",
+          [key]
+      );
+      
+      if (result.rowCount > 0) {
+          res.json({ success: true, message: "Đã reset danh sách máy" });
+      } else {
+          res.status(404).json({ success: false, message: "License không tìm thấy" });
+      }
+  } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
   }
 });
 
 /**
- * REVOKE LICENSE (Deactivate)
+ * REVOKE LICENSE
  */
-app.post("/api/license/revoke", (req, res) => {
+app.post("/api/license/revoke", async (req, res) => {
     const { secret, key } = req.body;
     if (secret !== ADMIN_SECRET) return res.status(403).json({ success: false });
 
-    const db = getDb();
-    const license = db.licenses.find((l) => l.key === key || l.raw === key);
-
-    if (license) {
-        license.status = "revoked";
-        saveDb(db);
-        res.json({ success: true, message: "Đã thu hồi license" });
-    } else {
-        res.status(404).json({ success: false, message: "License không tìm thấy" });
+    try {
+        const result = await pool.query(
+            "UPDATE licenses SET status = 'revoked' WHERE key = $1 OR raw_key = $1 RETURNING *", 
+            [key]
+        );
+        if (result.rowCount > 0) {
+            res.json({ success: true, message: "Đã thu hồi license" });
+        } else {
+            res.status(404).json({ success: false });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false });
     }
 });
 
 /**
  * EXTEND LICENSE
  */
-app.post("/api/license/extend", (req, res) => {
+app.post("/api/license/extend", async (req, res) => {
     const { secret, key, days } = req.body;
     if (secret !== ADMIN_SECRET) return res.status(403).json({ success: false });
 
-    const db = getDb();
-    const license = db.licenses.find((l) => l.key === key || l.raw === key);
-
-    if (license) {
-        const currentExpiry = new Date(license.expiryDate);
+    try {
+        // Fetch current expiry first
+        const fetchRes = await pool.query("SELECT expiry_date FROM licenses WHERE key = $1 OR raw_key = $1", [key]);
+        if (fetchRes.rows.length === 0) return res.status(404).json({ success: false });
+        
+        const currentExpiry = new Date(fetchRes.rows[0].expiry_date);
         currentExpiry.setDate(currentExpiry.getDate() + parseInt(days));
-        license.expiryDate = currentExpiry.toISOString();
-        saveDb(db);
-        res.json({ success: true, message: `Đã gia hạn thêm ${days} ngày`, newExpiry: license.expiryDate });
-    } else {
-        res.status(404).json({ success: false, message: "License không tìm thấy" });
+        
+        const updateRes = await pool.query(
+            "UPDATE licenses SET expiry_date = $1 WHERE key = $2 OR raw_key = $2 RETURNING *",
+            [currentExpiry, key]
+        );
+
+        res.json({ 
+            success: true, 
+            message: `Đã gia hạn thêm ${days} ngày`, 
+            newExpiry: updateRes.rows[0].expiry_date 
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 
-// Start Server
 app.listen(PORT, () => {
-  console.log(`License Server running on port ${PORT}`);
+  console.log(`License Server (PostgreSQL) running on port ${PORT}`);
 });
