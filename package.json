@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build && electron-builder --win --x64",
+    "deploy-server": "scp license-server/server.js root@103.82.194.186:/root/karate-license-server/ && ssh root@103.82.194.186 \"pm2 restart all\"",
     "electron:build:dir": "npm run build && electron-builder --win --x64 --dir"
   },
   "dependencies": {

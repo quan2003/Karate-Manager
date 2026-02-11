@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { getLicenseStatus, isTrialLicense } from '../../services/licenseService';
+import LicenseManager from '../LicenseManager/LicenseManager';
 import './LicenseBadge.css';
 
 /**
  * Badge hiển thị trạng thái license ở góc màn hình
- * Giúp người dùng phân biệt đang dùng bản TRIAL hay FULL
+ * Click vào để mở popup Quản lý Bản quyền
  */
 export default function LicenseBadge() {
   const [status, setStatus] = useState(null);
+  const [showManager, setShowManager] = useState(false);
 
   useEffect(() => {
     const updateStatus = () => {
@@ -24,6 +26,12 @@ export default function LicenseBadge() {
     };
   }, []);
 
+  const handleLicenseChanged = () => {
+    setStatus(getLicenseStatus());
+    // Dispatch event so other components update too
+    window.dispatchEvent(new CustomEvent('licenseChanged'));
+  };
+
   if (!status) return null;
 
   // Determine badge type
@@ -36,25 +44,40 @@ export default function LicenseBadge() {
   if (isNone) return null;
 
   return (
-    <div className={`license-badge ${isTrial ? 'trial' : ''} ${isActive ? 'active' : ''} ${isExpired ? 'expired' : ''}`}>
-      <div className="badge-icon">
-        {isTrial && '🔓'}
-        {isActive && '✅'}
-        {isExpired && '❌'}
-      </div>
-      <div className="badge-content">
-        <div className="badge-label">
-          {isTrial && 'BẢN DÙNG THỬ'}
-          {isActive && 'BẢN QUYỀN'}
-          {isExpired && 'HẾT HẠN'}
+    <>
+      <div 
+        className={`license-badge ${isTrial ? 'trial' : ''} ${isActive ? 'active' : ''} ${isExpired ? 'expired' : ''}`}
+        onClick={() => setShowManager(true)}
+        style={{ cursor: 'pointer' }}
+        title="Click để quản lý bản quyền"
+      >
+        <div className="badge-icon">
+          {isTrial && '🔓'}
+          {isActive && '✅'}
+          {isExpired && '❌'}
         </div>
-        <div className="badge-detail">
-          {status.daysRemaining !== undefined && status.daysRemaining > 0 && (
-            <span>Còn {status.daysRemaining} ngày</span>
-          )}
-          {isExpired && <span>Vui lòng gia hạn</span>}
+        <div className="badge-content">
+          <div className="badge-label">
+            {isTrial && 'BẢN DÙNG THỬ'}
+            {isActive && 'BẢN QUYỀN'}
+            {isExpired && 'HẾT HẠN'}
+          </div>
+          <div className="badge-detail">
+            {status.daysRemaining !== undefined && status.daysRemaining > 0 && (
+              <span>Còn {status.daysRemaining} ngày</span>
+            )}
+            {isExpired && <span>Vui lòng gia hạn</span>}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* License Manager Popup */}
+      {showManager && (
+        <LicenseManager 
+          onClose={() => setShowManager(false)}
+          onLicenseChanged={handleLicenseChanged}
+        />
+      )}
+    </>
   );
 }

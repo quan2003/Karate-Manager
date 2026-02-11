@@ -404,6 +404,38 @@ export function saveGeneratedLicense(licenseInfo) {
   localStorage.setItem("krt_generated_licenses", JSON.stringify(licenses));
 }
 
+/**
+ * Lấy thông tin license từ server (Public - không cần admin secret)
+ */
+export async function getLicenseInfoFromServer(key) {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/license/info`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, message: "Không thể kết nối server" };
+  }
+}
+
+/**
+ * Gửi yêu cầu hỗ trợ license (gia hạn, cấp lại key, v.v.)
+ */
+export async function submitLicenseRequest({ key, machineId, requestType, contactInfo, message }) {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/license/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, machineId, requestType, contactInfo, message }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, message: "Không thể kết nối server" };
+  }
+}
+
 // Stubbed legacy function mocks
 export function getNextVersionForMachine() { return 1; }
 export function getLicenseHistoryByMachine() { return []; }

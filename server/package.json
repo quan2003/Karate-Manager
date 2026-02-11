@@ -1,0 +1,20 @@
+{
+  "name": "karate-license-server",
+  "version": "1.0.0",
+  "description": "License Server cho Karate Tournament Manager",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.3",
+    "dotenv": "^16.4.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.4.0",
+    "morgan": "^1.10.0"
+  }
+}

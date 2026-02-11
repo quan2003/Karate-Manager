@@ -98,6 +98,7 @@ app.post("/api/license/create", async (req, res) => {
     // Generate License Data
     const licenseId = crypto.randomUUID();
     const licenseDataContent = {
+       id: licenseId, // Random ID first to ensure unique prefix
        v: 2,
        t: licenseType,
        o: client,
@@ -105,8 +106,7 @@ app.post("/api/license/create", async (req, res) => {
        e: expiryDate.toISOString(),
        mm: machines,
        tmids: [], 
-       kv: 1,
-       id: licenseId
+       kv: 1
     };
 
     const rawKey = Buffer.from(JSON.stringify(licenseDataContent)).toString('base64');
@@ -325,6 +325,150 @@ app.post("/api/license/extend", async (req, res) => {
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
+});
+
+/**
+ * LICENSE INFO (Public - User can check their own license)
+ */
+app.post("/api/license/info", async (req, res) => {
+  const { key } = req.body;
+  if (!key) return res.status(400).json({ success: false, message: "Thiếu license key" });
+
+  try {
+    const result = await pool.query(
+      "SELECT type, client_name, created_at, expiry_date, max_machines, activated_machines, status FROM licenses WHERE key = $1 OR raw_key = $1",
+      [key]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ success: false, message: "Không tìm thấy license" });
+    }
+
+    const license = result.rows[0];
+    const now = new Date();
+    const expiry = new Date(license.expiry_date);
+    const daysRemaining = Math.max(0, Math.ceil((expiry - now) / (1000 * 60 * 60 * 24)));
+
+    res.json({
+      success: true,
+      license: {
+        type: license.type,
+        clientName: license.client_name,
+        createdAt: license.created_at,
+        expiryDate: license.expiry_date,
+        maxMachines: license.max_machines,
+        activatedMachines: (license.activated_machines || []).length,
+        status: license.status,
+        daysRemaining,
+        isExpired: now > expiry
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * REQUEST KEY RENEWAL / SUPPORT (Public - User can submit request)
+ */
+app.post("/api/license/request", async (req, res) => {
+  const { key, machineId, requestType, contactInfo, message } = req.body;
+
+  if (!requestType || !machineId) {
+    return res.status(400).json({ success: false, message: "Thiếu thông tin yêu cầu" });
+  }
+
+  try {
+    // Create requests table if not exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS license_requests (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        license_key TEXT,
+        machine_id TEXT NOT NULL,
+        request_type VARCHAR(50) NOT NULL,
+        contact_info TEXT,
+        message TEXT,
+        status VARCHAR(20) DEFAULT 'pending',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        resolved_at TIMESTAMPTZ,
+        admin_note TEXT
+      );
+    `);
+
+    const result = await pool.query(
+      `INSERT INTO license_requests (license_key, machine_id, request_type, contact_info, message)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
+      [key || null, machineId, requestType, contactInfo || null, message || null]
+    );
+
+    res.json({
+      success: true,
+      message: "Yêu cầu đã được gửi thành công!",
+      requestId: result.rows[0].id,
+      createdAt: result.rows[0].created_at
+    });
+  } catch (err) {
+    console.error("Request Error:", err);
+    res.status(500).json({ success: false, message: "Lỗi gửi yêu cầu" });
+  }
+});
+
+/**
+ * LIST REQUESTS (Admin)
+ */
+app.get("/api/license/requests", async (req, res) => {
+  const { secret } = req.query;
+  if (secret !== ADMIN_SECRET) return res.status(403).json({ success: false });
+
+  try {
+    // Ensure table exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS license_requests (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        license_key TEXT,
+        machine_id TEXT NOT NULL,
+        request_type VARCHAR(50) NOT NULL,
+        contact_info TEXT,
+        message TEXT,
+        status VARCHAR(20) DEFAULT 'pending',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        resolved_at TIMESTAMPTZ,
+        admin_note TEXT
+      );
+    `);
+
+    const result = await pool.query(`
+      SELECT r.*, l.client_name 
+      FROM license_requests r 
+      LEFT JOIN licenses l ON (r.license_key = l.key OR r.license_key = l.raw_key)
+      ORDER BY r.created_at DESC
+    `);
+    res.json({ success: true, requests: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * RESOLVE REQUEST (Admin)
+ */
+app.post("/api/license/request/resolve", async (req, res) => {
+  const { secret, requestId, note } = req.body;
+  if (secret !== ADMIN_SECRET) return res.status(403).json({ success: false });
+
+  try {
+    const result = await pool.query(
+      "UPDATE license_requests SET status = 'resolved', resolved_at = NOW(), admin_note = $1 WHERE id = $2 RETURNING *",
+      [note || '', requestId]
+    );
+    if (result.rowCount > 0) {
+      res.json({ success: true, message: "Đã xử lý yêu cầu" });
+    } else {
+      res.status(404).json({ success: false });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 app.listen(PORT, () => {
