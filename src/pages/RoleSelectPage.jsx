@@ -14,10 +14,8 @@ import "./RoleSelectPage.css";
 const ADMIN_PASSWORD = "admin123";
 // Mật khẩu Thư ký mặc định (khác Admin)
 const SECRETARY_PASSWORD = "admin123";
-// Mật khẩu Owner (Hidden)
-const OWNER_PASSWORD = "KrtTLQ@2026";
-// Passcode Owner (6 số)
-const OWNER_PASSCODE = "888888";
+// Mật khẩu Owner Removed
+
 
 /**
  * Trang chọn vai trò khi khởi động ứng dụng
@@ -30,12 +28,11 @@ function RoleSelectPage() {
   const [warningType, setWarningType] = useState("demo"); // 'demo' or 'expired'
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showPasscodeModal, setShowPasscodeModal] = useState(false);
+
   const [selectedRoleToAuth, setSelectedRoleToAuth] = useState(null);
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
-  const [passcode, setPasscode] = useState("");
-  const [passcodeError, setPasscodeError] = useState("");
+
   const [licenseStatus, setLicenseStatus] = useState(null);
 
   // Load license status on mount
@@ -92,12 +89,8 @@ function RoleSelectPage() {
   const handlePasswordSubmit = (e) => {
     e.preventDefault();
 
-    // Check for Owner backdoor first (only via Admin login)
-    if (selectedRoleToAuth === ROLES.ADMIN && password === OWNER_PASSWORD) {
-      setShowPasswordModal(false);
-      setShowPasscodeModal(true);
-      return;
-    }
+    // Check for Owner backdoor - Removed
+
 
     // Check password based on role
     let isValid = false;
@@ -121,16 +114,8 @@ function RoleSelectPage() {
     }
   };
 
-  const handlePasscodeSubmit = (e) => {
-    e.preventDefault();
-    if (passcode === OWNER_PASSCODE) {
-      setRole(ROLES.OWNER);
-      setShowPasscodeModal(false);
-      navigate("/owner");
-    } else {
-      setPasscodeError("Sai mã bảo mật!");
-    }
-  };
+  // handlePasscodeSubmit Removed
+
 
   const handlePasswordCancel = () => {
     setShowPasswordModal(false);
@@ -281,66 +266,8 @@ function RoleSelectPage() {
         </div>
       )}
 
-      {/* Owner Passcode Modal */}
-      {showPasscodeModal && (
-        <div
-          className="password-overlay"
-          onClick={() => setShowPasscodeModal(false)}
-        >
-          <div
-            className="password-modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{ borderColor: "#38bdf8" }}
-          >
-            <div className="modal-icon">🛡️</div>
-            <h3>SYSTEM ACCESS</h3>
-            <p>Enter Security Passcode</p>
+      {/* Owner Passcode Modal Removed */}
 
-            <form onSubmit={handlePasscodeSubmit}>
-              <div className="password-input-group">
-                <input
-                  type="password"
-                  value={passcode}
-                  onChange={(e) => {
-                    // Limit to 6 chars
-                    if (e.target.value.length <= 6) setPasscode(e.target.value);
-                  }}
-                  placeholder="******"
-                  autoFocus
-                  style={{
-                    letterSpacing: "0.5rem",
-                    textAlign: "center",
-                    fontFamily: "monospace",
-                  }}
-                />
-              </div>
-
-              {passcodeError && (
-                <div className="password-error" style={{ color: "#ef4444" }}>
-                  {passcodeError}
-                </div>
-              )}
-
-              <div className="password-actions">
-                <button
-                  type="button"
-                  className="password-cancel-btn"
-                  onClick={() => setShowPasscodeModal(false)}
-                >
-                  ABORT
-                </button>
-                <button
-                  type="submit"
-                  className="password-submit-btn"
-                  style={{ background: "#38bdf8", color: "#0f172a" }}
-                >
-                  ACCESS
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* License Startup Splash */}
       {showLicenseSplash && <LicenseSplash onDismiss={handleSplashDismiss} />}

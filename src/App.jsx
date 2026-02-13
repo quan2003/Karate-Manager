@@ -9,7 +9,7 @@ import CategoryPage from "./pages/CategoryPage";
 import BracketPage from "./pages/BracketPage";
 import CoachPage from "./pages/CoachPage";
 import SecretaryPage from "./pages/SecretaryPage";
-import OwnerPage from "./pages/OwnerPage";
+
 import { initializeTrialIfNeeded, revalidateLicenseWithServer } from "./services/licenseService";
 import TrialWatermark from "./components/TrialWatermark/TrialWatermark";
 import LicenseBadge from "./components/LicenseBadge/LicenseBadge";
@@ -47,8 +47,7 @@ function App() {
               {/* Secretary Routes */}
               <Route path="/secretary" element={<LicenseGuard><SecretaryPage /></LicenseGuard>} />
 
-              {/* Owner Routes - Không guard vì Owner cần truy cập để quản lý license */}
-              <Route path="/owner" element={<OwnerPage />} />
+
             </Routes>
 
             <footer className="app-footer">

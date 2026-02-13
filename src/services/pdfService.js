@@ -146,7 +146,7 @@ export async function exportAllBracketsToPDF(
 
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
-      const orientation = "landscape";
+      const orientation = "landscape"; // Force landscape for batch export usually better
 
       const A4_WIDTH = 297;
       const A4_HEIGHT = 210;
@@ -201,6 +201,184 @@ export async function exportAllBracketsToPDF(
 }
 
 /**
+ * Export Score Sheet to PDF
+ * Generates a printable score sheet for all real matches in a category
+ */
+export function exportScoreSheetToPDF(
+  category,
+  matches,
+  filename = "bang_diem.pdf"
+) {
+  if (!matches || matches.length === 0) {
+    alert("Không có trận đấu nào để xuất bảng điểm!");
+    return;
+  }
+
+  try {
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
+
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const margin = 15;
+    const contentWidth = pageWidth - margin * 2;
+
+    // Title
+    pdf.setFontSize(16);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("BANG DIEM THI DAU", pageWidth / 2, margin + 5, {
+      align: "center",
+    });
+
+    // Category name
+    pdf.setFontSize(12);
+    pdf.setFont("helvetica", "normal");
+    const categoryName = transliterate(category.name || "");
+    pdf.text(categoryName, pageWidth / 2, margin + 12, { align: "center" });
+
+    // Table header
+    const tableTop = margin + 20;
+    const colWidths = {
+      stt: 12,
+      round: 30,
+      athlete1: 50,
+      vs: 10,
+      athlete2: 50,
+      score: 28,
+    };
+
+    let currentY = tableTop;
+    const rowHeight = 8;
+
+    // Draw header row
+    pdf.setFillColor(0, 0, 0);
+    pdf.rect(margin, currentY, contentWidth, rowHeight, "F");
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(9);
+    pdf.setFont("helvetica", "bold");
+
+    let x = margin;
+    pdf.text("STT", x + colWidths.stt / 2, currentY + 5.5, {
+      align: "center",
+    });
+    x += colWidths.stt;
+    pdf.text("VONG", x + colWidths.round / 2, currentY + 5.5, {
+      align: "center",
+    });
+    x += colWidths.round;
+    pdf.text("VDV AKA", x + colWidths.athlete1 / 2, currentY + 5.5, {
+      align: "center",
+    });
+    x += colWidths.athlete1;
+    pdf.text("VS", x + colWidths.vs / 2, currentY + 5.5, {
+      align: "center",
+    });
+    x += colWidths.vs;
+    pdf.text("VDV AO", x + colWidths.athlete2 / 2, currentY + 5.5, {
+      align: "center",
+    });
+    x += colWidths.athlete2;
+    pdf.text("KET QUA", x + colWidths.score / 2, currentY + 5.5, {
+      align: "center",
+    });
+
+    currentY += rowHeight;
+    pdf.setTextColor(0, 0, 0);
+
+    // Draw match rows
+    const roundNames = category.bracket?.roundNames || [];
+    matches.forEach((match, idx) => {
+      if (currentY + rowHeight > pageHeight - margin - 10) {
+        pdf.addPage();
+        currentY = margin;
+      }
+
+      const bgColor = idx % 2 === 0 ? [255, 255, 255] : [240, 240, 240];
+      pdf.setFillColor(...bgColor);
+      pdf.rect(margin, currentY, contentWidth, rowHeight, "F");
+      pdf.rect(margin, currentY, contentWidth, rowHeight, "S");
+
+      pdf.setFontSize(8);
+      pdf.setFont("helvetica", "normal");
+
+      let cx = margin;
+
+      // STT
+      pdf.text(String(idx + 1), cx + colWidths.stt / 2, currentY + 5.5, {
+        align: "center",
+      });
+      cx += colWidths.stt;
+
+      // Round name
+      const roundName =
+        roundNames[match.round - 1] || `Vong ${match.round}`;
+      pdf.text(
+        transliterate(roundName).substring(0, 15),
+        cx + 2,
+        currentY + 5.5
+      );
+      cx += colWidths.round;
+
+      // Athlete 1
+      const name1 = transliterate(match.athlete1?.name || "---");
+      const club1 = match.athlete1?.club
+        ? ` (${transliterate(match.athlete1.club)})`
+        : "";
+      pdf.setFont("helvetica", "bold");
+      pdf.text(
+        (name1 + club1).substring(0, 28),
+        cx + 2,
+        currentY + 5.5
+      );
+      cx += colWidths.athlete1;
+
+      // VS
+      pdf.setFont("helvetica", "normal");
+      pdf.text("-", cx + colWidths.vs / 2, currentY + 5.5, {
+        align: "center",
+      });
+      cx += colWidths.vs;
+
+      // Athlete 2
+      const name2 = transliterate(match.athlete2?.name || "---");
+      const club2 = match.athlete2?.club
+        ? ` (${transliterate(match.athlete2.club)})`
+        : "";
+      pdf.setFont("helvetica", "bold");
+      pdf.text(
+        (name2 + club2).substring(0, 28),
+        cx + 2,
+        currentY + 5.5
+      );
+      cx += colWidths.athlete2;
+
+      // Score (empty for filling in)
+      pdf.setFont("helvetica", "normal");
+      pdf.text("___:___", cx + colWidths.score / 2, currentY + 5.5, {
+        align: "center",
+      });
+
+      currentY += rowHeight;
+    });
+
+    // Draw table border
+    pdf.rect(margin, tableTop, contentWidth, currentY - tableTop, "S");
+
+    if (isTrialLicense()) {
+      addTrialWatermark(pdf, pageWidth, pageHeight);
+    }
+
+    pdf.save(filename);
+  } catch (error) {
+    console.error("Lỗi xuất bảng điểm PDF:", error);
+    alert("Lỗi xuất bảng điểm: " + error.message);
+  }
+}
+
+/**
  * Generate HTML cho bracket từ category data
  * Style: SportData gradients, Box Logo, Referees, Footer custom
  */
@@ -219,17 +397,16 @@ function generateBracketHTML(category, tournamentName = "") {
   });
   const roundNames = bracket.roundNames || [];
   const numRounds = bracket.numRounds || Object.keys(matchesByRound).length;
-  // Dimensions - ĐỒNG BỘ VỚI Bracket.jsx
-  const cellWidth = 220; // Giảm để fit PDF tốt hơn
-  const cellHeight = 24; // Đồng bộ với CELL_HEIGHT trong Bracket.jsx
-  const cellGap = 50; // Đồng bộ với GAP_BETWEEN_ATHLETES trong Bracket.jsx
-  const matchHeight = cellHeight + cellGap + cellHeight; // = 98px như desktop
-  const baseGap = 16; // Đồng bộ với BASE_MATCH_GAP trong Bracket.jsx
-  const connectorWidth = 40;
-  const paddingLeft = 0; // Không cần padding left cho số trận vì đặt bên phải
 
-  // Đồng bộ công thức tính toán với Bracket.jsx
-  const BASE_LINE_SPACING = matchHeight + baseGap; // = 114px
+  // Dimensions
+  const cellWidth = 220;
+  const cellHeight = 24;
+  const cellGap = 50;
+  const matchHeight = cellHeight + cellGap + cellHeight; 
+  const baseGap = 16;
+  const connectorWidth = 60; 
+
+  const BASE_LINE_SPACING = matchHeight + baseGap; 
 
   // Match Numbering
   let globalMatchNumber = 0;
@@ -237,7 +414,6 @@ function generateBracketHTML(category, tournamentName = "") {
   for (let r = 1; r <= numRounds; r++) {
     const roundMatches = matchesByRound[r] || [];
     roundMatches.forEach((match) => {
-      // Number ALL matches except Byes, even if empty (for future rounds)
       if (!match.isBye) {
         globalMatchNumber++;
         matchNumbers[match.id] = globalMatchNumber;
@@ -248,13 +424,14 @@ function generateBracketHTML(category, tournamentName = "") {
   // Footer & License
   const license = getCurrentLicense();
   const year = new Date().getFullYear();
-  const licenseText =
-    license && license.active && !license.isTrial
-      ? `Bản quyền: ${license.owner || "Người dùng"} (hết hạn 2099-12-31)`
-      : "Bản quyền: BẢN DÙNG THỬ / CHƯA KÍCH HOẠT";
+  let licenseText = "Bản quyền: BẢN DÙNG THỬ / CHƯA KÍCH HOẠT";
+  
+  if (license && license.active && !license.isTrial) {
+      const expiry = license.expiryDate ? new Date(license.expiryDate).toLocaleDateString("vi-VN") : "Vĩnh viễn";
+      licenseText = `Bản quyền: ${license.organizationName || license.owner || "Khách hàng"} (Hết hạn: ${expiry})`;
+  }
 
-  // FIXED DATE as requested
-  const footerText = `(c)Karate Manager 2000-${year} (2026-01-01) v 1.0.0 ${licenseText}`;
+  const footerText = `(c) Karate Manager 2000-${year} v1.0.0. ${licenseText}`;
 
   const css = `
     <style>
@@ -268,7 +445,7 @@ function generateBracketHTML(category, tournamentName = "") {
         min-height: 500px;
       }
       
-      /* Header with SportData style: Title left, Logo right */
+      /* Header */
       .pdf-header { 
         display: flex; justify-content: space-between; align-items: flex-start;
         padding: 5px 10px; 
@@ -297,9 +474,13 @@ function generateBracketHTML(category, tournamentName = "") {
       .pdf-info-item { padding: 4px 10px; border-right: 1px solid #000; background: #ddd; }
       .pdf-info-item:last-child { border-right: none; background: #fff; }
 
-      /* Rounds */
+      /* Rounds Layout */
       .pdf-content { display: flex; align-items: flex-start; gap: 0; margin-top: 40px; }
-      .pdf-bracket-area { display: flex; flex: 1; }
+      .pdf-bracket-area { 
+        display: flex; 
+        flex: 1; 
+        padding-right: 280px; 
+      }
       .pdf-rounds { display: flex; align-items: flex-start; }
       .pdf-round { display: flex; flex-direction: column; }
       .pdf-round-header { 
@@ -307,13 +488,18 @@ function generateBracketHTML(category, tournamentName = "") {
       }
       .pdf-round-title { font-size: 12px; font-weight: bold; color: #000; text-transform: uppercase; border-bottom: 2px solid #ccc; display: inline-block; padding-bottom: 2px; }
       .pdf-round-body { display: flex; flex-direction: column; padding-right: ${connectorWidth}px; }
-        /* Match Layout */
+      
+      /* Match Wrapper - ABSOLUTE LAYOUT */
       .pdf-match-wrapper { 
-        display: flex; align-items: flex-start; position: relative; 
+        display: flex; 
+        flex-direction: column; 
+        width: ${cellWidth}px; 
+        position: relative; 
       }
-      .pdf-match-pair { display: flex; flex-direction: column; width: ${cellWidth}px; position: relative; }
-      .pdf-match-pair.bye { opacity: 0.6; }
-        /* Cell with Gradients - đồng bộ với Bracket.css */
+      .pdf-match-pair { display: contents; } 
+      .pdf-match-wrapper.bye { opacity: 0.6; }
+
+      /* Cells */
       .pdf-cell { 
         display: flex; align-items: center; gap: 4px;
         width: 100%; height: ${cellHeight}px; 
@@ -324,21 +510,18 @@ function generateBracketHTML(category, tournamentName = "") {
         border-right: none;
         font-size: 12px;
       }
-        /* AKA (Red) Gradient - đồng bộ với desktop */
       .pdf-cell.aka {
         background: linear-gradient(to right, #fee2e2 0%, #ffffff 50%);
         border: 1px solid #fca5a5;
         border-left: 4px solid #dc2626;
         border-right: none;
       }
-      /* AO (Blue) Gradient - đồng bộ với desktop */
       .pdf-cell.ao {
         background: linear-gradient(to right, #dbeafe 0%, #ffffff 50%);
         border: 1px solid #93c5fd;
         border-left: 4px solid #2563eb;
         border-right: none;
       }
-      /* Ô trống - giữ nguyên gradient nhưng không có tên */
       .pdf-cell.aka.empty {
         background: linear-gradient(to right, #fee2e2 0%, #ffffff 50%);
         border: 1px solid #fca5a5;
@@ -359,7 +542,9 @@ function generateBracketHTML(category, tournamentName = "") {
       .pdf-club { 
         font-size: 10px; color: #64748b; font-weight: 500;
         white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; 
-      }      /* Connectors - Đồng bộ với Desktop Bracket.css */
+      }
+
+      /* Connectors */
       .pdf-connector { 
         position: absolute; 
         right: -${connectorWidth}px;
@@ -368,21 +553,10 @@ function generateBracketHTML(category, tournamentName = "") {
         z-index: 10;
         pointer-events: none;
       }
-      /* Đường dọc - đồng bộ với .connector::before */
-      .pdf-v-line { 
-        position: absolute; 
-        left: 0;
-        width: 1px; 
-        background: #64748b; 
-      }
-      /* Đường ngang - đồng bộ với .connector::after */
-      .pdf-h-mid { 
-        position: absolute; 
-        left: 0;
-        width: 100%; 
-        height: 1px; 
-        background: #64748b; 
-      }      /* Số trận - đồng bộ với desktop Bracket.css */
+      .pdf-v-line { position: absolute; left: 0; width: 1px; background: #64748b; }
+      .pdf-h-mid { position: absolute; left: 0; width: 100%; height: 1px; background: #64748b; }
+
+      /* Match Number */
       .pdf-match-number { 
         position: absolute; 
         right: 5px;
@@ -396,10 +570,10 @@ function generateBracketHTML(category, tournamentName = "") {
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
       }
 
-      /* Ô VÔ ĐỊCH (HCV) - CHAMPION SLOT - đồng bộ với desktop */
+      /* Champion Slot - ABSOLUTE positioning */
       .pdf-champion-slot {
         position: absolute;
-        right: -200px;
+        right: -310px; 
         display: flex;
         align-items: center;
         gap: 4px;
@@ -411,6 +585,8 @@ function generateBracketHTML(category, tournamentName = "") {
         border-right: none;
         font-size: 12px;
         min-width: 150px;
+        max-width: 250px;
+        z-index: 100;
       }
       .pdf-champion-icon { font-size: 14px; }
       .pdf-champion-name { 
@@ -421,202 +597,130 @@ function generateBracketHTML(category, tournamentName = "") {
         font-size: 10px; color: #64748b; font-weight: 500; white-space: nowrap;
       }
 
-      /* Connector cho trận chung kết - nối đến ô vô địch */
+      /* Champion Connector */
       .pdf-champion-connector {
         position: absolute;
-        right: -${connectorWidth}px;
-        top: 0;
-        width: 160px;
-        z-index: 10;
-        pointer-events: none;
+        right: -310px; 
+        width: 250px; 
+        height: 1px; 
+        background: #64748b;
+        z-index: 9;
       }
-      .pdf-champion-connector .pdf-v-line {
-        position: absolute; left: 0; width: 1px; background: #64748b;
-      }
-      .pdf-champion-connector .pdf-h-mid {
-        position: absolute; left: 0; width: 160px; height: 1px; background: #64748b;
-      }
-
-      /* Medal table */
+      
+      /* Medal Table */
       .pdf-medal-table { 
-        margin-left: 40px; min-width: 200px; 
+        margin-left: 20px; 
+        min-width: 200px; 
         border: 1px solid #000; background: white;
         align-self: flex-start; margin-top: 0;
+        z-index: 200;
       }
-      .pdf-medal-header { 
-        background: #000; color: white; padding: 8px 10px; 
-        font-size: 12px; font-weight: bold; text-align: center;
-        text-transform: uppercase;
-      }
-      .pdf-medal-row { 
-        display: flex; align-items: center; gap: 10px; padding: 8px 10px; 
-        border-bottom: 1px solid #ccc; font-size: 11px; font-weight: 600;
-      }
+      .pdf-medal-header { background: #000; color: white; padding: 8px 10px; font-size: 12px; font-weight: bold; text-align: center; text-transform: uppercase; }
+      .pdf-medal-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #ccc; font-size: 11px; font-weight: 600; }
       .pdf-medal-row:last-child { border-bottom: none; }
       
-      /* Referees Box (SportData style) */
-      .pdf-referees-box {
-        position: absolute; bottom: 40px; right: 20px;
-        border: 1px solid #333; width: 300px;
-      }
+      /* Referees Box */
+      .pdf-referees-box { position: absolute; bottom: 40px; right: 20px; border: 1px solid #333; width: 300px; }
       .pdf-ref-header { background: #ccc; font-size: 10px; font-weight: bold; padding: 2px 5px; border-bottom: 1px solid #333; }
       .pdf-ref-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; }
       .pdf-ref-cell { height: 20px; border-right: 1px solid #333; border-bottom: 1px solid #333; }
       .pdf-ref-cell:last-child { border-right: none; }
       
       /* Footer */
-      .pdf-footer {
-        position: absolute; bottom: 5px; left: 0; width: 100%;
-        text-align: center; font-size: 10px; color: #000;
-        font-family: 'Courier New', monospace;
-      }
+      .pdf-footer { position: absolute; bottom: 5px; left: 0; width: 100%; text-align: center; font-size: 10px; color: #000; font-family: 'Courier New', monospace; }
     </style>
   `;
 
   // Construction
   let html = `${css}<div class="pdf-bracket">`;
-
-  // Header
   html += `<div class="pdf-header">`;
-  html += `<div class="pdf-header-left">`;
-  html += `<div class="pdf-category-name">${name}</div>`;
-  html += `<div class="pdf-tournament-name">${tournamentName}</div>`;
-  html += `</div>`;
-  // Info bar like SportData
-  html += `<div class="pdf-info-bar">`;
-  html += `<div class="pdf-info-item">Thảm</div>`;
-  html += `<div class="pdf-info-item">Trận</div>`;
-  html += `</div>`;
-  // Logo Box
-  html += `<div class="pdf-header-right">`;
-  html += `<div class="pdf-logo-text">Karate</div>`;
-  html += `<div class="pdf-logo-sub">QUẢN LÝ GIẢI ĐẤU</div>`;
-  html += `</div>`;
-  html += `</div>`; // end header
-  html += `<div class="pdf-content">`;
-  html += `<div class="pdf-bracket-area"><div class="pdf-rounds">`;
+  html += `<div class="pdf-header-left"><div class="pdf-category-name">${name}</div><div class="pdf-tournament-name">${tournamentName}</div></div>`;
+  html += `<div class="pdf-info-bar"><div class="pdf-info-item">Thảm</div><div class="pdf-info-item">Trận</div></div>`;
+  html += `<div class="pdf-header-right"><div class="pdf-logo-text">Karate</div><div class="pdf-logo-sub">QUẢN LÝ GIẢI ĐẤU</div></div>`;
+  html += `</div>`; 
+  html += `<div class="pdf-content"><div class="pdf-bracket-area"><div class="pdf-rounds">`;
 
-  // Render Rounds - ĐỒNG BỘ VỚI Bracket.jsx
+  // Render Rounds
   for (let r = 1; r <= numRounds; r++) {
     const roundMatches = matchesByRound[r] || [];
     const roundTitle = roundNames[r - 1] || `Vòng ${r}`;
     const roundIndex = r - 1;
-
-    // Đồng bộ công thức tính toán với Bracket.jsx
     const gapMultiplier = Math.pow(2, roundIndex);
-    const CELL_CENTER = cellHeight / 2; // = 12px
-
-    // lineSpacing cho vòng này
+    const CELL_CENTER = cellHeight / 2;
     const lineSpacing = (BASE_LINE_SPACING * gapMultiplier) / 2;
-
-    // athleteGap = lineSpacing - cellHeight (đồng bộ với Bracket.jsx)
     const athleteGap = roundIndex === 0 ? cellGap : lineSpacing - cellHeight;
-
-    // Chiều cao thực của match ở vòng này
     const currentMatchHeight = cellHeight + athleteGap + cellHeight;
+    const matchGapValue = BASE_LINE_SPACING * gapMultiplier - currentMatchHeight;
 
-    // Khoảng cách giữa các trận trong cùng 1 vòng
-    const matchGapValue =
-      BASE_LINE_SPACING * gapMultiplier - currentMatchHeight;
-
-    // TopOffset: căn VĐV1 với đường ngang từ vòng trước
     let topOffset = 0;
     if (roundIndex > 0) {
       let prevTopOffset = 0;
       let prevAthleteGap = cellGap;
-
       for (let i = 1; i < roundIndex; i++) {
         const iGapMultiplier = Math.pow(2, i);
         const iLineSpacing = (BASE_LINE_SPACING * iGapMultiplier) / 2;
         const iAthleteGap = iLineSpacing - cellHeight;
-
         const prevLineY = prevTopOffset + cellHeight + prevAthleteGap / 2;
         prevTopOffset = prevLineY - CELL_CENTER;
         prevAthleteGap = iAthleteGap;
       }
-
       const prevLineY = prevTopOffset + cellHeight + prevAthleteGap / 2;
       topOffset = prevLineY - CELL_CENTER;
     }
-    html += `<div class="pdf-round">`;
-    html += `<div class="pdf-round-header"><span class="pdf-round-title">${roundTitle}</span></div>`;
-    html += `<div class="pdf-round-body">`;
+
+    html += `<div class="pdf-round"><div class="pdf-round-header"><span class="pdf-round-title">${roundTitle}</span></div><div class="pdf-round-body">`;
 
     roundMatches.forEach((match, idx) => {
       const { athlete1, athlete2, winner, isBye } = match;
       const isWinner1 = winner?.id === athlete1?.id;
       const isWinner2 = winner?.id === athlete2?.id;
-
       const marginTop = idx === 0 ? topOffset : 0;
       const matchNum = matchNumbers[match.id];
       const isLastRound = r === numRounds;
 
-      // Wrapper style handles spacing - đồng bộ với Bracket.jsx
-      html += `<div class="pdf-match-wrapper" style="margin-top: ${marginTop}px; margin-bottom: ${matchGapValue}px;">`;
-
-      // Match Pair with dynamic gap and height - đồng bộ với Bracket.jsx
-      html += `<div class="pdf-match-pair ${
-        isBye ? "bye" : ""
-      }" style="height: ${currentMatchHeight}px;">`;
-
-      // AKA Cell (Top)
-      html += `<div class="pdf-cell aka ${isWinner1 ? "winner" : ""} ${
-        !athlete1 ? "empty" : ""
-      }">`;
-      html += `<span class="pdf-name">${athlete1?.name || ""}</span>`;
-      if (athlete1?.club)
-        html += `<span class="pdf-club">(${athlete1.club})</span>`;
+      // Wrapper
+      html += `<div class="pdf-match-wrapper ${isBye ? "bye" : ""}" style="margin-top: ${marginTop}px; margin-bottom: ${matchGapValue}px;">`;
+      
+      // Cell 1
+      html += `<div class="pdf-cell aka ${isWinner1 ? "winner" : ""} ${!athlete1 ? "empty" : ""}"><span class="pdf-name">${athlete1?.name || ""}</span>`;
+      if (athlete1?.club) html += `<span class="pdf-club">(${athlete1.club})</span>`;
       html += `</div>`;
 
-      // AO Cell (Bottom) - với athleteGap đồng bộ
-      html += `<div class="pdf-cell ao ${isWinner2 ? "winner" : ""} ${
-        !athlete2 ? "empty" : ""
-      }" style="margin-top: ${athleteGap}px;">`;
-      html += `<span class="pdf-name">${athlete2?.name || ""}</span>`;
-      if (athlete2?.club)
-        html += `<span class="pdf-club">(${athlete2.club})</span>`;
-      html += `</div>`; // Connectors (Right side) - đồng bộ với desktop
+      // Cell 2
+      html += `<div class="pdf-cell ao ${isWinner2 ? "winner" : ""} ${!athlete2 ? "empty" : ""}" style="margin-top: ${athleteGap}px;"><span class="pdf-name">${athlete2?.name || ""}</span>`;
+      if (athlete2?.club) html += `<span class="pdf-club">(${athlete2.club})</span>`;
+      html += `</div>`;
+
+      // Connectors
       const lineTop = cellHeight;
       const lineHeight = athleteGap;
       const lineCenter = cellHeight + athleteGap / 2;
 
-      if (!isLastRound) {
-        html += `<div class="pdf-connector" style="height: ${currentMatchHeight}px;">`;
-        html += `<div class="pdf-v-line" style="top: ${lineTop}px; height: ${lineHeight}px;"></div>`;
-        html += `<div class="pdf-h-mid" style="top: ${lineCenter}px;"></div>`;
-        html += `</div>`;
-      }
+      // Vertical line always rendered
+      html += `<div class="pdf-connector" style="height: ${currentMatchHeight}px;">`;
+      html += `<div class="pdf-v-line" style="top: ${lineTop}px; height: ${lineHeight}px;"></div>`;
+      html += `<div class="pdf-h-mid" style="top: ${lineCenter}px;"></div>`;
+      html += `</div>`;
 
-      // Connector và ô vô địch cho trận chung kết
-      if (isLastRound) {
-        html += `<div class="pdf-champion-connector" style="height: ${currentMatchHeight}px;">`;
-        html += `<div class="pdf-v-line" style="top: ${lineTop}px; height: ${lineHeight}px;"></div>`;
-        html += `<div class="pdf-h-mid" style="top: ${lineCenter}px;"></div>`;
-        html += `</div>`;
-
-        // Ô VÔ ĐỊCH (HCV)
-        html += `<div class="pdf-champion-slot" style="top: ${
-          lineCenter - cellHeight / 2
-        }px;">`;
-        html += `<span class="pdf-champion-icon">🥇</span>`;
-        html += `<span class="pdf-champion-name">${winner?.name || ""}</span>`;
-        if (winner?.club)
-          html += `<span class="pdf-champion-club">(${winner.club})</span>`;
-        html += `</div>`;
-      }
-
-      // Match Number - đặt bên phải trong match-box như desktop
+      // Match Number
       if (matchNum) {
         html += `<div class="pdf-match-number" style="top: ${lineCenter}px;">${matchNum}</div>`;
       }
 
-      html += `</div>`; // end match-pair
+      // Champion Slot (Absolute)
+      if (isLastRound) {
+        html += `<div class="pdf-champion-connector" style="top: ${lineCenter}px; right: -310px;"></div>`;
+        html += `<div class="pdf-champion-slot" style="top: ${lineCenter - cellHeight / 2}px; right: -310px;">`;
+        html += `<span class="pdf-champion-icon">🥇</span>`;
+        html += `<span class="pdf-champion-name">${winner?.name || ""}</span>`;
+        if (winner?.club) html += `<span class="pdf-champion-club">(${winner.club})</span>`;
+        html += `</div>`;
+      }
+
       html += `</div>`; // end match-wrapper
     });
-
-    html += `</div></div>`; // end round-body & round
+    html += `</div></div>`; // end round
   }
-
   html += `</div></div>`; // end rounds & bracket-area
 
   // Medal Table
@@ -645,116 +749,151 @@ function generateBracketHTML(category, tournamentName = "") {
   return html;
 }
 
-export function exportScoreSheetToPDF(
-  category,
-  matches,
-  filename = "bang_diem.pdf"
-) {
-  const pdf = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: "a4",
-  });
-
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 15;
-  let yPos = margin;
-  const isTrial = isTrialLicense();
-
-  pdf.setFontSize(18);
-  pdf.setFont("helvetica", "bold");
-  pdf.text("BANG DIEM TRONG TAI", pageWidth / 2, yPos, { align: "center" });
-  yPos += 5;
-  pdf.setFontSize(10);
-  pdf.setFont("helvetica", "normal");
-  pdf.text("(PHIẾU CHẤM ĐIỂM)", pageWidth / 2, yPos, { align: "center" });
-  yPos += 12;
-
-  pdf.setFontSize(12);
-  pdf.setFont("helvetica", "normal");
-  pdf.text(`Hang muc: ${transliterate(category.name)}`, margin, yPos);
-  yPos += 7;
-  pdf.text(
-    `Loai: ${category.type === "kumite" ? "Kumite" : "Kata"}`,
-    margin,
-    yPos
-  );
-  yPos += 15;
-
-  matches.forEach((match, index) => {
-    if (yPos > 260) {
-      pdf.addPage();
-      yPos = margin;
-      if (isTrial) {
-        addTrialWatermark(pdf, pageWidth, pageHeight);
-      }
-    }
-
-    pdf.setDrawColor(100, 100, 100);
-    pdf.setLineWidth(0.5);
-    pdf.rect(margin, yPos, pageWidth - 2 * margin, 40);
-
-    pdf.setFontSize(11);
-    pdf.setFont("helvetica", "bold");
-    pdf.text(`Tran ${index + 1}`, margin + 5, yPos + 8);
-
-    pdf.setFont("helvetica", "normal");
-    const athlete1Name = transliterate(match.athlete1?.name || "MIỄN");
-    const athlete2Name = transliterate(match.athlete2?.name || "MIỄN");
-
-    pdf.setFillColor(254, 202, 202);
-    pdf.rect(margin + 5, yPos + 12, 85, 10, "F");
-    pdf.setTextColor(0, 0, 0);
-    pdf.setFontSize(10);
-    pdf.text(`AKA: ${athlete1Name}`, margin + 7, yPos + 19);
-
-    pdf.setFillColor(191, 219, 254);
-    pdf.rect(margin + 5, yPos + 25, 85, 10, "F");
-    pdf.text(`AO: ${athlete2Name}`, margin + 7, yPos + 32);
-
-    const scoreBoxX = margin + 95;
-    pdf.setFillColor(255, 255, 255);
-
-    pdf.setFontSize(9);
-    pdf.text("Diem:", scoreBoxX, yPos + 17);
-    pdf.rect(scoreBoxX + 12, yPos + 12, 20, 8);
-
-    pdf.text("Diem:", scoreBoxX, yPos + 30);
-    pdf.rect(scoreBoxX + 12, yPos + 25, 20, 8);
-
-    const winnerBoxX = scoreBoxX + 40;
-    pdf.setDrawColor(0, 0, 0);
-    pdf.rect(winnerBoxX, yPos + 10, 45, 28);
-
-    pdf.setFontSize(9);
-    pdf.text("Nguoi thang:", winnerBoxX + 5, yPos + 18);
-
-    pdf.rect(winnerBoxX + 5, yPos + 22, 5, 5);
-    pdf.text("AKA", winnerBoxX + 12, yPos + 26);
-
-    pdf.rect(winnerBoxX + 25, yPos + 22, 5, 5);
-    pdf.text("AO", winnerBoxX + 32, yPos + 26);
-
-    yPos += 47;
-  });
-
-  if (isTrial) {
-    addTrialWatermark(pdf, pageWidth, pageHeight);
-  }
-
-  pdf.setFontSize(8);
-  pdf.setTextColor(128, 128, 128);
-  const now = new Date();
-  const footer = `Xuat luc: ${now.toLocaleDateString(
-    "vi-VN"
-  )} ${now.toLocaleTimeString("vi-VN")}`;
-  pdf.text(footer, pageWidth / 2, 285, { align: "center" });
-
-  pdf.save(filename);
+function transliterate(str) {
+  if (!str) return "";
+  const map = {
+    à: "a",
+    á: "a",
+    ả: "a",
+    ã: "a",
+    ạ: "a",
+    ă: "a",
+    ằ: "a",
+    ắ: "a",
+    ẳ: "a",
+    ẵ: "a",
+    ặ: "a",
+    â: "a",
+    ầ: "a",
+    ấ: "a",
+    ẩ: "a",
+    ẫ: "a",
+    ậ: "a",
+    đ: "d",
+    è: "e",
+    é: "e",
+    ẻ: "e",
+    ẽ: "e",
+    ẹ: "e",
+    ê: "e",
+    ề: "e",
+    ế: "e",
+    ể: "e",
+    ễ: "e",
+    ệ: "e",
+    ì: "i",
+    í: "i",
+    ỉ: "i",
+    ĩ: "i",
+    ị: "i",
+    ò: "o",
+    ó: "o",
+    ỏ: "o",
+    õ: "o",
+    ọ: "o",
+    ô: "o",
+    ồ: "o",
+    ố: "o",
+    ổ: "o",
+    ỗ: "o",
+    ộ: "o",
+    ơ: "o",
+    ờ: "o",
+    ớ: "o",
+    ở: "o",
+    ỡ: "o",
+    ợ: "o",
+    ù: "u",
+    ú: "u",
+    ủ: "u",
+    ũ: "u",
+    ụ: "u",
+    ư: "u",
+    ừ: "u",
+    ứ: "u",
+    ử: "u",
+    ữ: "u",
+    ự: "u",
+    ỳ: "y",
+    ý: "y",
+    ỷ: "y",
+    ỹ: "y",
+    ỵ: "y",
+    À: "A",
+    Á: "A",
+    Ả: "A",
+    Ã: "A",
+    Ạ: "A",
+    Ă: "A",
+    Ằ: "A",
+    Ắ: "A",
+    Ẳ: "A",
+    Ẵ: "A",
+    Ặ: "A",
+    Â: "A",
+    Ầ: "A",
+    Ấ: "A",
+    Ẩ: "A",
+    Ẫ: "A",
+    Ậ: "A",
+    Đ: "D",
+    È: "E",
+    É: "E",
+    Ẻ: "E",
+    Ẽ: "E",
+    Ẹ: "E",
+    Ê: "E",
+    Ề: "E",
+    Ế: "E",
+    Ể: "E",
+    Ễ: "E",
+    Ệ: "E",
+    Ì: "I",
+    Í: "I",
+    Ỉ: "I",
+    Ĩ: "I",
+    Ị: "I",
+    Ò: "O",
+    Ó: "O",
+    Ỏ: "O",
+    Õ: "O",
+    Ọ: "O",
+    Ô: "O",
+    Ồ: "O",
+    Ố: "O",
+    Ổ: "O",
+    Ỗ: "O",
+    Ộ: "O",
+    Ơ: "O",
+    Ờ: "O",
+    Ớ: "O",
+    Ở: "O",
+    Ỡ: "O",
+    Ợ: "O",
+    Ù: "U",
+    Ú: "U",
+    Ủ: "U",
+    Ũ: "U",
+    Ụ: "U",
+    Ư: "U",
+    Ừ: "U",
+    Ứ: "U",
+    Ử: "U",
+    Ữ: "U",
+    Ự: "U",
+    Ỳ: "Y",
+    Ý: "Y",
+    Ỷ: "Y",
+    Ỹ: "Y",
+    Ỵ: "Y",
+  };
+  return str
+    .split("")
+    .map((char) => map[char] || char)
+    .join("");
 }
 
-function transliterate(str) {
+function removeVietnameseTones(str) {
   if (!str) return "";
   const map = {
     à: "a",

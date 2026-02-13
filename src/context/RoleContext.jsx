@@ -20,9 +20,9 @@ export const TIME_STATUS = {
 export const ROLES = {
   ADMIN: 'admin',
   COACH: 'coach',
-  SECRETARY: 'secretary',
-  OWNER: 'owner'
+  SECRETARY: 'secretary'
 };
+
 
 /**
  * RoleProvider - Quản lý vai trò và dữ liệu giải từ file .krt/.kmatch
@@ -39,20 +39,8 @@ export function RoleProvider({ children }) {
   const [matchResults, setMatchResults] = useState([]);
   const [scoringEnabled, setScoringEnabled] = useState(false);
 
-  // Owner/System state
-  const [licenseData, setLicenseData] = useState({
-    active: true,
-    type: 'trial', // trial | full
-    expiryDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString(), // 1 year default
-    maxTournaments: 3,
-    maxMachines: 1
-  });
-  
-  const [systemConfig, setSystemConfig] = useState({
-    adminLocked: false,
-    rulesLocked: false,
-    preventNewAdmin: false
-  });
+  // Owner/System state - Removed
+
 
   /**
    * Kiểm tra thời gian hiện tại so với StartTime và EndTime
@@ -129,26 +117,9 @@ export function RoleProvider({ children }) {
   }, []);
 
   /**
-   * Cập nhật thông tin bản quyền (Owner)
+   * Owner actions removed
    */
-  const updateLicense = useCallback((newData) => {
-    setLicenseData(prev => {
-      const updated = { ...prev, ...newData };
-      localStorage.setItem('krt_license', JSON.stringify(updated));
-      return updated;
-    });
-  }, []);
 
-  /**
-   * Cập nhật cấu hình hệ thống (Owner)
-   */
-  const updateSystemConfig = useCallback((newConfig) => {
-    setSystemConfig(prev => {
-      const updated = { ...prev, ...newConfig };
-      localStorage.setItem('krt_system_config', JSON.stringify(updated));
-      return updated;
-    });
-  }, []);
 
   /**
    * Cập nhật trạng thái thời gian (gọi định kỳ)
@@ -348,11 +319,8 @@ export function RoleProvider({ children }) {
     getMatchResult,
     getMatchExportData,
     
-    // Owner Actions
-    updateLicense,
-    updateSystemConfig,
-    licenseData,
-    systemConfig,
+    // Owner Actions - Removed
+
     
     resetRole
   };
