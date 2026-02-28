@@ -170,7 +170,7 @@ function RoleSelectPage() {
         </div>
 
         <div className="role-select-footer">
-          <p>Phiên bản 1.0.0 • Offline 100%</p>
+          <p>Phiên bản 1.0.1 (28/02/2026) • Offline 100%</p>
         </div>
       </div>
 
