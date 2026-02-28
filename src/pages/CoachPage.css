@@ -40,7 +40,11 @@
 
 .open-file-btn {
   padding: 0.8rem 1.5rem;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  background: linear-gradient(
+    135deg,
+    var(--color-primary),
+    var(--color-primary-dark)
+  );
   border: none;
   color: #fff;
   border-radius: 12px;
@@ -157,19 +161,26 @@
   padding: 1rem 1.5rem;
   border-radius: 12px;
   margin-bottom: 1.5rem;
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 1rem;
   border: 1px solid var(--color-border);
 }
 
-.coach-name-section label {
+.coach-name-field {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.coach-name-field label {
   color: var(--color-text-secondary);
   font-weight: 500;
   white-space: nowrap;
+  font-size: 0.9rem;
 }
 
-.coach-name-section input {
+.coach-name-field input {
   flex: 1;
   padding: 0.6rem 1rem;
   background: var(--color-bg-tertiary);
@@ -179,14 +190,20 @@
   font-size: 1rem;
 }
 
-.coach-name-section input:focus {
+.coach-name-field input:focus {
   outline: none;
   border-color: var(--color-primary);
 }
 
-.coach-name-section input:disabled {
+.coach-name-field input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .coach-name-section {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Events Section */
@@ -256,6 +273,48 @@
   transform: scale(1.02);
 }
 
+/* Section header actions */
+.section-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.template-btn {
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.template-btn:hover {
+  transform: scale(1.02);
+}
+
+.import-btn {
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+}
+
+.import-btn:hover {
+  transform: scale(1.02);
+}
+
 /* Athlete Form Overlay */
 .athlete-form-overlay {
   position: fixed;
@@ -273,10 +332,10 @@
 
 .athlete-form {
   background: var(--color-bg-primary);
-  padding: 2rem;
+  padding: 1.5rem;
   border-radius: 16px;
   width: 100%;
-  max-width: 500px;
+  max-width: 520px;
   max-height: 90vh;
   overflow-y: auto;
   border: 1px solid var(--color-border);
@@ -285,22 +344,41 @@
 
 .athlete-form h4 {
   color: var(--color-text-primary);
-  margin: 0 0 1.5rem 0;
-  font-size: 1.3rem;
+  margin: 0 0 1rem 0;
+  font-size: 1.2rem;
 }
 
 .form-errors {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: 8px;
-  padding: 0.8rem;
-  margin-bottom: 1rem;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.75rem;
 }
 
 .error-item {
   color: var(--color-error);
   font-size: 0.85rem;
   padding: 0.2rem 0;
+}
+
+.required-star {
+  color: var(--color-error, #ef4444);
+}
+
+.coach-athlete-form .form-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.coach-athlete-form .form-row-single {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.coach-athlete-form .form-row-single .form-group {
+  width: 100%;
 }
 
 .form-row {
@@ -319,12 +397,15 @@
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.3rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .form-group label {
   color: var(--color-text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 500;
 }
 
 .form-group input,
@@ -350,8 +431,10 @@
 
 .form-actions {
   display: flex;
-  gap: 1rem;
-  margin-top: 1.5rem;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
 }
 
 .cancel-btn {
@@ -372,7 +455,11 @@
 .submit-btn {
   flex: 1;
   padding: 0.8rem;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  background: linear-gradient(
+    135deg,
+    var(--color-primary),
+    var(--color-primary-dark)
+  );
   border: none;
   color: #fff;
   border-radius: 8px;
@@ -450,6 +537,38 @@
 .no-athletes .hint {
   font-size: 0.9rem;
   margin-top: 0.5rem;
+}
+
+/* Coach Stats Bar */
+.coach-stats-bar {
+  display: flex;
+  gap: 1.5rem;
+  padding: 1rem 1.5rem;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+}
+
+.coach-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.5rem 1.5rem;
+}
+
+.coach-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.coach-stat-label {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  font-weight: 500;
 }
 
 /* Export Section */

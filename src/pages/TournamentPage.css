@@ -159,6 +159,72 @@
   gap: var(--spacing-4);
 }
 
+/* Medal estimation bar */
+.medal-estimation-bar {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-6);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-8);
+}
+
+.medal-estimation-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin-bottom: var(--spacing-4);
+}
+
+.medal-items {
+  display: flex;
+  gap: var(--spacing-6);
+  flex-wrap: wrap;
+}
+
+.medal-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-3) var(--spacing-5);
+  border-radius: var(--radius-lg);
+  min-width: 90px;
+}
+
+.medal-item.gold {
+  background: rgba(255, 215, 0, 0.12);
+}
+
+.medal-item.silver {
+  background: rgba(192, 192, 192, 0.15);
+}
+
+.medal-item.bronze {
+  background: rgba(205, 127, 50, 0.12);
+}
+
+.medal-item.total {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.medal-icon {
+  font-size: 28px;
+}
+
+.medal-count {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.medal-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 @media (max-width: 640px) {
   .stats-bar {
     flex-wrap: wrap;
@@ -168,5 +234,9 @@
 
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  .medal-items {
+    justify-content: center;
   }
 }

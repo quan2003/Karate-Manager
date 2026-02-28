@@ -4,7 +4,7 @@
  */
 
 // ĐỊA CHỈ SERVER LICENSE - Cần thay đổi khi deploy lên VPS
-export const SERVER_URL = "http://103.82.194.186:2000"; 
+export const SERVER_URL = "http://103.82.194.186:2000";
 
 export const LICENSE_TYPES = {
   TRIAL: "trial",
@@ -99,11 +99,12 @@ export async function generateLicenseKey(options) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        secret: "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a", // Đã khớp với VPS
+        secret:
+          "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a", // Đã khớp với VPS
         type: options.type,
         days: options.customDuration,
         maxMachines: options.customMachines,
-        clientName: options.organizationName
+        clientName: options.organizationName,
       }),
     });
 
@@ -113,14 +114,14 @@ export async function generateLicenseKey(options) {
         key: data.license.key,
         raw: data.license.key,
         data: {
-            t: data.license.type,
-            o: data.license.clientName,
-            e: data.license.expiryDate,
-            mm: data.license.maxMachines
+          t: data.license.type,
+          o: data.license.clientName,
+          e: data.license.expiryDate,
+          mm: data.license.maxMachines,
         },
         expiryDate: data.license.expiryDate,
         version: 1,
-        machineIds: [] // Server manages this now
+        machineIds: [], // Server manages this now
       };
     } else {
       throw new Error(data.message);
@@ -137,10 +138,10 @@ export async function generateLicenseKey(options) {
 export async function validateLicenseKey(licenseKey, currentMachineId = null) {
   try {
     const machineId = currentMachineId || generateMachineId();
-    
+
     // Check if empty
     if (!licenseKey || !licenseKey.trim()) {
-        return { valid: false, error: "Vui lòng nhập License Key" };
+      return { valid: false, error: "Vui lòng nhập License Key" };
     }
 
     const response = await fetch(`${SERVER_URL}/api/license/verify`, {
@@ -150,7 +151,7 @@ export async function validateLicenseKey(licenseKey, currentMachineId = null) {
     });
 
     const result = await response.json();
-    
+
     if (result.success && result.valid) {
       return {
         valid: true,
@@ -159,19 +160,22 @@ export async function validateLicenseKey(licenseKey, currentMachineId = null) {
           organizationName: result.data.clientName,
           expiryDate: result.data.expiryDate,
           maxMachines: result.data.maxMachines,
-          features: LICENSE_CONFIG[result.data.type]?.features || []
+          features: LICENSE_CONFIG[result.data.type]?.features || [],
         },
-        keyVersion: 1
+        keyVersion: 1,
       };
     } else {
-      return { 
-        valid: false, 
-        error: result.message || "License không hợp lệ hoặc lỗi server" 
+      return {
+        valid: false,
+        error: result.message || "License không hợp lệ hoặc lỗi server",
       };
     }
   } catch (e) {
     console.error(e);
-    return { valid: false, error: "Không thể kết nối đến License Server (" + SERVER_URL + ")" };
+    return {
+      valid: false,
+      error: "Không thể kết nối đến License Server (" + SERVER_URL + ")",
+    };
   }
 }
 
@@ -180,7 +184,7 @@ export async function validateLicenseKey(licenseKey, currentMachineId = null) {
  */
 export async function activateLicense(licenseKey, machineId) {
   const validation = await validateLicenseKey(licenseKey, machineId);
-  
+
   if (!validation.valid) {
     return validation;
   }
@@ -192,7 +196,7 @@ export async function activateLicense(licenseKey, machineId) {
     activatedAt: new Date().toISOString(),
     active: true,
     isTrial: false,
-    lastCheck: new Date().toISOString()
+    lastCheck: new Date().toISOString(),
   };
 
   localStorage.setItem("krt_active_license", JSON.stringify(activationData));
@@ -237,10 +241,13 @@ export async function revalidateLicenseWithServer() {
   const license = getCurrentLicense();
   if (!license || !license.licenseKey || license.isTrial) return;
 
-  const valid = await validateLicenseKey(license.licenseKey, generateMachineId());
+  const valid = await validateLicenseKey(
+    license.licenseKey,
+    generateMachineId()
+  );
   if (!valid.valid) {
-      console.warn("License invalidated by server:", valid.error);
-      // Optional: deactive locally if server says invalid
+    console.warn("License invalidated by server:", valid.error);
+    // Optional: deactive locally if server says invalid
   }
 }
 
@@ -319,31 +326,59 @@ export function isLicenseValid() {
 export function getLicenseStatus() {
   const license = getCurrentLicense();
   if (!license) {
-    return { status: "none", message: "Chưa kích hoạt license", color: "#64748b" };
+    return {
+      status: "none",
+      message: "Chưa kích hoạt license",
+      color: "#64748b",
+    };
   }
   const daysRemaining = getDaysRemaining();
   const config = LICENSE_CONFIG[license.type];
 
   if (!isLicenseValid()) {
-    return { status: "expired", message: "License đã hết hạn", color: "#ef4444", license };
+    return {
+      status: "expired",
+      message: "License đã hết hạn",
+      color: "#ef4444",
+      license,
+    };
   }
   if (license.isTrial || license.type === LICENSE_TYPES.TRIAL) {
-    return { status: "trial", message: `Dùng thử - Còn ${daysRemaining} ngày`, color: "#f59e0b", daysRemaining, license };
+    return {
+      status: "trial",
+      message: `Dùng thử - Còn ${daysRemaining} ngày`,
+      color: "#f59e0b",
+      daysRemaining,
+      license,
+    };
   }
-  return { status: "active", message: `${config?.displayName || license.type} - Còn ${daysRemaining} ngày`, color: "#10b981", daysRemaining, license };
+  return {
+    status: "active",
+    message: `${
+      config?.displayName || license.type
+    } - Còn ${daysRemaining} ngày`,
+    color: "#10b981",
+    daysRemaining,
+    license,
+  };
 }
 
 export function getGeneratedLicenses() {
   try {
     const saved = localStorage.getItem("krt_generated_licenses");
     return saved ? JSON.parse(saved) : [];
-  } catch (e) { return []; }
+  } catch (e) {
+    return [];
+  }
 }
 
 export async function getAllLicensesFromServer() {
   try {
-    const secret = "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
-    const response = await fetch(`${SERVER_URL}/api/license/list?secret=${secret}`);
+    const secret =
+      "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
+    const response = await fetch(
+      `${SERVER_URL}/api/license/list?secret=${secret}`
+    );
     const data = await response.json();
     if (data.success) {
       return data.licenses || [];
@@ -357,7 +392,8 @@ export async function getAllLicensesFromServer() {
 
 export async function revokeLicense(key) {
   try {
-    const secret = "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
+    const secret =
+      "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
     const response = await fetch(`${SERVER_URL}/api/license/revoke`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -371,7 +407,8 @@ export async function revokeLicense(key) {
 
 export async function resetLicenseMachines(key) {
   try {
-    const secret = "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
+    const secret =
+      "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
     const response = await fetch(`${SERVER_URL}/api/license/reset`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -385,7 +422,8 @@ export async function resetLicenseMachines(key) {
 
 export async function extendLicense(key, days) {
   try {
-    const secret = "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
+    const secret =
+      "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
     const response = await fetch(`${SERVER_URL}/api/license/extend`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -423,12 +461,24 @@ export async function getLicenseInfoFromServer(key) {
 /**
  * Gửi yêu cầu hỗ trợ license (gia hạn, cấp lại key, v.v.)
  */
-export async function submitLicenseRequest({ key, machineId, requestType, contactInfo, message }) {
+export async function submitLicenseRequest({
+  key,
+  machineId,
+  requestType,
+  contactInfo,
+  message,
+}) {
   try {
     const response = await fetch(`${SERVER_URL}/api/license/request`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, machineId, requestType, contactInfo, message }),
+      body: JSON.stringify({
+        key,
+        machineId,
+        requestType,
+        contactInfo,
+        message,
+      }),
     });
     return await response.json();
   } catch (e) {
@@ -437,49 +487,66 @@ export async function submitLicenseRequest({ key, machineId, requestType, contac
 }
 
 // Stubbed legacy function mocks
-export function getNextVersionForMachine() { return 1; }
-export function getLicenseHistoryByMachine() { return []; }
-export function exportLicenseFile(licenseInfo) {
-    const content = `LICENSE KEY: ${licenseInfo.key}\nClient: ${licenseInfo.data.o}\nExpires: ${licenseInfo.expiryDate}`;
-    const blob = new Blob([content], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `license.lic`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+export function getNextVersionForMachine() {
+  return 1;
 }
-export function importLicenseFile() {
+export function getLicenseHistoryByMachine() {
+  return [];
+}
+export function exportLicenseFile(licenseInfo) {
+  const content = `LICENSE KEY: ${licenseInfo.key}\nClient: ${licenseInfo.data.o}\nExpires: ${licenseInfo.expiryDate}`;
+  const blob = new Blob([content], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `license.lic`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+export function importLicenseFile(existingFile) {
   return new Promise((resolve, reject) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".lic,.txt";
-        
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
+    const processFile = (file) => {
       const reader = new FileReader();
       reader.onload = async (event) => {
         try {
           const content = event.target.result;
           // Extract Key from format "LICENSE KEY: XXXXX..."
           const match = content.match(/LICENSE KEY:\s*([^\r\n]+)/);
-          
+
           if (match && match[1]) {
             const key = match[1].trim();
             // Validate & Activate
             const result = await activateLicense(key, generateMachineId());
             resolve(result);
           } else {
-             resolve({ valid: false, error: "File license không đúng định dạng" });
+            resolve({
+              valid: false,
+              error: "File license không đúng định dạng",
+            });
           }
         } catch (err) {
           resolve({ valid: false, error: "Lỗi đọc file: " + err.message });
         }
       };
       reader.readAsText(file);
+    };
+
+    // If a file is already provided, use it directly without opening a file dialog
+    if (existingFile) {
+      processFile(existingFile);
+      return;
+    }
+
+    // Otherwise, open a file dialog
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".lic,.txt";
+
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      processFile(file);
     };
 
     input.click();

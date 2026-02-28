@@ -12,6 +12,7 @@ export default function Bracket({
   onMatchClick,
   printMode = false,
 }) {
+  const isTeamBracket = bracket?.isTeamBracket || false;
   if (!bracket || !bracket.matches) {
     return (
       <div className="bracket-empty">
@@ -175,9 +176,24 @@ export default function Bracket({
                           {getFlagEmoji(match.athlete1.country)}
                         </span>
                       )}
-                      <span className="name">{match.athlete1?.name || ""}</span>
-                      {match.athlete1?.club && (
-                        <span className="club">({match.athlete1.club})</span>
+                      {isTeamBracket ? (
+                        <>
+                          <span className="name">
+                            {match.athlete1?.name || ""}
+                          </span>
+                          {match.athlete1?.members && (
+                            <span className="club" style={{fontSize: '10px', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px'}} title={match.athlete1.members.map(m => m.name).join(', ')}>
+                              ({match.athlete1.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <span className="name">{match.athlete1?.name || ""}</span>
+                          {match.athlete1?.club && (
+                            <span className="club">({match.athlete1.club})</span>
+                          )}
+                        </>
                       )}
                     </div>{" "}
                     {/* VĐV 2 */}
@@ -194,9 +210,24 @@ export default function Bracket({
                           {getFlagEmoji(match.athlete2.country)}
                         </span>
                       )}
-                      <span className="name">{match.athlete2?.name || ""}</span>
-                      {match.athlete2?.club && (
-                        <span className="club">({match.athlete2.club})</span>
+                      {isTeamBracket ? (
+                        <>
+                          <span className="name">
+                            {match.athlete2?.name || ""}
+                          </span>
+                          {match.athlete2?.members && (
+                            <span className="club" style={{fontSize: '10px', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px'}} title={match.athlete2.members.map(m => m.name).join(', ')}>
+                              ({match.athlete2.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <span className="name">{match.athlete2?.name || ""}</span>
+                          {match.athlete2?.club && (
+                            <span className="club">({match.athlete2.club})</span>
+                          )}
+                        </>
                       )}
                     </div>
                     {/* Đường nối: dọc + ngang */}
@@ -250,9 +281,14 @@ export default function Bracket({
                         <span className="champion-name">
                           {match.winner?.name || ""}
                         </span>
-                        {match.winner?.club && (
+                        {!isTeamBracket && match.winner?.club && (
                           <span className="champion-club">
                             ({match.winner.club})
+                          </span>
+                        )}
+                        {isTeamBracket && match.winner?.members && (
+                          <span className="champion-club" style={{fontSize: '10px', color: '#64748b'}}>
+                            ({match.winner.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})
                           </span>
                         )}
                       </div>

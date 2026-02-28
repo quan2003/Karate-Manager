@@ -14,7 +14,9 @@ import {
 import { createKmatchData, saveKmatchFile } from "../services/matchService";
 import { importCoachFile } from "../services/adminImportService";
 import Modal from "../components/common/Modal";
+import ConfirmDialog from "../components/common/ConfirmDialog";
 import DateInput from "../components/common/DateInput";
+import DateTimeInput from "../components/common/DateTimeInput";
 import "./HomePage.css";
 
 export default function HomePage() {
@@ -28,6 +30,11 @@ export default function HomePage() {
   const [selectedTournament, setSelectedTournament] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const [editingTournament, setEditingTournament] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    message: "",
+    onConfirm: null,
+  });
   const [formData, setFormData] = useState({
     name: "",
     startDate: new Date().toISOString().split("T")[0],
@@ -116,11 +123,15 @@ export default function HomePage() {
 
     handleCloseModal();
   };
-
   const handleDelete = (id) => {
-    if (confirm("Bạn có chắc muốn xóa giải đấu này?")) {
-      dispatch({ type: ACTIONS.DELETE_TOURNAMENT, payload: id });
-    }
+    setConfirmDialog({
+      open: true,
+      message: "Bạn có chắc muốn xóa giải đấu này?",
+      onConfirm: () => {
+        dispatch({ type: ACTIONS.DELETE_TOURNAMENT, payload: id });
+        setConfirmDialog({ open: false, message: "", onConfirm: null });
+      },
+    });
   };
 
   // Mở modal xuất KRT
@@ -673,9 +684,7 @@ export default function HomePage() {
             <div className="form-row">
               <div className="input-group">
                 <label className="input-label">Thời gian bắt đầu nhập *</label>
-                <input
-                  type="datetime-local"
-                  className="input"
+                <DateTimeInput
                   value={krtFormData.startTime}
                   onChange={(e) =>
                     setKrtFormData((prev) => ({
@@ -688,9 +697,7 @@ export default function HomePage() {
 
               <div className="input-group">
                 <label className="input-label">Thời gian kết thúc nhập *</label>
-                <input
-                  type="datetime-local"
-                  className="input"
+                <DateTimeInput
                   value={krtFormData.endTime}
                   onChange={(e) =>
                     setKrtFormData((prev) => ({
@@ -897,9 +904,7 @@ export default function HomePage() {
             <div className="form-row">
               <div className="input-group">
                 <label className="input-label">Thời gian bắt đầu nhập</label>
-                <input
-                  type="datetime-local"
-                  className="input"
+                <DateTimeInput
                   value={kmatchSettings.startTime}
                   onChange={(e) =>
                     setKmatchSettings((prev) => ({
@@ -912,9 +917,7 @@ export default function HomePage() {
 
               <div className="input-group">
                 <label className="input-label">Thời gian kết thúc nhập</label>
-                <input
-                  type="datetime-local"
-                  className="input"
+                <DateTimeInput
                   value={kmatchSettings.endTime}
                   onChange={(e) =>
                     setKmatchSettings((prev) => ({
@@ -942,8 +945,22 @@ export default function HomePage() {
                 🎯 Xuất file .kmatch
               </button>
             </div>
-          </div>
+          </div>{" "}
         </Modal>
+
+        {/* Confirm Dialog */}
+        <ConfirmDialog
+          isOpen={confirmDialog.open}
+          title="Xác nhận xóa"
+          message={confirmDialog.message}
+          onConfirm={() => confirmDialog.onConfirm?.()}
+          onCancel={() =>
+            setConfirmDialog({ open: false, message: "", onConfirm: null })
+          }
+          confirmText="Xóa"
+          cancelText="Hủy"
+          type="danger"
+        />
       </div>
     </div>
   );

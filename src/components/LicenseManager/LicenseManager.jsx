@@ -10,6 +10,7 @@ import {
   submitLicenseRequest,
   LICENSE_CONFIG,
 } from "../../services/licenseService";
+import ConfirmDialog from "../common/ConfirmDialog";
 import "./LicenseManager.css";
 
 const TABS = {
@@ -41,6 +42,9 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
   const [requestSuccess, setRequestSuccess] = useState(false);
   const [requestError, setRequestError] = useState("");
 
+  // Confirm dialog state
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+
   // Server info
   const [serverInfo, setServerInfo] = useState(null);
   const [loadingServerInfo, setLoadingServerInfo] = useState(false);
@@ -55,7 +59,10 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
     setStatus(getLicenseStatus());
 
     // Fetch from server if has license key
-    if (currentLicense?.licenseKey && currentLicense.licenseKey !== "TRIAL-LOCAL") {
+    if (
+      currentLicense?.licenseKey &&
+      currentLicense.licenseKey !== "TRIAL-LOCAL"
+    ) {
       fetchServerInfo(currentLicense.licenseKey);
     }
   };
@@ -152,13 +159,15 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
 
     e.target.value = null;
   };
-
   const handleDeactivate = () => {
-    if (window.confirm("Bạn có chắc muốn hủy kích hoạt license hiện tại?")) {
-      deactivateLicense();
-      refreshLicense();
-      if (onLicenseChanged) onLicenseChanged();
-    }
+    setShowDeactivateConfirm(true);
+  };
+
+  const handleDeactivateConfirmed = () => {
+    deactivateLicense();
+    refreshLicense();
+    if (onLicenseChanged) onLicenseChanged();
+    setShowDeactivateConfirm(false);
   };
 
   const handleSubmitRequest = async () => {
@@ -220,7 +229,10 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
   const config = license ? LICENSE_CONFIG[license.type] : null;
   const totalDays = config?.durationDays || 30;
   const usedDays = totalDays - daysRemaining;
-  const progressPercent = Math.min(100, Math.max(0, (usedDays / totalDays) * 100));
+  const progressPercent = Math.min(
+    100,
+    Math.max(0, (usedDays / totalDays) * 100)
+  );
 
   const getProgressColor = () => {
     if (isExpired) return "#ef4444";
@@ -230,7 +242,10 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
 
   return (
     <div className="license-manager-overlay" onClick={onClose}>
-      <div className="license-manager-container" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="license-manager-container"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="lm-header">
           <div className="lm-header-left">
@@ -240,9 +255,10 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
               <div className="lm-header-sub">Karate Tournament Manager</div>
             </div>
           </div>
-          <button className="lm-close-btn" onClick={onClose}>×</button>
+          <button className="lm-close-btn" onClick={onClose}>
+            ×
+          </button>
         </div>
-
         {/* Tabs */}
         <div className="lm-tabs">
           <button
@@ -267,7 +283,6 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
             Yêu cầu hỗ trợ
           </button>
         </div>
-
         {/* Body */}
         <div className="lm-body">
           {/* === TAB: INFO === */}
@@ -282,7 +297,11 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                         isExpired ? "expired" : isTrial ? "trial" : "active"
                       }`}
                     >
-                      {isExpired ? "❌ Hết hạn" : isTrial ? "🔓 Dùng thử" : "✅ Đã kích hoạt"}
+                      {isExpired
+                        ? "❌ Hết hạn"
+                        : isTrial
+                        ? "🔓 Dùng thử"
+                        : "✅ Đã kích hoạt"}
                     </span>
                   </div>
 
@@ -290,31 +309,49 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                   <div className="lm-info-card">
                     <div className="lm-info-row">
                       <span className="lm-info-label">Loại License</span>
-                      <span className={`lm-info-value ${isExpired ? "expired" : isTrial ? "trial" : "active"}`}>
+                      <span
+                        className={`lm-info-value ${
+                          isExpired ? "expired" : isTrial ? "trial" : "active"
+                        }`}
+                      >
                         {config?.displayName || license.type}
                       </span>
                     </div>
-                    {license.organizationName && license.organizationName !== "Trial User" && (
-                      <div className="lm-info-row">
-                        <span className="lm-info-label">Tổ chức / Khách hàng</span>
-                        <span className="lm-info-value">{license.organizationName}</span>
-                      </div>
-                    )}
+                    {license.organizationName &&
+                      license.organizationName !== "Trial User" && (
+                        <div className="lm-info-row">
+                          <span className="lm-info-label">
+                            Tổ chức / Khách hàng
+                          </span>
+                          <span className="lm-info-value">
+                            {license.organizationName}
+                          </span>
+                        </div>
+                      )}
                     <div className="lm-info-row">
                       <span className="lm-info-label">Ngày kích hoạt</span>
-                      <span className="lm-info-value">{formatDate(license.activatedAt)}</span>
+                      <span className="lm-info-value">
+                        {formatDate(license.activatedAt)}
+                      </span>
                     </div>
                     <div className="lm-info-row">
                       <span className="lm-info-label">Ngày hết hạn</span>
-                      <span className={`lm-info-value ${isExpired ? "expired" : ""}`}>
+                      <span
+                        className={`lm-info-value ${
+                          isExpired ? "expired" : ""
+                        }`}
+                      >
                         {formatDate(license.expiryDate)}
                       </span>
                     </div>
                     {serverInfo && (
                       <div className="lm-info-row">
-                        <span className="lm-info-label">Số máy đã kích hoạt</span>
+                        <span className="lm-info-label">
+                          Số máy đã kích hoạt
+                        </span>
                         <span className="lm-info-value">
-                          {serverInfo.activatedMachines || 0} / {serverInfo.maxMachines || 1}
+                          {serverInfo.activatedMachines || 0} /{" "}
+                          {serverInfo.maxMachines || 1}
                         </span>
                       </div>
                     )}
@@ -334,7 +371,9 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                       </div>
                       <div className="lm-days-text">
                         <span>Còn lại</span>
-                        <span style={{ fontWeight: 700, color: getProgressColor() }}>
+                        <span
+                          style={{ fontWeight: 700, color: getProgressColor() }}
+                        >
                           {daysRemaining} ngày
                         </span>
                       </div>
@@ -355,7 +394,8 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                         marginBottom: "0.75rem",
                       }}
                     >
-                      ⛔ License đã hết hạn! Vui lòng gia hạn hoặc kích hoạt key mới.
+                      ⛔ License đã hết hạn! Vui lòng gia hạn hoặc kích hoạt key
+                      mới.
                     </div>
                   )}
 
@@ -367,18 +407,27 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                   )}
 
                   {/* License Key (masked) */}
-                  {license.licenseKey && license.licenseKey !== "TRIAL-LOCAL" && (
-                    <div className="lm-machine-box">
-                      <div className="lm-machine-label">License Key hiện tại</div>
-                      <div className="lm-machine-id" style={{ fontSize: "0.75rem" }}>
-                        {license.licenseKey.substring(0, 20)}...
+                  {license.licenseKey &&
+                    license.licenseKey !== "TRIAL-LOCAL" && (
+                      <div className="lm-machine-box">
+                        <div className="lm-machine-label">
+                          License Key hiện tại
+                        </div>
+                        <div
+                          className="lm-machine-id"
+                          style={{ fontSize: "0.75rem" }}
+                        >
+                          {license.licenseKey.substring(0, 20)}...
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
                   {/* Deactivate */}
                   {!isTrial && (
-                    <button className="lm-deactivate-btn" onClick={handleDeactivate}>
+                    <button
+                      className="lm-deactivate-btn"
+                      onClick={handleDeactivate}
+                    >
                       Hủy kích hoạt license hiện tại
                     </button>
                   )}
@@ -388,9 +437,11 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                   <div className="lm-no-license-icon">🔒</div>
                   <h4>Chưa có License</h4>
                   <p>
-                    Bạn chưa kích hoạt bản quyền nào.<br />
-                    Hãy chuyển sang tab <strong>"Kích hoạt"</strong> để nhập key,
-                    hoặc tab <strong>"Yêu cầu hỗ trợ"</strong> để xin cấp key.
+                    Bạn chưa kích hoạt bản quyền nào.
+                    <br />
+                    Hãy chuyển sang tab <strong>"Kích hoạt"</strong> để nhập
+                    key, hoặc tab <strong>"Yêu cầu hỗ trợ"</strong> để xin cấp
+                    key.
                   </p>
                 </div>
               )}
@@ -416,7 +467,8 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                   </button>
                 </div>
                 <div className="lm-hint">
-                  * Cung cấp ID này cho nhà cung cấp để nhận key kích hoạt cho máy này.
+                  * Cung cấp ID này cho nhà cung cấp để nhận key kích hoạt cho
+                  máy này.
                 </div>
               </div>
             </>
@@ -429,7 +481,13 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                 <div className="lm-success-msg">
                   <span className="lm-success-icon">🎉</span>
                   Kích hoạt bản quyền thành công!
-                  <div style={{ fontSize: "0.8rem", fontWeight: 400, marginTop: "0.5rem" }}>
+                  <div
+                    style={{
+                      fontSize: "0.8rem",
+                      fontWeight: 400,
+                      marginTop: "0.5rem",
+                    }}
+                  >
                     Bạn có thể sử dụng đầy đủ tính năng ngay bây giờ.
                   </div>
                 </div>
@@ -458,11 +516,14 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                       </button>
                     </div>
                     <div className="lm-hint">
-                      * Nếu Key có khóa theo ID máy, ID phải trùng khớp với ID máy bên dưới.
+                      * Nếu Key có khóa theo ID máy, ID phải trùng khớp với ID
+                      máy bên dưới.
                     </div>
                   </div>
 
-                  {activateError && <div className="lm-error-msg">⚠️ {activateError}</div>}
+                  {activateError && (
+                    <div className="lm-error-msg">⚠️ {activateError}</div>
+                  )}
 
                   {/* File Import */}
                   <input
@@ -481,7 +542,9 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
 
                   {/* Machine ID */}
                   <div className="lm-machine-box" style={{ marginTop: "1rem" }}>
-                    <div className="lm-machine-label">🖥️ ID Máy tính của bạn</div>
+                    <div className="lm-machine-label">
+                      🖥️ ID Máy tính của bạn
+                    </div>
                     <div className="lm-machine-row">
                       <input
                         type="text"
@@ -511,7 +574,13 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                 <div className="lm-success-msg">
                   <span className="lm-success-icon">✅</span>
                   Yêu cầu đã được gửi thành công!
-                  <div style={{ fontSize: "0.8rem", fontWeight: 400, marginTop: "0.5rem" }}>
+                  <div
+                    style={{
+                      fontSize: "0.8rem",
+                      fontWeight: 400,
+                      marginTop: "0.5rem",
+                    }}
+                  >
                     Chúng tôi sẽ liên hệ lại trong thời gian sớm nhất.
                   </div>
                   <button
@@ -540,7 +609,9 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                     >
                       <option value="renewal">🔄 Gia hạn License</option>
                       <option value="new_key">🔑 Cấp Key mới</option>
-                      <option value="reset_machine">🖥️ Reset máy (đổi thiết bị)</option>
+                      <option value="reset_machine">
+                        🖥️ Reset máy (đổi thiết bị)
+                      </option>
                       <option value="upgrade">⬆️ Nâng cấp gói License</option>
                       <option value="support">💬 Hỗ trợ kỹ thuật</option>
                       <option value="other">📝 Khác</option>
@@ -568,21 +639,31 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                   </div>
 
                   {/* Auto-filled info */}
-                  <div style={{
-                    background: "#f1f5f9",
-                    borderRadius: "8px",
-                    padding: "0.65rem",
-                    fontSize: "0.75rem",
-                    color: "#64748b",
-                  }}>
-                    <div><strong>Thông tin tự động gửi kèm:</strong></div>
+                  <div
+                    style={{
+                      background: "#f1f5f9",
+                      borderRadius: "8px",
+                      padding: "0.65rem",
+                      fontSize: "0.75rem",
+                      color: "#64748b",
+                    }}
+                  >
+                    <div>
+                      <strong>Thông tin tự động gửi kèm:</strong>
+                    </div>
                     <div>• ID Máy: {machineId}</div>
-                    {license?.licenseKey && license.licenseKey !== "TRIAL-LOCAL" && (
-                      <div>• License Key: {license.licenseKey.substring(0, 15)}...</div>
-                    )}
+                    {license?.licenseKey &&
+                      license.licenseKey !== "TRIAL-LOCAL" && (
+                        <div>
+                          • License Key: {license.licenseKey.substring(0, 15)}
+                          ...
+                        </div>
+                      )}
                   </div>
 
-                  {requestError && <div className="lm-error-msg">⚠️ {requestError}</div>}
+                  {requestError && (
+                    <div className="lm-error-msg">⚠️ {requestError}</div>
+                  )}
 
                   <button
                     className="lm-submit-btn"
@@ -591,7 +672,10 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                   >
                     {submitting ? (
                       <>
-                        <div className="lm-spinner" style={{ borderTopColor: "white" }} />
+                        <div
+                          className="lm-spinner"
+                          style={{ borderTopColor: "white" }}
+                        />
                         Đang gửi...
                       </>
                     ) : (
@@ -608,8 +692,19 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
               )}
             </>
           )}
-        </div>
+        </div>{" "}
       </div>
+
+      <ConfirmDialog
+        isOpen={showDeactivateConfirm}
+        title="Hủy kích hoạt License"
+        message="Bạn có chắc muốn hủy kích hoạt license hiện tại?"
+        onConfirm={handleDeactivateConfirmed}
+        onCancel={() => setShowDeactivateConfirm(false)}
+        confirmText="Hủy kích hoạt"
+        cancelText="Không"
+        type="danger"
+      />
     </div>
   );
 }

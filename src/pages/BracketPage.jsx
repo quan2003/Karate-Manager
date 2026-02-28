@@ -165,6 +165,8 @@ export default function BracketPage() {
         {
           paperSize: category.bracket.size <= 16 ? "a4" : "a3",
           orientation: "landscape",
+          scheduleInfo: tournament.schedule?.[category.id] || null,
+          splitSettings: tournament.splitSettings || null,
         }
       );
     } catch (error) {
@@ -212,6 +214,7 @@ export default function BracketPage() {
   const bronzeMedalists = semiFinalMatches
     .map((m) => getLoser(m))
     .filter((a) => a !== null);
+  const isTeamBracket = category.bracket?.isTeamBracket || false;
   return (
     <div className="page bracket-page">
       <div className="container-fluid">
@@ -286,11 +289,14 @@ export default function BracketPage() {
                       {champion ? (
                         <>
                           {champion.name}
-                          {champion.club && (
+                          {!isTeamBracket && champion.club && (
                             <span className="medal-club">
                               {" "}
                               - {champion.club}
                             </span>
+                          )}
+                          {isTeamBracket && champion.members && (
+                            <span className="medal-club"> ({champion.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>
                           )}
                         </>
                       ) : (
@@ -306,11 +312,14 @@ export default function BracketPage() {
                       {silverMedalist ? (
                         <>
                           {silverMedalist.name}
-                          {silverMedalist.club && (
+                          {!isTeamBracket && silverMedalist.club && (
                             <span className="medal-club">
                               {" "}
                               - {silverMedalist.club}
                             </span>
+                          )}
+                          {isTeamBracket && silverMedalist.members && (
+                            <span className="medal-club"> ({silverMedalist.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>
                           )}
                         </>
                       ) : (
@@ -326,11 +335,14 @@ export default function BracketPage() {
                       {bronzeMedalists[0] ? (
                         <>
                           {bronzeMedalists[0].name}
-                          {bronzeMedalists[0].club && (
+                          {!isTeamBracket && bronzeMedalists[0].club && (
                             <span className="medal-club">
                               {" "}
                               - {bronzeMedalists[0].club}
                             </span>
+                          )}
+                          {isTeamBracket && bronzeMedalists[0].members && (
+                            <span className="medal-club"> ({bronzeMedalists[0].members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>
                           )}
                         </>
                       ) : (
@@ -346,11 +358,14 @@ export default function BracketPage() {
                       {bronzeMedalists[1] ? (
                         <>
                           {bronzeMedalists[1].name}
-                          {bronzeMedalists[1].club && (
+                          {!isTeamBracket && bronzeMedalists[1].club && (
                             <span className="medal-club">
                               {" "}
                               - {bronzeMedalists[1].club}
                             </span>
+                          )}
+                          {isTeamBracket && bronzeMedalists[1].members && (
+                            <span className="medal-club"> ({bronzeMedalists[1].members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>
                           )}
                         </>
                       ) : (

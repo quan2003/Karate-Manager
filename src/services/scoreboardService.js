@@ -26,11 +26,13 @@ export function openScoreboard(match, categoryType, categoryName, tournamentName
       id: match.athlete1.id,
       name: match.athlete1.name,
       club: match.athlete1.club || '',
+      members: match.athlete1.members || [],
     } : null,
     athlete2: match.athlete2 ? {
       id: match.athlete2.id,
       name: match.athlete2.name,
       club: match.athlete2.club || '',
+      members: match.athlete2.members || [],
     } : null,
     // Existing scores for re-editing completed matches
     score1: match.score1,

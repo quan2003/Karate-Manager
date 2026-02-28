@@ -1,0 +1,449 @@
+.statistics-page {
+  min-height: 100vh;
+}
+
+/* Tabs */
+.stats-tabs {
+  display: flex;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-6);
+  border-bottom: 2px solid var(--color-border);
+  padding-bottom: 0;
+}
+
+.stats-tab {
+  padding: var(--spacing-3) var(--spacing-5);
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: -2px;
+}
+
+.stats-tab:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary);
+}
+
+.stats-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* Overview Grid */
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-6);
+}
+
+.overview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-5);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.overview-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.overview-card.male .overview-card-value {
+  color: #3b82f6;
+}
+
+.overview-card.female .overview-card-value {
+  color: #ec4899;
+}
+
+.overview-card-icon {
+  font-size: 28px;
+}
+
+.overview-card-value {
+  font-size: var(--font-size-3xl);
+  font-weight: 700;
+  color: var(--color-primary-light);
+}
+
+.overview-card-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* Section Card */
+.section-card {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+  margin-bottom: var(--spacing-6);
+}
+
+.section-card h3 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin-bottom: var(--spacing-4);
+}
+
+/* Club list */
+.club-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--spacing-3);
+}
+
+.club-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-3) var(--spacing-4);
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-md);
+  transition: background 0.2s;
+}
+
+.club-item:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.club-name {
+  font-weight: 500;
+  font-size: var(--font-size-sm);
+}
+
+.club-stats {
+  display: flex;
+  gap: var(--spacing-3);
+  font-size: var(--font-size-xs);
+}
+
+.club-stat {
+  color: var(--color-text-muted);
+}
+
+.club-stat.male {
+  color: #3b82f6;
+}
+
+.club-stat.female {
+  color: #ec4899;
+}
+
+/* Medal items (shared with TournamentPage) */
+.stats-content .medal-items {
+  display: flex;
+  gap: var(--spacing-6);
+  flex-wrap: wrap;
+}
+
+/* Filter Bar */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-4);
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.filter-group label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.filter-select {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.search-filter {
+  flex: 1;
+  min-width: 180px;
+}
+
+.search-filter input {
+  width: 100%;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+.search-filter input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+/* Results Tab */
+.results-actions {
+  display: flex;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-6);
+  flex-wrap: wrap;
+}
+
+.results-table-wrapper {
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.results-table th {
+  background: var(--color-bg-tertiary);
+  padding: var(--spacing-3) var(--spacing-4);
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.results-table td {
+  padding: var(--spacing-3) var(--spacing-4);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.results-table tr:hover {
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.results-table tr.has-result {
+  background: rgba(16, 185, 129, 0.04);
+}
+
+.cat-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.type-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  width: fit-content;
+}
+
+.type-badge.kumite {
+  background: var(--color-aka-bg);
+  color: var(--color-aka);
+}
+
+.type-badge.kata {
+  background: var(--color-ao-bg);
+  color: var(--color-ao);
+}
+
+.result-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.result-cell strong {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+}
+
+.result-cell small {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.btn-sm {
+  padding: 4px 12px !important;
+  font-size: var(--font-size-xs) !important;
+}
+
+/* Medal Tally */
+.medal-tally-wrapper {
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.medal-tally-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.medal-tally-table th {
+  background: var(--color-bg-tertiary);
+  padding: var(--spacing-3) var(--spacing-4);
+  text-align: center;
+  font-weight: 600;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.medal-tally-table th.club-col {
+  text-align: left;
+}
+
+.medal-tally-table td {
+  padding: var(--spacing-3) var(--spacing-4);
+  text-align: center;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.medal-tally-table .club-cell {
+  text-align: left;
+  font-weight: 500;
+}
+
+.medal-tally-table .rank-cell {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.medal-tally-table tr.top-1 {
+  background: rgba(255, 215, 0, 0.08);
+}
+
+.medal-tally-table tr.top-2 {
+  background: rgba(192, 192, 192, 0.08);
+}
+
+.medal-tally-table tr.top-3 {
+  background: rgba(205, 127, 50, 0.06);
+}
+
+.medal-tally-table tr:hover {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.gold-cell {
+  color: #d4a017;
+  font-weight: 600;
+}
+
+.silver-cell {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.bronze-cell {
+  color: #b87333;
+  font-weight: 600;
+}
+
+.total-cell {
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.medal-tally-table tfoot td {
+  background: var(--color-bg-tertiary);
+  border-top: 2px solid var(--color-border);
+}
+
+/* Result Form */
+.result-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.result-form-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-4);
+}
+
+.result-form-row.two-col {
+  grid-template-columns: 1fr 1fr;
+}
+
+.result-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.result-form-group label {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+}
+
+/* Empty state */
+.stats-content .empty-state {
+  text-align: center;
+  padding: var(--spacing-12);
+  color: var(--color-text-muted);
+}
+
+.stats-content .empty-icon {
+  font-size: 48px;
+  margin-bottom: var(--spacing-4);
+}
+
+@media (max-width: 768px) {
+  .stats-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .stats-tab {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .overview-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .club-list {
+    grid-template-columns: 1fr;
+  }
+
+  .result-form-row.two-col {
+    grid-template-columns: 1fr;
+  }
+}

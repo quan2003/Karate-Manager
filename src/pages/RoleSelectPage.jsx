@@ -10,13 +10,6 @@ import LicenseSplash from "../components/LicenseSplash/LicenseSplash";
 import LicenseWarning from "../components/LicenseWarning/LicenseWarning";
 import "./RoleSelectPage.css";
 
-// Mật khẩu Admin mặc định
-const ADMIN_PASSWORD = "admin123";
-// Mật khẩu Thư ký mặc định (khác Admin)
-const SECRETARY_PASSWORD = "admin123";
-// Mật khẩu Owner Removed
-
-
 /**
  * Trang chọn vai trò khi khởi động ứng dụng
  */
@@ -26,12 +19,6 @@ function RoleSelectPage() {
   const [showLicenseSplash, setShowLicenseSplash] = useState(true); // Default show splash
   const [showLicenseWarning, setShowLicenseWarning] = useState(false);
   const [warningType, setWarningType] = useState("demo"); // 'demo' or 'expired'
-
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-
-  const [selectedRoleToAuth, setSelectedRoleToAuth] = useState(null);
-  const [password, setPassword] = useState("");
-  const [passwordError, setPasswordError] = useState("");
 
   const [licenseStatus, setLicenseStatus] = useState(null);
 
@@ -63,6 +50,7 @@ function RoleSelectPage() {
     setShowLicenseWarning(false);
     refreshLicenseStatus();
   };
+
   const handleSelectRole = (role) => {
     // Block all access when license is expired
     const status = getLicenseStatus();
@@ -72,56 +60,14 @@ function RoleSelectPage() {
       return;
     }
 
-    if (role === ROLES.ADMIN || role === ROLES.SECRETARY) {
-      // Yêu cầu nhập mật khẩu cho Admin và Thư ký
-      setSelectedRoleToAuth(role);
-      setShowPasswordModal(true);
-      setPassword("");
-      setPasswordError("");
-      setPasscode("");
-      setPasscodeError("");
+    setRole(role);
+    if (role === ROLES.ADMIN) {
+      navigate("/admin");
+    } else if (role === ROLES.SECRETARY) {
+      navigate("/secretary");
     } else {
-      setRole(role);
       navigate("/coach");
     }
-  };
-
-  const handlePasswordSubmit = (e) => {
-    e.preventDefault();
-
-    // Check for Owner backdoor - Removed
-
-
-    // Check password based on role
-    let isValid = false;
-    if (selectedRoleToAuth === ROLES.ADMIN) {
-      isValid = password === ADMIN_PASSWORD;
-    } else if (selectedRoleToAuth === ROLES.SECRETARY) {
-      isValid = password === SECRETARY_PASSWORD;
-    }
-
-    if (isValid) {
-      setRole(selectedRoleToAuth);
-      setShowPasswordModal(false);
-
-      if (selectedRoleToAuth === ROLES.ADMIN) {
-        navigate("/admin");
-      } else {
-        navigate("/secretary");
-      }
-    } else {
-      setPasswordError("Mật khẩu không đúng!");
-    }
-  };
-
-  // handlePasscodeSubmit Removed
-
-
-  const handlePasswordCancel = () => {
-    setShowPasswordModal(false);
-    setSelectedRoleToAuth(null);
-    setPassword("");
-    setPasswordError("");
   };
 
   return (
@@ -134,20 +80,26 @@ function RoleSelectPage() {
           <h1>Karate Tournament Manager</h1>
           <p className="subtitle">Hệ thống quản lý giải đấu Karate</p>
           {licenseStatus?.status === "expired" && (
-            <div style={{
-              background: 'linear-gradient(135deg, #dc2626, #b91c1c)',
-              color: 'white',
-              padding: '0.75rem 1.5rem',
-              borderRadius: '8px',
-              marginTop: '1rem',
-              fontSize: '0.95rem',
-              fontWeight: '600',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              cursor: 'pointer',
-              boxShadow: '0 4px 15px rgba(220, 38, 38, 0.3)'
-            }} onClick={() => { setWarningType('expired'); setShowLicenseWarning(true); }}>
+            <div
+              style={{
+                background: "linear-gradient(135deg, #dc2626, #b91c1c)",
+                color: "white",
+                padding: "0.75rem 1.5rem",
+                borderRadius: "8px",
+                marginTop: "1rem",
+                fontSize: "0.95rem",
+                fontWeight: "600",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                cursor: "pointer",
+                boxShadow: "0 4px 15px rgba(220, 38, 38, 0.3)",
+              }}
+              onClick={() => {
+                setWarningType("expired");
+                setShowLicenseWarning(true);
+              }}
+            >
               ⛔ License đã hết hạn — Nhấn để kích hoạt bản quyền
             </div>
           )}
@@ -169,7 +121,6 @@ function RoleSelectPage() {
               <li>✅ Xuất file .krt cho HLV</li>
               <li>✅ Import danh sách VĐV</li>
               <li>✅ Chốt danh sách chính thức</li>
-              <li>🔒 Yêu cầu mật khẩu</li>
             </ul>
             <button className="role-btn admin-btn">
               Vào với vai trò Admin
@@ -191,7 +142,6 @@ function RoleSelectPage() {
               <li>✅ Bấm điểm trận đấu</li>
               <li>✅ Quản lý Sigma</li>
               <li>✅ Xuất kết quả cho Admin</li>
-              <li>🔒 Yêu cầu mật khẩu</li>
             </ul>
             <button className="role-btn secretary-btn">
               Vào với vai trò Thư ký
@@ -224,51 +174,6 @@ function RoleSelectPage() {
         </div>
       </div>
 
-      {/* Password Modal */}
-      {showPasswordModal && (
-        <div className="password-overlay" onClick={handlePasswordCancel}>
-          <div className="password-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-icon">🔐</div>
-            <h3>
-              Xác thực {selectedRoleToAuth === ROLES.ADMIN ? "Admin" : "Thư ký"}
-            </h3>
-            <p>Vui lòng nhập mật khẩu để truy cập</p>
-
-            <form onSubmit={handlePasswordSubmit}>
-              <div className="password-input-group">
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Nhập mật khẩu..."
-                  autoFocus
-                />
-              </div>
-
-              {passwordError && (
-                <div className="password-error">{passwordError}</div>
-              )}
-
-              <div className="password-actions">
-                <button
-                  type="button"
-                  className="password-cancel-btn"
-                  onClick={handlePasswordCancel}
-                >
-                  Hủy
-                </button>
-                <button type="submit" className="password-submit-btn">
-                  Xác nhận
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Owner Passcode Modal Removed */}
-
-
       {/* License Startup Splash */}
       {showLicenseSplash && <LicenseSplash onDismiss={handleSplashDismiss} />}
 
@@ -276,7 +181,11 @@ function RoleSelectPage() {
       {showLicenseWarning && (
         <LicenseWarning
           type={warningType}
-          onCancel={warningType === 'expired' ? () => {} : () => setShowLicenseWarning(false)}
+          onCancel={
+            warningType === "expired"
+              ? () => {}
+              : () => setShowLicenseWarning(false)
+          }
           onSuccess={handleLicenseSuccess}
         />
       )}

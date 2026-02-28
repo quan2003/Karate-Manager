@@ -9,11 +9,14 @@ import CategoryPage from "./pages/CategoryPage";
 import BracketPage from "./pages/BracketPage";
 import CoachPage from "./pages/CoachPage";
 import SecretaryPage from "./pages/SecretaryPage";
+import StatisticsPage from "./pages/StatisticsPage";
+import SchedulePage from "./pages/SchedulePage";
 
 import { initializeTrialIfNeeded, revalidateLicenseWithServer } from "./services/licenseService";
 import TrialWatermark from "./components/TrialWatermark/TrialWatermark";
 import LicenseBadge from "./components/LicenseBadge/LicenseBadge";
 import LicenseGuard from "./components/LicenseGuard";
+import { ToastProvider } from "./components/common/Toast";
 import "./index.css";
 
 function App() {
@@ -25,6 +28,7 @@ function App() {
   }, []);
 
   return (
+    <ToastProvider>
     <RoleProvider>
       <TournamentProvider>
         <Router>
@@ -40,6 +44,8 @@ function App() {
               <Route path="/tournament/:id" element={<LicenseGuard><TournamentPage /></LicenseGuard>} />
               <Route path="/category/:id" element={<LicenseGuard><CategoryPage /></LicenseGuard>} />
               <Route path="/bracket/:id" element={<LicenseGuard><BracketPage /></LicenseGuard>} />
+              <Route path="/statistics/:id" element={<LicenseGuard><StatisticsPage /></LicenseGuard>} />
+              <Route path="/schedule/:id" element={<LicenseGuard><SchedulePage /></LicenseGuard>} />
 
               {/* Coach Routes */}
               <Route path="/coach" element={<LicenseGuard><CoachPage /></LicenseGuard>} />
@@ -62,6 +68,7 @@ function App() {
         </Router>
       </TournamentProvider>
     </RoleProvider>
+    </ToastProvider>
   );
 }
 

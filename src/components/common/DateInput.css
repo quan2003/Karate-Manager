@@ -21,14 +21,14 @@
 
 .date-input-calendar-btn {
   position: absolute;
-  right: 8px;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
   background: transparent;
   border: none;
   color: var(--color-text-secondary);
   cursor: pointer;
-  padding: 4px;
+  padding: 2px;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;

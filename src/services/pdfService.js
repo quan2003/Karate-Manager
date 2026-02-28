@@ -7,79 +7,101 @@ import { isTrialLicense, getCurrentLicense } from "./licenseService";
  * Theme: SportData Replica (Gradient backgrounds, Header with Logo, Referees Table)
  */
 
+const DEFAULT_SPLIT_THRESHOLD = 20; // Mặc định chia nhánh khi > 20 VĐV
+const RENDER_SCALE = 2;
+
+/**
+ * Render one bracket HTML to a canvas image
+ */
+async function renderBracketToCanvas(htmlContent) {
+  const tempContainer = document.createElement("div");
+  tempContainer.style.position = "absolute";
+  tempContainer.style.left = "-9999px";
+  tempContainer.style.background = "white";
+  tempContainer.style.padding = "0";
+  tempContainer.innerHTML = htmlContent;
+  document.body.appendChild(tempContainer);
+  const canvas = await html2canvas(tempContainer, {
+    scale: RENDER_SCALE, useCORS: true, allowTaint: true,
+    backgroundColor: "#ffffff", logging: false,
+    windowWidth: tempContainer.scrollWidth + 40,
+    windowHeight: tempContainer.scrollHeight + 40,
+  });
+  document.body.removeChild(tempContainer);
+  return canvas;
+}
+
+/**
+ * Add a canvas image as a page to a jsPDF, returns {pdf, width, height}
+ */
+function addCanvasPage(pdf, canvas, isFirstPage) {
+  const imgWidth = canvas.width;
+  const imgHeight = canvas.height;
+  const isPortrait = imgHeight >= imgWidth * 1.2;
+  const orientation = isPortrait ? "portrait" : "landscape";
+  const A4_WIDTH = orientation === "landscape" ? 297 : 210;
+  const A4_HEIGHT = orientation === "landscape" ? 210 : 297;
+  const MARGIN = 10;
+  const safeWidth = A4_WIDTH - MARGIN * 2;
+  const safeHeight = A4_HEIGHT - MARGIN * 2;
+  const scaleX = safeWidth / (imgWidth / RENDER_SCALE);
+  const scaleY = safeHeight / (imgHeight / RENDER_SCALE);
+  const scale = Math.min(scaleX, scaleY);
+  const finalWidth = (imgWidth / RENDER_SCALE) * scale;
+  const finalHeight = (imgHeight / RENDER_SCALE) * scale;
+  const offsetX = MARGIN + (safeWidth - finalWidth) / 2;
+  const offsetY = MARGIN + (safeHeight - finalHeight) / 2;
+  if (isFirstPage) {
+    pdf = new jsPDF({ orientation, unit: "mm", format: "a4" });
+  } else {
+    pdf.addPage([A4_WIDTH, A4_HEIGHT], orientation);
+  }
+  pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", offsetX, offsetY, finalWidth, finalHeight);
+  if (isTrialLicense()) addTrialWatermark(pdf, A4_WIDTH, A4_HEIGHT);
+  return pdf;
+}
+
+/**
+ * Determine how many splits a category needs based on tournament settings
+ * @param {Object} category
+ * @param {Object} splitSettings - { enabled: bool, threshold: number }
+ */
+function getSplitCount(category, splitSettings) {
+  if (!splitSettings?.enabled) return 1;
+  const threshold = splitSettings.threshold || DEFAULT_SPLIT_THRESHOLD;
+  const athleteCount = category.athletes?.length || 0;
+  if (athleteCount <= threshold) return 1;
+  return Math.ceil(athleteCount / Math.ceil(threshold / 2));
+}
+
 export async function exportBracketToPDF(
   category,
   tournamentName,
   filename = "so_do_thi_dau.pdf",
   options = {}
 ) {
+  const scheduleInfo = options.scheduleInfo || null;
+  const splitSettings = options.splitSettings || null;
   try {
     const originalCursor = document.body.style.cursor;
     document.body.style.cursor = "wait";
+    const numSplits = getSplitCount(category, splitSettings);
+    let pdf = null;
 
-    const tempContainer = document.createElement("div");
-    tempContainer.id = `temp-export-bracket`;
-    tempContainer.style.position = "absolute";
-    tempContainer.style.left = "-9999px";
-    tempContainer.style.background = "white";
-    tempContainer.style.padding = "0";
-
-    tempContainer.innerHTML = generateBracketHTML(category, tournamentName);
-    document.body.appendChild(tempContainer);
-
-    const canvas = await html2canvas(tempContainer, {
-      scale: 4,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: "#ffffff",
-      logging: false,
-      windowWidth: tempContainer.scrollWidth + 40,
-      windowHeight: tempContainer.scrollHeight + 40,
-    });
-
-    document.body.removeChild(tempContainer);
-
-    const imgWidth = canvas.width;
-    const imgHeight = canvas.height;
-
-    // Auto-detect orientation based on aspect ratio
-    const isPortrait = imgHeight >= imgWidth * 1.2;
-    const orientation = isPortrait ? "portrait" : "landscape";
-
-    const A4_WIDTH = orientation === "landscape" ? 297 : 210;
-    const A4_HEIGHT = orientation === "landscape" ? 210 : 297;
-    const MARGIN = 10;
-
-    const safeWidth = A4_WIDTH - MARGIN * 2;
-    const safeHeight = A4_HEIGHT - MARGIN * 2;
-
-    const contentWidth = imgWidth / 4;
-    const contentHeight = imgHeight / 4;
-
-    const scaleX = safeWidth / contentWidth;
-    const scaleY = safeHeight / contentHeight;
-    const scale = Math.min(scaleX, scaleY);
-
-    const finalWidth = contentWidth * scale;
-    const finalHeight = contentHeight * scale;
-
-    const offsetX = MARGIN + (safeWidth - finalWidth) / 2;
-    const offsetY = MARGIN + (safeHeight - finalHeight) / 2;
-
-    const pdf = new jsPDF({
-      orientation: orientation,
-      unit: "mm",
-      format: "a4",
-    });
-
-    const imgData = canvas.toDataURL("image/png", 1.0);
-    pdf.addImage(imgData, "PNG", offsetX, offsetY, finalWidth, finalHeight);
-
-    if (isTrialLicense()) {
-      addTrialWatermark(pdf, A4_WIDTH, A4_HEIGHT);
+    if (numSplits <= 1) {
+      const html = generateBracketHTML(category, tournamentName, scheduleInfo, null, 1, 1);
+      const canvas = await renderBracketToCanvas(html);
+      pdf = addCanvasPage(null, canvas, true);
+    } else {
+      for (let half = 0; half < numSplits; half++) {
+        const splitSchedule = { ...scheduleInfo, splitLabel: `Trận ${half + 1}/${numSplits}` };
+        const html = generateBracketHTML(category, tournamentName, splitSchedule, half, half + 1, numSplits);
+        const canvas = await renderBracketToCanvas(html);
+        pdf = half === 0 ? addCanvasPage(null, canvas, true) : addCanvasPage(pdf, canvas, false);
+      }
     }
 
-    pdf.save(filename);
+    if (pdf) pdf.save(filename);
     document.body.style.cursor = originalCursor;
   } catch (error) {
     console.error("Lỗi xuất PDF:", error);
@@ -100,7 +122,9 @@ function addTrialWatermark(pdf, pageWidth, pageHeight) {
 export async function exportAllBracketsToPDF(
   categories,
   tournamentName = "Giai_dau",
-  filename = null
+  filename = null,
+  schedule = null,
+  splitSettings = null
 ) {
   const categoriesWithBracket = categories.filter((c) => c.bracket);
 
@@ -120,70 +144,25 @@ export async function exportAllBracketsToPDF(
     let pdf = null;
     let isFirstPage = true;
 
+    let pageCount = 0;
     for (let i = 0; i < categoriesWithBracket.length; i++) {
       const category = categoriesWithBracket[i];
+      const scheduleInfo = schedule ? schedule[category.id] : null;
+      const numSplits = getSplitCount(category, splitSettings);
 
-      const tempContainer = document.createElement("div");
-      tempContainer.id = `temp-bracket-${category.id}`;
-      tempContainer.style.position = "absolute";
-      tempContainer.style.left = "-9999px";
-      tempContainer.style.background = "white";
-      tempContainer.style.padding = "0";
-      tempContainer.innerHTML = generateBracketHTML(category, tournamentName);
-      document.body.appendChild(tempContainer);
-
-      const canvas = await html2canvas(tempContainer, {
-        scale: 4,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-        windowWidth: tempContainer.scrollWidth + 40,
-        windowHeight: tempContainer.scrollHeight + 40,
-      });
-
-      document.body.removeChild(tempContainer);
-
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const orientation = "landscape"; // Force landscape for batch export usually better
-
-      const A4_WIDTH = 297;
-      const A4_HEIGHT = 210;
-      const MARGIN = 10;
-
-      const safeWidth = A4_WIDTH - MARGIN * 2;
-      const safeHeight = A4_HEIGHT - MARGIN * 2;
-
-      const contentWidth = imgWidth / 4;
-      const contentHeight = imgHeight / 4;
-
-      const scaleX = safeWidth / contentWidth;
-      const scaleY = safeHeight / contentHeight;
-      const scale = Math.min(scaleX, scaleY);
-
-      const finalWidth = contentWidth * scale;
-      const finalHeight = contentHeight * scale;
-
-      const offsetX = MARGIN + (safeWidth - finalWidth) / 2;
-      const offsetY = MARGIN + (safeHeight - finalHeight) / 2;
-
-      if (isFirstPage) {
-        pdf = new jsPDF({
-          orientation: orientation,
-          unit: "mm",
-          format: "a4",
-        });
-        isFirstPage = false;
-      } else {
-        pdf.addPage([A4_WIDTH, A4_HEIGHT], orientation);
-      }
-
-      const imgData = canvas.toDataURL("image/png", 1.0);
-      pdf.addImage(imgData, "PNG", offsetX, offsetY, finalWidth, finalHeight);
-
-      if (isTrial) {
-        addTrialWatermark(pdf, A4_WIDTH, A4_HEIGHT);
+      for (let half = 0; half < numSplits; half++) {
+        const splitSchedule = numSplits > 1
+          ? { ...scheduleInfo, splitLabel: `Trận ${half + 1}/${numSplits}` }
+          : scheduleInfo;
+        const splitHalf = numSplits > 1 ? half : null;
+        const html = generateBracketHTML(category, tournamentName, splitSchedule, splitHalf, half + 1, numSplits);
+        const canvas = await renderBracketToCanvas(html);
+        if (pageCount === 0) {
+          pdf = addCanvasPage(null, canvas, true);
+        } else {
+          pdf = addCanvasPage(pdf, canvas, false);
+        }
+        pageCount++;
       }
     }
 
@@ -192,7 +171,7 @@ export async function exportAllBracketsToPDF(
     }
 
     document.body.style.cursor = originalCursor;
-    alert(`Đã xuất ${categoriesWithBracket.length} sơ đồ thành công!`);
+    alert(`Đã xuất ${pageCount} sơ đồ thành công!`);
   } catch (error) {
     console.error("Lỗi xuất PDF hàng loạt:", error);
     alert("Lỗi xuất PDF: " + error.message);
@@ -382,21 +361,45 @@ export function exportScoreSheetToPDF(
  * Generate HTML cho bracket từ category data
  * Style: SportData gradients, Box Logo, Referees, Footer custom
  */
-function generateBracketHTML(category, tournamentName = "") {
+function generateBracketHTML(category, tournamentName = "", scheduleInfo = null, splitHalf = null, splitIndex = 1, totalSplits = 1) {
   const { bracket, name } = category;
   if (!bracket || !bracket.matches) return "<div>Không có dữ liệu</div>";
+  const isTeamBracket = bracket.isTeamBracket || false;
 
-  const matchesByRound = {};
+  // Organize matches by round
+  const fullMatchesByRound = {};
   bracket.matches.forEach((m) => {
-    if (!matchesByRound[m.round]) matchesByRound[m.round] = [];
-    matchesByRound[m.round].push(m);
+    if (!fullMatchesByRound[m.round]) fullMatchesByRound[m.round] = [];
+    fullMatchesByRound[m.round].push(m);
+  });
+  Object.keys(fullMatchesByRound).forEach((r) => {
+    fullMatchesByRound[r].sort((a, b) => a.position - b.position);
   });
 
-  Object.keys(matchesByRound).forEach((r) => {
-    matchesByRound[r].sort((a, b) => a.position - b.position);
-  });
   const roundNames = bracket.roundNames || [];
-  const numRounds = bracket.numRounds || Object.keys(matchesByRound).length;
+  const numRounds = bracket.numRounds || Object.keys(fullMatchesByRound).length;
+
+  // === SPLIT LOGIC: filter matches for upper/lower half ===
+  const matchesByRound = {};
+  if (splitHalf !== null && totalSplits > 1) {
+    // Split by filtering first-round positions, then trace forward
+    const round1 = fullMatchesByRound[1] || [];
+    const totalR1 = round1.length;
+    const perHalf = Math.ceil(totalR1 / totalSplits);
+    const startPos = splitHalf * perHalf;
+    const endPos = Math.min((splitHalf + 1) * perHalf, totalR1);
+    // Get allowed positions for each round
+    for (let r = 1; r <= numRounds; r++) {
+      const allMatches = fullMatchesByRound[r] || [];
+      const totalInRound = allMatches.length;
+      const divisor = Math.pow(2, r - 1);
+      const rStart = Math.floor(startPos / divisor);
+      const rEnd = Math.ceil(endPos / divisor);
+      matchesByRound[r] = allMatches.slice(rStart, rEnd);
+    }
+  } else {
+    Object.assign(matchesByRound, fullMatchesByRound);
+  }
 
   // Dimensions
   const cellWidth = 220;
@@ -633,9 +636,24 @@ function generateBracketHTML(category, tournamentName = "") {
 
   // Construction
   let html = `${css}<div class="pdf-bracket">`;
+  // Schedule info for header
+  const matLabel = scheduleInfo?.mat ? `Thảm ${scheduleInfo.mat}` : 'Thảm';
+  const timeLabel = scheduleInfo?.time || '';
+  const dateLabel = scheduleInfo?.date 
+    ? new Date(scheduleInfo.date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : '';
+  const splitLabel = totalSplits > 1 
+    ? (scheduleInfo?.splitLabel || `Trận ${splitIndex}/${totalSplits}`)
+    : 'Trận';
+  
   html += `<div class="pdf-header">`;
-  html += `<div class="pdf-header-left"><div class="pdf-category-name">${name}</div><div class="pdf-tournament-name">${tournamentName}</div></div>`;
-  html += `<div class="pdf-info-bar"><div class="pdf-info-item">Thảm</div><div class="pdf-info-item">Trận</div></div>`;
+  html += `<div class="pdf-header-left"><div class="pdf-category-name">${name}${totalSplits > 1 ? ' - ' + splitLabel : ''}</div><div class="pdf-tournament-name">${tournamentName}</div></div>`;
+  html += `<div class="pdf-info-bar">`;
+  if (dateLabel) html += `<div class="pdf-info-item">${dateLabel}</div>`;
+  html += `<div class="pdf-info-item">${matLabel}</div>`;
+  if (timeLabel) html += `<div class="pdf-info-item">${timeLabel}</div>`;
+  html += `<div class="pdf-info-item" style="background:#fff;">${splitLabel}</div>`;
+  html += `</div>`;
   html += `<div class="pdf-header-right"><div class="pdf-logo-text">Karate</div><div class="pdf-logo-sub">QUẢN LÝ GIẢI ĐẤU</div></div>`;
   html += `</div>`; 
   html += `<div class="pdf-content"><div class="pdf-bracket-area"><div class="pdf-rounds">`;
@@ -683,12 +701,14 @@ function generateBracketHTML(category, tournamentName = "") {
       
       // Cell 1
       html += `<div class="pdf-cell aka ${isWinner1 ? "winner" : ""} ${!athlete1 ? "empty" : ""}"><span class="pdf-name">${athlete1?.name || ""}</span>`;
-      if (athlete1?.club) html += `<span class="pdf-club">(${athlete1.club})</span>`;
+      if (!isTeamBracket && athlete1?.club) html += `<span class="pdf-club">(${athlete1.club})</span>`;
+      if (isTeamBracket && athlete1?.members) html += `<span class="pdf-club">(${athlete1.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>`;
       html += `</div>`;
 
       // Cell 2
       html += `<div class="pdf-cell ao ${isWinner2 ? "winner" : ""} ${!athlete2 ? "empty" : ""}" style="margin-top: ${athleteGap}px;"><span class="pdf-name">${athlete2?.name || ""}</span>`;
-      if (athlete2?.club) html += `<span class="pdf-club">(${athlete2.club})</span>`;
+      if (!isTeamBracket && athlete2?.club) html += `<span class="pdf-club">(${athlete2.club})</span>`;
+      if (isTeamBracket && athlete2?.members) html += `<span class="pdf-club">(${athlete2.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>`;
       html += `</div>`;
 
       // Connectors
@@ -713,7 +733,8 @@ function generateBracketHTML(category, tournamentName = "") {
         html += `<div class="pdf-champion-slot" style="top: ${lineCenter - cellHeight / 2}px; right: -310px;">`;
         html += `<span class="pdf-champion-icon">🥇</span>`;
         html += `<span class="pdf-champion-name">${winner?.name || ""}</span>`;
-        if (winner?.club) html += `<span class="pdf-champion-club">(${winner.club})</span>`;
+        if (!isTeamBracket && winner?.club) html += `<span class="pdf-champion-club">(${winner.club})</span>`;
+        if (isTeamBracket && winner?.members) html += `<span class="pdf-champion-club">(${winner.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>`;
         html += `</div>`;
       }
 

@@ -4,10 +4,39 @@
   gap: var(--spacing-5);
 }
 
+/* ── Compact variant: tighter everything so it never scrolls ── */
+.athlete-form.compact {
+  gap: 0.6rem;
+}
+
+.athlete-form.compact .input-label {
+  font-size: 0.8rem;
+  margin-bottom: -2px;
+}
+
+.athlete-form.compact .input-group {
+  gap: 0.2rem;
+}
+
+.athlete-form.compact .input,
+.athlete-form.compact .date-input-text {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.9rem;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: var(--spacing-4);
+}
+
+.athlete-form.compact .form-row {
+  gap: 0.75rem;
+}
+
+/* Name (2fr) + Gender (1fr) row */
+.form-row.form-row-name {
+  grid-template-columns: 2fr 1fr;
 }
 
 .required {
@@ -21,7 +50,74 @@
 .error-message {
   font-size: var(--font-size-xs);
   color: var(--color-error);
-  margin-top: var(--spacing-1);
+  margin-top: 1px;
+}
+
+/* Age validation error (blocks submission) */
+.age-error {
+  background: #fee2e2;
+  border: 1px solid #ef4444;
+  border-radius: var(--radius-md, 6px);
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  color: #991b1b;
+  font-weight: 500;
+}
+
+/* Age warning (informational) */
+.age-warning {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: var(--radius-md, 6px);
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  color: #92400e;
+  font-weight: 500;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--color-text-primary, #1e293b);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary, #2563eb);
+  cursor: pointer;
+}
+
+/* Footer: seed+team left, action buttons right */
+.form-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  margin-top: 0.3rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.form-footer-left {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.input-group-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.form-footer .form-actions {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
 }
 
 .form-actions {
@@ -34,7 +130,14 @@
 }
 
 @media (max-width: 480px) {
-  .form-row {
+  .form-row,
+  .form-row.form-row-name,
+  .form-row.form-row-3 {
     grid-template-columns: 1fr;
+  }
+
+  .form-footer {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

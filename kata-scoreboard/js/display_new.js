@@ -65,7 +65,7 @@ function updateDisplay() {
       topData.athlete || "TÊN VĐV";
     document.getElementById("akaUnit").textContent = topData.unit || "ĐƠN VỊ";
   } else {
-    document.getElementById("akaAthlete").textContent = "";
+    document.getElementById("akaAthlete").textContent = topData.athlete || "";
     document.getElementById("akaUnit").textContent = topData.team || "ĐƠN VỊ";
   } // Show/hide AKA score
   const akaScoreEl = document.getElementById("akaScore");
@@ -95,7 +95,7 @@ function updateDisplay() {
       bottomData.athlete || "TÊN VĐV";
     document.getElementById("aoUnit").textContent = bottomData.unit || "ĐƠN VỊ";
   } else {
-    document.getElementById("aoAthlete").textContent = "";
+    document.getElementById("aoAthlete").textContent = bottomData.athlete || "";
     document.getElementById("aoUnit").textContent = bottomData.team || "ĐƠN VỊ";
   }
   // Show/hide AO score

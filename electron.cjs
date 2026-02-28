@@ -70,9 +70,10 @@ ipcMain.handle('export:save', async (event, content, suggestedName, fileType) =>
       return { success: false, canceled: true };
     }
 
-    // Content có thể là string (JSON) hoặc Buffer (Excel)
-    if (Buffer.isBuffer(content)) {
-      fs.writeFileSync(result.filePath, content);
+    // Content có thể là string (JSON) hoặc base64 (Excel)
+    if (fileType === 'xlsx') {
+      const buffer = Buffer.from(content, 'base64');
+      fs.writeFileSync(result.filePath, buffer);
     } else {
       fs.writeFileSync(result.filePath, content, 'utf8');
     }

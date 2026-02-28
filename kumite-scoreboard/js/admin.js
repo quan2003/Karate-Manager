@@ -1306,18 +1306,53 @@ function loadPendingMatch() {
     return;
   }
   
+  const isTeam = pendingMatchData.categoryName && 
+                 (pendingMatchData.categoryName.toLowerCase().includes('đồng đội') || 
+                  pendingMatchData.categoryName.toLowerCase().includes('hỗn hợp'));
+
+  // Clear athletes array to populate with members for team matches
+  if (isTeam && typeof athletes !== 'undefined') {
+    athletes = [];
+  }
+
   // Set tên VĐV - IN HOA + CLB
   if (pendingMatchData.athlete1) {
     const name = pendingMatchData.athlete1.name.toUpperCase();
     const club = pendingMatchData.athlete1.club ? pendingMatchData.athlete1.club.toUpperCase() : '';
-    state.akaName = club ? `${name} - ${club}` : name;
+    
+    if (isTeam) {
+      state.akaName = name; // Just team name for team mode
+      if (pendingMatchData.athlete1.members && pendingMatchData.athlete1.members.length > 0 && typeof athletes !== 'undefined') {
+        pendingMatchData.athlete1.members.forEach(m => {
+          athletes.push({ name: m.name.toUpperCase(), unit: name, category: pendingMatchData.categoryName });
+        });
+      }
+    } else {
+      state.akaName = club ? `${name} - ${club}` : name;
+    }
+    
     document.getElementById('redName').value = state.akaName;
   }
   if (pendingMatchData.athlete2) {
     const name = pendingMatchData.athlete2.name.toUpperCase();
     const club = pendingMatchData.athlete2.club ? pendingMatchData.athlete2.club.toUpperCase() : '';
-    state.aoName = club ? `${name} - ${club}` : name;
+    
+    if (isTeam) {
+      state.aoName = name; // Just team name
+      if (pendingMatchData.athlete2.members && pendingMatchData.athlete2.members.length > 0 && typeof athletes !== 'undefined') {
+        pendingMatchData.athlete2.members.forEach(m => {
+          athletes.push({ name: m.name.toUpperCase(), unit: name, category: pendingMatchData.categoryName });
+        });
+      }
+    } else {
+      state.aoName = club ? `${name} - ${club}` : name;
+    }
+
     document.getElementById('blueName').value = state.aoName;
+  }
+  
+  if (isTeam && typeof populateAthleteDropdowns === 'function') {
+    populateAthleteDropdowns();
   }
   
   // Set thông tin giải đấu và vòng đấu
@@ -1330,6 +1365,14 @@ function loadPendingMatch() {
   if (pendingMatchData.categoryName) {
     state.category = pendingMatchData.categoryName;
     document.getElementById('category').value = pendingMatchData.categoryName;
+    
+    // Auto-detect team vs individual mode
+    const lowerName = pendingMatchData.categoryName.toLowerCase();
+    if (lowerName.includes('đồng đội') || lowerName.includes('hỗn hợp')) {
+      if (typeof setMode === 'function') setMode('team');
+    } else {
+      if (typeof setMode === 'function') setMode('individual');
+    }
   }
   
   // Auto-fill vòng đấu từ bracket

@@ -259,6 +259,15 @@
             <!-- Team Mode -->
             <div id="akaInputTeam" style="display: none">
               <div class="form-group">
+                <label>Các thành viên:</label>
+                <input
+                  type="text"
+                  id="akaTeamMembers"
+                  placeholder="VD: Hải, Tuấn, Đức..."
+                  onchange="updateAkaDisplay()"
+                />
+              </div>
+              <div class="form-group">
                 <label>Đơn vị:</label>
                 <select id="akaTeamSelect" onchange="updateAkaDisplay()">
                   <option value="">-- Chọn Đơn Vị --</option>
@@ -352,6 +361,15 @@
 
             <!-- Team Mode -->
             <div id="aoInputTeam" style="display: none">
+              <div class="form-group">
+                <label>Các thành viên:</label>
+                <input
+                  type="text"
+                  id="aoTeamMembers"
+                  placeholder="VD: Hải, Tuấn, Đức..."
+                  onchange="updateAoDisplay()"
+                />
+              </div>
               <div class="form-group">
                 <label>Đơn vị:</label>
                 <select id="aoTeamSelect" onchange="updateAoDisplay()">

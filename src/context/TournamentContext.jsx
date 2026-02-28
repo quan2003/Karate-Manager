@@ -31,6 +31,8 @@ const ACTIONS = {
   UPDATE_MATCH: "UPDATE_MATCH",
   IMPORT_ATHLETES: "IMPORT_ATHLETES",
   IMPORT_CATEGORIES: "IMPORT_CATEGORIES",
+  UPDATE_SCHEDULE: "UPDATE_SCHEDULE",
+  UPDATE_CUSTOM_EVENTS: "UPDATE_CUSTOM_EVENTS",
 };
 
 function tournamentReducer(state, action) {
@@ -68,6 +70,11 @@ function tournamentReducer(state, action) {
           t.id === action.payload.id ? { ...t, ...action.payload } : t
         ),
       };
+      if (state.currentTournament?.id === action.payload.id) {
+        newState.currentTournament = newState.tournaments.find(
+          (t) => t.id === action.payload.id
+        );
+      }
       break;
 
     case ACTIONS.DELETE_TOURNAMENT:
@@ -223,8 +230,12 @@ function tournamentReducer(state, action) {
                     {
                       id: uuidv4(),
                       name: action.payload.name,
+                      gender: action.payload.gender || null,
+                      birthDate: action.payload.birthDate || null,
                       club: action.payload.club,
                       country: action.payload.country || "VN",
+                      weight: action.payload.weight || null,
+                      isTeam: action.payload.isTeam || false,
                       seed: action.payload.seed || null,
                       flagUrl: action.payload.flagUrl || null,
                     },
@@ -308,8 +319,12 @@ function tournamentReducer(state, action) {
                     ...action.payload.athletes.map((a) => ({
                       id: uuidv4(),
                       name: a.name,
+                      gender: a.gender || null,
+                      birthDate: a.birthDate || null,
                       club: a.club,
                       country: a.country || "VN",
+                      weight: a.weight || null,
+                      isTeam: a.isTeam || false,
                       seed: a.seed || null,
                       flagUrl: null,
                     })),
@@ -384,6 +399,38 @@ function tournamentReducer(state, action) {
       if (state.currentCategory) {
         newState.currentCategory = newState.currentTournament?.categories.find(
           (c) => c.id === state.currentCategory.id
+        );
+      }
+      break;
+
+    case ACTIONS.UPDATE_SCHEDULE:
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) =>
+          t.id === action.payload.tournamentId
+            ? { ...t, schedule: action.payload.schedule }
+            : t
+        ),
+      };
+      if (state.currentTournament?.id === action.payload.tournamentId) {
+        newState.currentTournament = newState.tournaments.find(
+          (t) => t.id === action.payload.tournamentId
+        );
+      }
+      break;
+
+    case ACTIONS.UPDATE_CUSTOM_EVENTS:
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) =>
+          t.id === action.payload.tournamentId
+            ? { ...t, customEvents: action.payload.customEvents }
+            : t
+        ),
+      };
+      if (state.currentTournament?.id === action.payload.tournamentId) {
+        newState.currentTournament = newState.tournaments.find(
+          (t) => t.id === action.payload.tournamentId
         );
       }
       break;

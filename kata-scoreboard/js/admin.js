@@ -425,11 +425,19 @@ function updateAkaDisplay() {
   } else {
     const select = document.getElementById("akaTeamSelect");
     const manualTeam = document.getElementById("akaTeamName").value;
+    const manualMembers = document.getElementById("akaTeamMembers") ? document.getElementById("akaTeamMembers").value : "";
 
     if (select.value !== "") {
       state.aka.team = select.value;
+      // To match sigma notation, we just store the team name in team and use athlete for members if needed
     } else if (manualTeam) {
       state.aka.team = manualTeam;
+    }
+    
+    if (manualMembers) {
+      state.aka.athlete = manualMembers;
+    } else {
+      state.aka.athlete = "";
     }
   }
 
@@ -455,11 +463,18 @@ function updateAoDisplay() {
   } else {
     const select = document.getElementById("aoTeamSelect");
     const manualTeam = document.getElementById("aoTeamName").value;
+    const manualMembers = document.getElementById("aoTeamMembers") ? document.getElementById("aoTeamMembers").value : "";
 
     if (select.value !== "") {
       state.ao.team = select.value;
     } else if (manualTeam) {
       state.ao.team = manualTeam;
+    }
+    
+    if (manualMembers) {
+      state.ao.athlete = manualMembers;
+    } else {
+      state.ao.athlete = "";
     }
   }
 
@@ -1070,6 +1085,8 @@ function resetMatch() {
     document.getElementById("aoTeamSelect").selectedIndex = 0;
     document.getElementById("akaTeamName").value = "";
     document.getElementById("aoTeamName").value = "";
+    if (document.getElementById("akaTeamMembers")) document.getElementById("akaTeamMembers").value = "";
+    if (document.getElementById("aoTeamMembers")) document.getElementById("aoTeamMembers").value = "";
     document.getElementById("akaKataSelect").selectedIndex = 0;
     document.getElementById("aoKataSelect").selectedIndex = 0;
     saveState();
@@ -1761,20 +1778,64 @@ function loadPendingMatch() {
   
   // Set tên VĐV (AKA = athlete1, AO = athlete2) - IN HOA
   if (pendingMatchData.athlete1) {
-    state.aka.athlete = pendingMatchData.athlete1.name.toUpperCase();
-    state.aka.unit = pendingMatchData.athlete1.club ? pendingMatchData.athlete1.club.toUpperCase() : '';
+    const name = pendingMatchData.athlete1.name.toUpperCase();
+    const club = pendingMatchData.athlete1.club ? pendingMatchData.athlete1.club.toUpperCase() : '';
+    
+    // Set for individual config
+    state.aka.athlete = name;
+    state.aka.unit = club;
+    
+    // Set for team config
+    state.aka.team = name;
+    
+    // Process members if exist for sigma format display in team mode
+    if (pendingMatchData.athlete1.members && pendingMatchData.athlete1.members.length > 0) {
+      const membersText = pendingMatchData.athlete1.members.map(m => {
+        const parts = m.name.trim().split(" ");
+        return parts.length > 0 ? parts[parts.length - 1] : m.name;
+      }).join(', ');
+      state.aka.athlete = membersText.toUpperCase();
+    }
+    
     const akaNameInput = document.getElementById('akaAthleteName');
     const akaUnitInput = document.getElementById('akaUnit');
-    if (akaNameInput) akaNameInput.value = state.aka.athlete;
+    const akaTeamNameInput = document.getElementById('akaTeamName');
+    const akaTeamMembersInput = document.getElementById('akaTeamMembers');
+    
+    if (akaNameInput) akaNameInput.value = pendingMatchData.athlete1.name.toUpperCase();
     if (akaUnitInput) akaUnitInput.value = state.aka.unit;
+    if (akaTeamNameInput) akaTeamNameInput.value = state.aka.team;
+    if (akaTeamMembersInput) akaTeamMembersInput.value = state.aka.athlete;
   }
   if (pendingMatchData.athlete2) {
-    state.ao.athlete = pendingMatchData.athlete2.name.toUpperCase();
-    state.ao.unit = pendingMatchData.athlete2.club ? pendingMatchData.athlete2.club.toUpperCase() : '';
+    const name = pendingMatchData.athlete2.name.toUpperCase();
+    const club = pendingMatchData.athlete2.club ? pendingMatchData.athlete2.club.toUpperCase() : '';
+    
+    // Set for individual config
+    state.ao.athlete = name;
+    state.ao.unit = club;
+    
+    // Set for team config
+    state.ao.team = name;
+    
+    // Process members if exist for sigma format display in team mode
+    if (pendingMatchData.athlete2.members && pendingMatchData.athlete2.members.length > 0) {
+      const membersText = pendingMatchData.athlete2.members.map(m => {
+        const parts = m.name.trim().split(" ");
+        return parts.length > 0 ? parts[parts.length - 1] : m.name;
+      }).join(', ');
+      state.ao.athlete = membersText.toUpperCase();
+    }
+    
     const aoNameInput = document.getElementById('aoAthleteName');
     const aoUnitInput = document.getElementById('aoUnit');
-    if (aoNameInput) aoNameInput.value = state.ao.athlete;
+    const aoTeamNameInput = document.getElementById('aoTeamName');
+    const aoTeamMembersInput = document.getElementById('aoTeamMembers');
+    
+    if (aoNameInput) aoNameInput.value = pendingMatchData.athlete2.name.toUpperCase();
     if (aoUnitInput) aoUnitInput.value = state.ao.unit;
+    if (aoTeamNameInput) aoTeamNameInput.value = state.ao.team;
+    if (aoTeamMembersInput) aoTeamMembersInput.value = state.ao.athlete;
   }
   
   // Set thông tin giải đấu
@@ -1788,6 +1849,14 @@ function loadPendingMatch() {
     state.matchInfo = pendingMatchData.categoryName;
     const matchInfoInput = document.getElementById('matchInfo');
     if (matchInfoInput) matchInfoInput.value = pendingMatchData.categoryName;
+    
+    // Auto-detect team vs individual mode
+    const lowerName = pendingMatchData.categoryName.toLowerCase();
+    if (lowerName.includes('đồng đội') || lowerName.includes('hỗn hợp')) {
+      setContentType('team');
+    } else {
+      setContentType('individual');
+    }
   }
   
   if (pendingMatchData.roundName) {
@@ -1795,16 +1864,24 @@ function loadPendingMatch() {
   }
   
   // Load existing scores if match has data (for re-editing)
-  if (pendingMatchData.score1 !== undefined) {
-    state.aka.score = pendingMatchData.score1;
+  if ((pendingMatchData.score1 && pendingMatchData.score1 > 0) || (pendingMatchData.score2 && pendingMatchData.score2 > 0)) {
+    state.aka.score = pendingMatchData.score1 || 0;
+    state.ao.score = pendingMatchData.score2 || 0;
+    state.scoringStarted = true;
   } else {
     state.aka.score = 0;
-  }
-  if (pendingMatchData.score2 !== undefined) {
-    state.ao.score = pendingMatchData.score2;
-  } else {
     state.ao.score = 0;
+    state.scoringStarted = false;
   }
+  
+  // Clear Kata info from previous match
+  state.aka.kataName = "";
+  state.ao.kataName = "";
+  if (document.getElementById("akaKataSelect")) document.getElementById("akaKataSelect").selectedIndex = 0;
+  if (document.getElementById("aoKataSelect")) document.getElementById("aoKataSelect").selectedIndex = 0;
+  if (document.getElementById("akaKataSearch")) document.getElementById("akaKataSearch").value = "";
+  if (document.getElementById("aoKataSearch")) document.getElementById("aoKataSearch").value = "";
+
   
   saveState();
   updateUI();
@@ -1870,7 +1947,21 @@ function finishMatch() {
   alert('✅ Đã gửi kết quả về sơ đồ thi đấu!\\n\\nCửa sổ sẽ sẵn sàng cho trận tiếp theo.');
   
   // Reset cho trận tiếp theo
-  resetScores();
+  state.aka.score = 0;
+  state.ao.score = 0;
+  state.aka.kataName = "";
+  state.ao.kataName = "";
+  state.scoringStarted = false;
+  
+  if (document.getElementById("akaScore")) document.getElementById("akaScore").textContent = 0;
+  if (document.getElementById("aoScore")) document.getElementById("aoScore").textContent = 0;
+  if (document.getElementById("akaKataSelect")) document.getElementById("akaKataSelect").selectedIndex = 0;
+  if (document.getElementById("aoKataSelect")) document.getElementById("aoKataSelect").selectedIndex = 0;
+  if (document.getElementById("akaKataSearch")) document.getElementById("akaKataSearch").value = "";
+  if (document.getElementById("aoKataSearch")) document.getElementById("aoKataSearch").value = "";
+  
+  saveState();
+  updateUI();
 }
 
 // ==================== END BRACKET INTEGRATION FUNCTIONS ====================
