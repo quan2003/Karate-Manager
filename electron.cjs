@@ -233,18 +233,40 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  autoUpdater.checkForUpdatesAndNotify();
+  // Cấu hình cập nhật
+  autoUpdater.autoDownload = false; // Không tự động tải, hỏi người dùng trước
+  
+  if (!isDev) {
+    autoUpdater.checkForUpdates();
+  }
 
-  autoUpdater.on("update-available", () => {
-    console.log("Có bản cập nhật mới...");
+  autoUpdater.on("update-available", (info) => {
+    dialog.showMessageBox({
+      type: "info",
+      title: "Có bản cập nhật mới",
+      message: `Đã có phiên bản mới (${info.version}). Bạn có muốn tải xuống và cập nhật ngay không?`,
+      buttons: ["Tải xuống", "Để sau"]
+    }).then(result => {
+      if (result.response === 0) {
+        autoUpdater.downloadUpdate();
+      }
+    });
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    console.log("Đang sử dụng phiên bản mới nhất.");
+  });
+
+  autoUpdater.on("error", (err) => {
+    console.error("Lỗi hệ thống cập nhật:", err);
   });
 
   autoUpdater.on("update-downloaded", () => {
     dialog.showMessageBox({
       type: "info",
-      title: "Cập nhật",
-      message: "Đã tải bản mới. Bạn muốn cài đặt ngay?",
-      buttons: ["Cài đặt", "Để sau"]
+      title: "Đã tải xong bản cập nhật",
+      message: "Bản cập nhật đã tải xong. Ứng dụng sẽ khởi động lại để cài đặt.",
+      buttons: ["Cài đặt ngay", "Để sau"]
     }).then(result => {
       if (result.response === 0) {
         autoUpdater.quitAndInstall();

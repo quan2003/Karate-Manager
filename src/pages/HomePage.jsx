@@ -17,6 +17,7 @@ import Modal from "../components/common/Modal";
 import ConfirmDialog from "../components/common/ConfirmDialog";
 import DateInput from "../components/common/DateInput";
 import DateTimeInput from "../components/common/DateTimeInput";
+import BackupManager from "../components/BackupManager/BackupManager";
 import "./HomePage.css";
 
 export default function HomePage() {
@@ -35,6 +36,7 @@ export default function HomePage() {
     message: "",
     onConfirm: null,
   });
+  const [showBackupManager, setShowBackupManager] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     startDate: new Date().toISOString().split("T")[0],
@@ -400,6 +402,14 @@ export default function HomePage() {
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
               Import từ HLV
+            </button>
+            <button
+              className="btn btn-secondary btn-lg"
+              onClick={() => setShowBackupManager(true)}
+              title="Sao lưu & đồng bộ dữ liệu giữa nhiều Admin"
+              style={{ background: "linear-gradient(135deg, #3b82f6, #1d4ed8)", color: "#fff", border: "none" }}
+            >
+              💾 Backup / Đồng bộ
             </button>
             <button
               className="btn btn-primary btn-lg"
@@ -960,6 +970,16 @@ export default function HomePage() {
           confirmText="Xóa"
           cancelText="Hủy"
           type="danger"
+        />
+
+        {/* Backup Manager */}
+        <BackupManager
+          isOpen={showBackupManager}
+          onClose={() => setShowBackupManager(false)}
+          onDataRestored={() => {
+            // Reload to refresh context with restored data
+            window.location.reload();
+          }}
         />
       </div>
     </div>

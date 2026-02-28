@@ -31,11 +31,9 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   }, []);
 
-  const login = async (googleToken) => {
+  // Google login
+  const loginWithGoogle = async (googleToken) => {
     try {
-      // Verify with our backend
-      // Using axios directly to avoid /api prefix from the interceptor instance
-      // The Vite proxy will forward /auth/google to http://localhost:2000/auth/google
       const res = await axios.post('/auth/google', { token: googleToken });
       
       if (res.data.success) {
@@ -52,15 +50,38 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Account login (username/password)
+  const loginWithAccount = async (username, password) => {
+    try {
+      const res = await axios.post('/auth/login', { username, password });
+      
+      if (res.data.success) {
+        const { token, user } = res.data;
+        localStorage.setItem('admin_token', token);
+        localStorage.setItem('admin_user', JSON.stringify(user));
+        setUser(user);
+        return { success: true };
+      }
+      return { success: false, message: res.data.message };
+    } catch (error) {
+      console.error('Login error:', error);
+      return { success: false, message: error.response?.data?.message || 'Đăng nhập thất bại' };
+    }
+  };
+
   const logout = () => {
-    googleLogout();
+    try {
+      googleLogout();
+    } catch (e) {
+      // Ignore error if not logged in with Google
+    }
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, loginWithGoogle, loginWithAccount, logout, loading }}>
         {!loading && children}
     </AuthContext.Provider>
   );

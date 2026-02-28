@@ -1,5 +1,10 @@
 import { createContext, useContext, useReducer, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
+import { createAutoBackup } from "../services/backupService";
+
+// Auto-backup counter to avoid backing up too frequently
+let autoBackupCounter = 0;
+const AUTO_BACKUP_INTERVAL = 5; // Backup every N important changes
 
 const TournamentContext = createContext(null);
 const TournamentDispatchContext = createContext(null);
@@ -440,12 +445,12 @@ function tournamentReducer(state, action) {
   }
 
   // Save to localStorage
-  saveToStorage(newState);
+  saveToStorage(newState, action.type);
   return newState;
 }
 
 let saveTimeout = null;
-function saveToStorage(state) {
+function saveToStorage(state, actionType) {
   // Debounce localStorage save to avoid blocking UI
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
@@ -454,6 +459,23 @@ function saveToStorage(state) {
         tournaments: state.tournaments,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+
+      // Auto-backup for important changes
+      const importantActions = [
+        ACTIONS.DELETE_TOURNAMENT,
+        ACTIONS.SET_BRACKET,
+        ACTIONS.IMPORT_ATHLETES,
+        ACTIONS.IMPORT_CATEGORIES,
+        ACTIONS.UPDATE_MATCH,
+      ];
+      
+      if (importantActions.includes(actionType)) {
+        autoBackupCounter++;
+        if (autoBackupCounter >= AUTO_BACKUP_INTERVAL) {
+          autoBackupCounter = 0;
+          createAutoBackup(`Auto-backup sau ${AUTO_BACKUP_INTERVAL} thay đổi quan trọng`);
+        }
+      }
     } catch (error) {
       console.error("Failed to save to localStorage:", error);
     }

@@ -626,116 +626,97 @@ export default function TournamentPage() {
               {tournament.location && <span>📍 {tournament.location}</span>}
             </div>
           </div>
-          <div className="header-actions">
-            <button
-              className="btn btn-secondary btn-lg"
-              onClick={handleOpenKrtModal}
-              title="Xuất file .krt cho HLV đăng ký"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ marginRight: "8px" }}
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              Xuất (.krt)
-            </button>
-            <button
-              className="btn btn-secondary btn-lg"
-              onClick={handleOpenKmatchModal}
-              title="Xuất file chấm điểm cho Thư ký"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ marginRight: "8px" }}
-              >
-                <circle cx="12" cy="12" r="10" />
-                <circle cx="12" cy="12" r="6" />
-                <circle cx="12" cy="12" r="2" />
-              </svg>
-              Xuất (.kmatch)
-            </button>
-            {tournament.categories.filter((c) => c.bracket).length > 0 && (
-              <button
-                className="btn btn-secondary btn-lg"
-                onClick={handleExportAllPDF}
-              >
-                📄 Xuất tất cả PDF
-              </button>
-            )}
-            <button
-              className="btn btn-secondary btn-lg"
-              onClick={handleDownloadTemplate}
-            >
-              📥 Tải mẫu Excel
-            </button>
-            <label
-              className="btn btn-secondary btn-lg"
-              style={{ cursor: "pointer" }}
-            >
-              📤 Import từ Excel
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleImportCategories}
-                style={{ display: "none" }}
-              />
-            </label>
-            <label
-              className="btn btn-primary btn-lg"
-              style={{ cursor: "pointer", background: "#0d9488" }}
-            >
-              {importingClub ? "⏳ Đang nhập..." : "📥 Import VĐV từ CLB"}
-              <input
-                ref={clubFileInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                multiple
-                onChange={handleImportFromClubs}
-                style={{ display: "none" }}
-                disabled={importingClub}
-              />
-            </label>
-            <button
-              className="btn btn-primary btn-lg"
-              style={{ background: "#ea580c" }}
-              onClick={handleOpenBulkDraw}
-              title={`${drawableCount} nội dung có thể bốc thăm`}
-            >
-              🎲 Bốc thăm tất cả {drawableCount > 0 && <span style={{background:'#fff3',borderRadius:'4px',padding:'1px 6px',marginLeft:'4px',fontSize:'12px'}}>{drawableCount}</span>}
-            </button>
-            <Link
-              to={`/schedule/${tournament.id}`}
-              className="btn btn-primary btn-lg"
-              style={{ background: "#7c3aed", cursor: "pointer" }}
-            >
-              📋 Lịch thi đấu
-            </Link>
-            <button
-              className="btn btn-primary btn-lg"
-              onClick={() => setShowModal(true)}
-            >
-              + Thêm hạng mục
-            </button>
-          </div>
         </header>
+
+        {/* ===== ACTION TOOLBAR - UNIFORM GRID ===== */}
+        <div className="tournament-actions-toolbar">
+          <button
+            className="tournament-action-btn action-export"
+            onClick={handleOpenKrtModal}
+            title="Xuất file .krt cho HLV đăng ký"
+          >
+            <span className="action-icon">📤</span>
+            <span className="action-label">Xuất<br/>(.krt)</span>
+          </button>
+
+          <button
+            className="tournament-action-btn action-export"
+            onClick={handleOpenKmatchModal}
+            title="Xuất file chấm điểm cho Thư ký"
+          >
+            <span className="action-icon">🎯</span>
+            <span className="action-label">Xuất<br/>(.kmatch)</span>
+          </button>
+
+          {tournament.categories.filter((c) => c.bracket).length > 0 && (
+            <button
+              className="tournament-action-btn action-export"
+              onClick={handleExportAllPDF}
+            >
+              <span className="action-icon">📄</span>
+              <span className="action-label">Xuất tất cả<br/>PDF</span>
+            </button>
+          )}
+
+          <button
+            className="tournament-action-btn action-export"
+            onClick={handleDownloadTemplate}
+          >
+            <span className="action-icon">📥</span>
+            <span className="action-label">Tải mẫu<br/>Excel</span>
+          </button>
+
+          <label className="tournament-action-btn action-import" style={{ cursor: "pointer" }}>
+            <span className="action-icon">📤</span>
+            <span className="action-label">Import từ<br/>Excel</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImportCategories}
+              style={{ display: "none" }}
+            />
+          </label>
+
+          <label className="tournament-action-btn action-import" style={{ cursor: "pointer" }}>
+            <span className="action-icon">🏢</span>
+            <span className="action-label">{importingClub ? "Đang nhập..." : "Import VĐV\ntừ CLB"}</span>
+            <input
+              ref={clubFileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              multiple
+              onChange={handleImportFromClubs}
+              style={{ display: "none" }}
+              disabled={importingClub}
+            />
+          </label>
+
+          <button
+            className="tournament-action-btn action-draw"
+            onClick={handleOpenBulkDraw}
+            title={`${drawableCount} nội dung có thể bốc thăm`}
+          >
+            <span className="action-icon">🎲</span>
+            <span className="action-label">Bốc thăm<br/>tất cả {drawableCount > 0 && <span className="action-badge">{drawableCount}</span>}</span>
+          </button>
+
+          <Link
+            to={`/schedule/${tournament.id}`}
+            className="tournament-action-btn action-schedule"
+          >
+            <span className="action-icon">📋</span>
+            <span className="action-label">Lịch thi<br/>đấu</span>
+          </Link>
+
+          <button
+            className="tournament-action-btn action-add"
+            onClick={() => setShowModal(true)}
+          >
+            <span className="action-icon">➕</span>
+            <span className="action-label">Thêm hạng<br/>mục</span>
+          </button>
+        </div>
 
         <div className="stats-bar">
           <div className="stat-item">

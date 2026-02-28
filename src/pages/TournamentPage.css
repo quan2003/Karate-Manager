@@ -40,10 +40,168 @@
   margin: 0 var(--spacing-2);
 }
 
-.header-actions {
+/* ===== TOURNAMENT ACTION TOOLBAR ===== */
+.tournament-actions-toolbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  padding: var(--spacing-5);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-6);
+}
+
+.tournament-action-btn {
   display: flex;
-  gap: var(--spacing-3);
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  color: var(--color-text-primary);
+  min-height: 90px;
+  font-family: inherit;
+}
+
+.tournament-action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+  border-color: transparent;
+}
+
+.tournament-action-btn .action-icon {
+  font-size: 1.4rem;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-tertiary);
+  transition: all 0.25s;
+}
+
+.tournament-action-btn:hover .action-icon {
+  transform: scale(1.1);
+}
+
+.tournament-action-btn .action-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.3;
+  color: var(--color-text-secondary);
+}
+
+.tournament-action-btn:hover .action-label {
+  color: var(--color-text-primary);
+}
+
+/* Color variations */
+.tournament-action-btn.action-export {
+  border-color: rgba(26, 95, 122, 0.2);
+}
+.tournament-action-btn.action-export:hover {
+  background: rgba(26, 95, 122, 0.04);
+  border-color: var(--color-primary);
+}
+.tournament-action-btn.action-export .action-icon {
+  background: rgba(26, 95, 122, 0.1);
+  color: var(--color-primary);
+}
+
+.tournament-action-btn.action-import {
+  border-color: rgba(13, 148, 136, 0.2);
+}
+.tournament-action-btn.action-import:hover {
+  background: rgba(13, 148, 136, 0.04);
+  border-color: #0d9488;
+}
+.tournament-action-btn.action-import .action-icon {
+  background: rgba(13, 148, 136, 0.1);
+  color: #0d9488;
+}
+
+.tournament-action-btn.action-draw {
+  border-color: rgba(234, 88, 12, 0.2);
+}
+.tournament-action-btn.action-draw:hover {
+  background: rgba(234, 88, 12, 0.04);
+  border-color: #ea580c;
+}
+.tournament-action-btn.action-draw .action-icon {
+  background: rgba(234, 88, 12, 0.1);
+  color: #ea580c;
+}
+
+.tournament-action-btn.action-schedule {
+  border-color: rgba(124, 58, 237, 0.2);
+}
+.tournament-action-btn.action-schedule:hover {
+  background: rgba(124, 58, 237, 0.04);
+  border-color: #7c3aed;
+}
+.tournament-action-btn.action-schedule .action-icon {
+  background: rgba(124, 58, 237, 0.1);
+  color: #7c3aed;
+}
+
+.tournament-action-btn.action-add {
+  border-color: rgba(37, 99, 235, 0.2);
+}
+.tournament-action-btn.action-add:hover {
+  background: rgba(37, 99, 235, 0.04);
+  border-color: #2563eb;
+}
+.tournament-action-btn.action-add .action-icon {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+}
+
+.action-badge {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 2px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #ea580c;
+  border: 1px solid rgba(234, 88, 12, 0.2);
+}
+
+/* Legacy header-actions kept for backward compatibility */
+.header-actions {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .tournament-actions-toolbar {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding: var(--spacing-3);
+  }
+
+  .tournament-action-btn {
+    min-height: 80px;
+    padding: 10px 6px;
+  }
+
+  .tournament-action-btn .action-label {
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .tournament-actions-toolbar {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .tournament-meta {

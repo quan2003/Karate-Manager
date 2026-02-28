@@ -101,16 +101,24 @@ export default function Sidebar() {
 
           <div className="pt-6 border-t border-slate-800">
             <div className="flex items-center gap-3 mb-4 px-2">
-              <img
-                src={user?.picture}
-                alt="User"
-                className="w-8 h-8 rounded-full"
-              />
+              {user?.picture ? (
+                <img
+                  src={user.picture}
+                  alt="User"
+                  className="w-8 h-8 rounded-full"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold">
+                  {(user?.name || user?.username || 'A').charAt(0).toUpperCase()}
+                </div>
+              )}
               <div className="overflow-hidden">
                 <p className="text-sm font-medium text-white truncate">
-                  {user?.name}
+                  {user?.name || user?.username}
                 </p>
-                <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                <p className="text-xs text-slate-500 truncate">
+                  {user?.email || (user?.loginType === 'account' ? `@${user?.username}` : '')}
+                </p>
               </div>
             </div>
             <button
@@ -118,7 +126,7 @@ export default function Sidebar() {
               className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
             >
               <LogOut size={20} />
-              <span className="font-medium">Logout</span>
+              <span className="font-medium">Đăng xuất</span>
             </button>
           </div>
         </div>

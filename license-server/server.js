@@ -7,6 +7,7 @@ const dotenv = require("dotenv");
 const crypto = require("crypto");
 const { Pool } = require("pg");
 const nodemailer = require("nodemailer");
+const bcrypt = require("bcryptjs");
 
 // Load Environment Variables
 dotenv.config();
@@ -39,7 +40,13 @@ pool.query("SELECT NOW()", (err, res) => {
     console.log("Kết nối PostgreSQL thành công:", res.rows[0].now);
     initializeSchema();
     initializeAdminSchema();
+    initializeAccountsSchema();
     initializeRequestsSchema();
+    // Start cleanup jobs after schemas are ready
+    setTimeout(() => {
+      cleanupRevokedExpiredLicenses();
+      cleanupResolvedRequests();
+    }, 5000);
   }
 });
 
@@ -98,6 +105,35 @@ const initializeAdminSchema = async () => {
   }
 };
 
+const initializeAccountsSchema = async () => {
+  const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS admin_accounts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      username VARCHAR(100) UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      display_name VARCHAR(255),
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `;
+  try {
+    await pool.query(createTableQuery);
+
+    // Seed default admin account if none exists
+    const existing = await pool.query("SELECT COUNT(*) FROM admin_accounts");
+    if (parseInt(existing.rows[0].count) === 0) {
+      const defaultPassword = await bcrypt.hash("admin123", 10);
+      await pool.query(
+        `INSERT INTO admin_accounts (username, password_hash, display_name) VALUES ($1, $2, $3) ON CONFLICT (username) DO NOTHING`,
+        ["admin", defaultPassword, "Super Admin"]
+      );
+      console.log("Default admin account created (admin / admin123)");
+    }
+    console.log("Accounts Schema initialized successfully.");
+  } catch (err) {
+    console.error("Error creating accounts schema:", err);
+  }
+};
+
 const initializeRequestsSchema = async () => {
   try {
     await pool.query(`
@@ -119,6 +155,51 @@ const initializeRequestsSchema = async () => {
     console.error("Error creating requests schema:", err);
   }
 };
+
+// === AUTO-CLEANUP FUNCTIONS ===
+
+// Delete revoked and expired licenses
+const cleanupRevokedExpiredLicenses = async () => {
+  try {
+    // Delete revoked licenses
+    const revokedResult = await pool.query(
+      "DELETE FROM licenses WHERE status = 'revoked' RETURNING id"
+    );
+    if (revokedResult.rowCount > 0) {
+      console.log(`[Cleanup] Deleted ${revokedResult.rowCount} revoked license(s)`);
+    }
+
+    // Delete expired licenses (status active but expiry_date has passed)
+    const expiredResult = await pool.query(
+      "DELETE FROM licenses WHERE status = 'active' AND expiry_date < NOW() RETURNING id"
+    );
+    if (expiredResult.rowCount > 0) {
+      console.log(`[Cleanup] Deleted ${expiredResult.rowCount} expired license(s)`);
+    }
+  } catch (err) {
+    console.error("[Cleanup] Error cleaning up licenses:", err.message);
+  }
+};
+
+// Delete resolved requests older than 7 days
+const cleanupResolvedRequests = async () => {
+  try {
+    const result = await pool.query(
+      "DELETE FROM license_requests WHERE status = 'resolved' AND resolved_at < NOW() - INTERVAL '7 days' RETURNING id"
+    );
+    if (result.rowCount > 0) {
+      console.log(`[Cleanup] Deleted ${result.rowCount} resolved request(s) older than 7 days`);
+    }
+  } catch (err) {
+    console.error("[Cleanup] Error cleaning up requests:", err.message);
+  }
+};
+
+// Run cleanup every hour
+setInterval(() => {
+  cleanupRevokedExpiredLicenses();
+  cleanupResolvedRequests();
+}, 60 * 60 * 1000);
 
 // --- Email Notification ---
 const transporter = nodemailer.createTransport({
@@ -265,6 +346,97 @@ app.post("/auth/google", async (req, res) => {
       success: false,
       message: "Xác thực thất bại: Token không hợp lệ",
     });
+  }
+});
+
+// Account Login Route
+app.post("/auth/login", async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.json({ success: false, message: "Vui lòng nhập tên đăng nhập và mật khẩu" });
+  }
+
+  try {
+    const result = await pool.query(
+      "SELECT * FROM admin_accounts WHERE username = $1",
+      [username]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ success: false, message: "Tên đăng nhập hoặc mật khẩu không đúng" });
+    }
+
+    const account = result.rows[0];
+    const isPasswordValid = await bcrypt.compare(password, account.password_hash);
+
+    if (!isPasswordValid) {
+      return res.json({ success: false, message: "Tên đăng nhập hoặc mật khẩu không đúng" });
+    }
+
+    const accessToken = jwt.sign(
+      { username: account.username, name: account.display_name, loginType: "account" },
+      JWT_SECRET,
+      { expiresIn: "24h" }
+    );
+
+    res.json({
+      success: true,
+      token: accessToken,
+      user: {
+        username: account.username,
+        name: account.display_name,
+        loginType: "account",
+      },
+    });
+  } catch (error) {
+    console.error("Account Login Error:", error);
+    res.status(500).json({ success: false, message: "Lỗi đăng nhập" });
+  }
+});
+
+// Change Password Route
+app.post("/auth/change-password", authMiddleware, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    return res.json({ success: false, message: "Vui lòng nhập đầy đủ thông tin" });
+  }
+
+  if (newPassword.length < 6) {
+    return res.json({ success: false, message: "Mật khẩu mới phải có ít nhất 6 ký tự" });
+  }
+
+  try {
+    const username = req.user?.username;
+    if (!username) {
+      return res.json({ success: false, message: "Chỉ tài khoản đăng nhập bằng account mới đổi được mật khẩu" });
+    }
+
+    const result = await pool.query(
+      "SELECT * FROM admin_accounts WHERE username = $1",
+      [username]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ success: false, message: "Tài khoản không tồn tại" });
+    }
+
+    const isPasswordValid = await bcrypt.compare(currentPassword, result.rows[0].password_hash);
+    if (!isPasswordValid) {
+      return res.json({ success: false, message: "Mật khẩu hiện tại không đúng" });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      "UPDATE admin_accounts SET password_hash = $1 WHERE username = $2",
+      [newHash, username]
+    );
+
+    res.json({ success: true, message: "Đổi mật khẩu thành công" });
+  } catch (error) {
+    console.error("Change Password Error:", error);
+    res.status(500).json({ success: false, message: "Lỗi đổi mật khẩu" });
   }
 });
 
