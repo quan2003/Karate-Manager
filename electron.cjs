@@ -57,12 +57,17 @@ ipcMain.handle('krt:open', async () => {
 // Lưu file xuất (Excel/JSON) cho HLV
 ipcMain.handle('export:save', async (event, content, suggestedName, fileType) => {
   try {
-    const filters = fileType === 'json' 
-      ? [{ name: 'JSON File', extensions: ['json'] }]
-      : [{ name: 'Excel File', extensions: ['xlsx'] }];
+    let filters = [];
+    if (fileType === 'json') {
+      filters = [{ name: 'JSON File', extensions: ['json'] }];
+    } else if (fileType === 'kbackup') {
+      filters = [{ name: 'Karate Backup File', extensions: ['kbackup'] }];
+    } else {
+      filters = [{ name: 'Excel File', extensions: ['xlsx'] }];
+    }
 
     const result = await dialog.showSaveDialog(mainWindow, {
-      title: 'Xuất file danh sách VĐV',
+      title: 'Lưu file',
       defaultPath: suggestedName,
       filters
     });
