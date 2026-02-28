@@ -1,4 +1,5 @@
 const { app, BrowserWindow, shell, dialog, ipcMain } = require('electron');
+const { autoUpdater } = require("electron-updater");
 const path = require('path');
 const fs = require('fs');
 
@@ -231,6 +232,25 @@ function createWindow() {
 // Khi Electron sẵn sàng
 app.whenReady().then(() => {
   createWindow();
+
+  autoUpdater.checkForUpdatesAndNotify();
+
+  autoUpdater.on("update-available", () => {
+    console.log("Có bản cập nhật mới...");
+  });
+
+  autoUpdater.on("update-downloaded", () => {
+    dialog.showMessageBox({
+      type: "info",
+      title: "Cập nhật",
+      message: "Đã tải bản mới. Bạn muốn cài đặt ngay?",
+      buttons: ["Cài đặt", "Để sau"]
+    }).then(result => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
 
   // macOS: Tạo lại window khi click vào dock icon
   app.on('activate', () => {

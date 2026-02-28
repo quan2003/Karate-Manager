@@ -12,12 +12,15 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "npm run build && electron-builder --win --x64",
-    "deploy-server": "scp license-server/server.js root@103.82.194.186:/root/karate-license-server/ && ssh root@103.82.194.186 \"pm2 restart all\"",
-    "electron:build:dir": "npm run build && electron-builder --win --x64 --dir"
+    "electron:build:win": "npm run build && electron-builder --win --x64",
+    "electron:build:mac": "npm run build && electron-builder --mac",
+    "electron:build:all": "npm run build && electron-builder -mwl",
+    "electron:build:dir": "npm run build && electron-builder --win --x64 --dir",
+    "deploy-server": "scp license-server/server.js root@103.82.194.186:/root/karate-license-server/ && ssh root@103.82.194.186 \"pm2 restart all\""
   },
   "dependencies": {
     "dom-to-image-more": "^3.7.2",
+    "electron-updater": "^6.8.3",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.0.0",
     "react": "^19.2.0",
@@ -47,6 +50,13 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "quan2003",
+        "repo": "Karate-Manager"
+      }
+    ],
     "files": [
       "dist/**/*",
       "electron.cjs",
@@ -59,7 +69,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "public/icon.png"
@@ -71,7 +83,13 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Karate Tournament"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.sports"
+    },
+    "linux": {
+      "target": "AppImage"
     }
   }
 }
-
