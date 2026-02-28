@@ -9,6 +9,7 @@ import {
 import LicenseSplash from "../components/LicenseSplash/LicenseSplash";
 import LicenseWarning from "../components/LicenseWarning/LicenseWarning";
 import "./RoleSelectPage.css";
+import packageJson from "../../package.json";
 
 /**
  * Trang chọn vai trò khi khởi động ứng dụng
@@ -170,7 +171,7 @@ function RoleSelectPage() {
         </div>
 
         <div className="role-select-footer">
-          <p>Phiên bản 1.0.1 (28/02/2026) • Offline 100%</p>
+          <p>Phiên bản {packageJson.version} (01/03/2026) • Offline 100%</p>
         </div>
       </div>
 

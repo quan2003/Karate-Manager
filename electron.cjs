@@ -235,13 +235,9 @@ app.whenReady().then(() => {
 
   // Cấu hình cập nhật
   autoUpdater.autoDownload = false; // Không tự động tải, hỏi người dùng trước
-  
-  if (!isDev) {
-    autoUpdater.checkForUpdates();
-  }
 
   autoUpdater.on("update-available", (info) => {
-    dialog.showMessageBox({
+    dialog.showMessageBox(mainWindow, {
       type: "info",
       title: "Có bản cập nhật mới",
       message: `Đã có phiên bản mới (${info.version}). Bạn có muốn tải xuống và cập nhật ngay không?`,
@@ -262,7 +258,7 @@ app.whenReady().then(() => {
   });
 
   autoUpdater.on("update-downloaded", () => {
-    dialog.showMessageBox({
+    dialog.showMessageBox(mainWindow, {
       type: "info",
       title: "Đã tải xong bản cập nhật",
       message: "Bản cập nhật đã tải xong. Ứng dụng sẽ khởi động lại để cài đặt.",
@@ -273,6 +269,12 @@ app.whenReady().then(() => {
       }
     });
   });
+
+  if (!isDev) {
+    setTimeout(() => {
+      autoUpdater.checkForUpdates();
+    }, 1500);
+  }
 
   // macOS: Tạo lại window khi click vào dock icon
   app.on('activate', () => {
