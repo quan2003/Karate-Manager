@@ -16,7 +16,8 @@
     "electron:build:mac": "npm run build && electron-builder --mac",
     "electron:build:all": "npm run build && electron-builder -mwl",
     "electron:build:dir": "npm run build && electron-builder --win --x64 --dir",
-    "deploy-server": "scp license-server/server.js root@103.82.194.186:/root/karate-license-server/ && ssh root@103.82.194.186 \"pm2 restart all\""
+    "deploy-server": "scp license-server/server.js root@103.82.194.186:/root/karate-license-server/ && ssh root@103.82.194.186 \"pm2 restart all\"",
+    "version": "node scripts/update-version-date.js && git add package.json"
   },
   "dependencies": {
     "dom-to-image-more": "^3.7.2",
@@ -91,5 +92,6 @@
     "linux": {
       "target": "AppImage"
     }
-  }
+  },
+  "buildDate": "09/03/2026"
 }

@@ -171,7 +171,7 @@ function RoleSelectPage() {
         </div>
 
         <div className="role-select-footer">
-          <p>Phiên bản {packageJson.version} (01/03/2026) • Offline 100%</p>
+          <p>Phiên bản {packageJson.version} {packageJson.buildDate ? `(${packageJson.buildDate})` : ""} • Offline 100%</p>
         </div>
       </div>
 
