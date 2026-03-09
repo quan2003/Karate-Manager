@@ -218,9 +218,7 @@ body {
 .timer-content > .logo-container {
   flex-shrink: 0;
   order: 2;
-  position: absolute;
-  left: 50%;
-  transform: translateX(calc(-50% - 25vw));
+  /* position deleted to allow side-by-side rendering with event-title */
 }
 
 .timer-content > .timer-display {

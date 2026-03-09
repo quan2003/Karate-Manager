@@ -1401,6 +1401,18 @@ function loadPendingMatch() {
       }
     }
   }
+
+  // Load schedule mat number
+  if (pendingMatchData.matNumber) {
+    state.eventTitle = `Thảm ${pendingMatchData.matNumber}`;
+    const eventInput = document.getElementById("eventTitle");
+    if (eventInput) eventInput.value = state.eventTitle;
+  }
+
+  // Load sponsor logos
+  if (pendingMatchData.sponsorLogos) {
+    state.sponsorLogos = pendingMatchData.sponsorLogos;
+  }
   
   // Load existing scores if match has data (for re-editing)
   if (pendingMatchData.score1 !== undefined) {

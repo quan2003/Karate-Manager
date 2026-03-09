@@ -44,8 +44,41 @@ function updateDisplay() {
       state.eventTitle || "THẢM 1";
   }
   document.getElementById("matchInfo").textContent =
-    state.matchInfo || "KATA CÁ NHÂN NAM LỨA TUỔI 10 TUỔI ĐẾN 11 TUỔI"; // Update sponsor text - show default if empty or undefined
-  if (document.getElementById("sponsorText")) {
+    state.matchInfo || "KATA CÁ NHÂN NAM LỨA TUỔI 10 TUỔI ĐẾN 11 TUỔI";
+
+  // Update sponsor text/logos
+  const logoContainer = document.getElementById("logoContainer");
+  if (logoContainer) {
+    if (state.sponsorLogos && (state.sponsorLogos.systemLogo || (state.sponsorLogos.sponsors && state.sponsorLogos.sponsors.length > 0))) {
+      logoContainer.innerHTML = ""; // Clear existing text/logos only if we have image logos to show
+      logoContainer.style.display = "flex";
+      
+      // System logo first (bắt buộc)
+      if (state.sponsorLogos.systemLogo) {
+        const sysImg = document.createElement("img");
+        sysImg.src = state.sponsorLogos.systemLogo;
+        sysImg.style.cssText = "height: 80px; max-width: 200px; object-fit: contain; margin-right: 15px;";
+        logoContainer.appendChild(sysImg);
+      }
+      
+      // Sponsor logos
+      if (state.sponsorLogos.sponsors && state.sponsorLogos.sponsors.length > 0) {
+        state.sponsorLogos.sponsors.forEach(logoUrl => {
+          const spImg = document.createElement("img");
+          spImg.src = logoUrl;
+          spImg.style.cssText = "height: 80px; max-width: 200px; object-fit: contain;";
+          logoContainer.appendChild(spImg);
+        });
+      }
+    } else {
+      // Fallback
+      logoContainer.innerHTML = '<div class="sponsor-text" id="sponsorText">NHÀ TÀI TRỢ</div>';
+      const spText = document.getElementById("sponsorText");
+      if (spText) {
+        spText.textContent = state.sponsorText && state.sponsorText.trim() !== "" ? state.sponsorText : "NHÀ TÀI TRỢ";
+      }
+    }
+  } else if (document.getElementById("sponsorText")) {
     document.getElementById("sponsorText").textContent =
       state.sponsorText && state.sponsorText.trim() !== ""
         ? state.sponsorText

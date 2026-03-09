@@ -1,11 +1,22 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useRole, ROLES } from '../context/RoleContext';
-import { openKmatchFile, exportResultsToJson, exportResultsToExcel } from '../services/matchService';
-import { openScoreboard, listenForMatchResult } from '../services/scoreboardService';
-import { updateMatchResult as updateBracketWithResult } from '../utils/drawEngine';
-import Bracket from '../components/Bracket/Bracket';
-import './SecretaryPage.css';
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { useRole, ROLES } from "../context/RoleContext";
+import {
+  openKmatchFile,
+  exportResultsToJson,
+  exportResultsToExcel,
+} from "../services/matchService";
+import {
+  openScoreboard,
+  listenForMatchResult,
+} from "../services/scoreboardService";
+import {
+  updateMatchResult as updateBracketWithResult,
+  disqualifyAthlete,
+  resetMatch,
+} from "../utils/drawEngine";
+import Bracket from "../components/Bracket/Bracket";
+import "./SecretaryPage.css";
 
 /**
  * SecretaryPage - Trang bấm điểm cho Thư ký
@@ -20,20 +31,21 @@ function SecretaryPage() {
     canScore,
     loadMatchData,
     updateMatchResult,
+    removeMatchResult,
     getMatchResult,
     getMatchExportData,
-    resetRole
+    resetRole,
   } = useRole();
 
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [notification, setNotification] = useState('');
+  const [notification, setNotification] = useState("");
 
   // Redirect if not Secretary
   useEffect(() => {
     if (role !== ROLES.SECRETARY) {
-      navigate('/');
+      navigate("/");
     }
   }, [role, navigate]);
 
@@ -41,7 +53,7 @@ function SecretaryPage() {
   const getMatchById = (matchId) => {
     if (!matchData?.categories) return null;
     for (const cat of matchData.categories) {
-      const match = cat.matches?.find(m => m.id === matchId);
+      const match = cat.matches?.find((m) => m.id === matchId);
       if (match) return match;
     }
     return null;
@@ -50,19 +62,24 @@ function SecretaryPage() {
   // Listen for match results from scoreboard
   useEffect(() => {
     const handleMatchResult = (result) => {
-      console.log('Received match result:', result);
-      
+      console.log("Received match result:", result);
+
       // Update result in context
       const updateStatus = updateMatchResult(result.matchId, {
         score1: result.score1,
         score2: result.score2,
-        winner: result.winnerId ? (result.winnerId === (getMatchById(result.matchId)?.athlete1?.id || 'athlete1') ? 'athlete1' : 'athlete2') : null, 
-        ...result
+        winner: result.winnerId
+          ? result.winnerId ===
+            (getMatchById(result.matchId)?.athlete1?.id || "athlete1")
+            ? "athlete1"
+            : "athlete2"
+          : null,
+        ...result,
       });
 
       if (updateStatus.success) {
         setNotification(`✅ Đã cập nhật kết quả trận đấu!`);
-        setTimeout(() => setNotification(''), 3000);
+        setTimeout(() => setNotification(""), 3000);
       } else {
         setError(`Lỗi cập nhật kết quả: ${updateStatus.error}`);
       }
@@ -78,47 +95,112 @@ function SecretaryPage() {
 
   // Open .kmatch file
   const handleOpenFile = async () => {
-    setError('');
+    setError("");
     setLoading(true);
     try {
       const result = await openKmatchFile();
       if (result.success) {
         loadMatchData(result.data);
       } else {
-        setError(result.error || 'Không thể đọc file');
+        setError(result.error || "Không thể đọc file");
       }
     } catch (err) {
       setError(err.message);
     }
     setLoading(false);
   };
-
   // Prepare bracket with live scores
   const bracketWithScores = useMemo(() => {
     if (!selectedCategory?.bracket) return null;
-    
+
     // Deep clone bracket to allow mutation by the engine helper
     const clonedBracket = JSON.parse(JSON.stringify(selectedCategory.bracket));
-    
+
     // Apply all local results to the cloned bracket
     // This ensures winners are advanced to next rounds automatically
-    matchResults.forEach(result => {
-        updateBracketWithResult(
-            clonedBracket, 
-            result.matchId, 
-            result.score1, 
-            result.score2, 
-            result.winnerId
+    matchResults.forEach((result) => {
+      if (result.disqualification && result.disqualifiedSlot) {
+        // Apply disqualification
+        disqualifyAthlete(
+          clonedBracket,
+          result.matchId,
+          result.disqualifiedSlot,
+          result.disqualifiedReason || "Loại"
         );
+      } else if (result.winnerId) {
+        updateBracketWithResult(
+          clonedBracket,
+          result.matchId,
+          result.score1,
+          result.score2,
+          result.winnerId
+        );
+      }
     });
 
     return clonedBracket;
   }, [selectedCategory, matchResults]);
 
+  // Handle right-click context menu actions from Bracket component
+  const handleContextAction = (action, match, athleteSlot) => {
+    if (!selectedCategory?.bracket) return;
+
+    switch (action) {
+      case "disqualify": {
+        const athlete = athleteSlot === 1 ? match.athlete1 : match.athlete2;
+        const reason = window.prompt(
+          `Lý do loại ${athlete?.name || "VĐV"}:`,
+          "Vi phạm"
+        );
+        if (reason === null) return; // User cancelled
+
+        const opponent = athleteSlot === 1 ? match.athlete2 : match.athlete1;
+        updateMatchResult(match.id, {
+          matchId: match.id,
+          disqualification: true,
+          disqualifiedSlot: athleteSlot,
+          disqualifiedReason: reason || "Loại",
+          winnerId: opponent?.id || null,
+          score1: null,
+          score2: null,
+        });
+        setNotification(
+          `🚫 Đã loại ${athlete?.name || "VĐV"}. ${
+            opponent?.name || ""
+          } thắng tự động.`
+        );
+        setTimeout(() => setNotification(""), 3000);
+        break;
+      }
+      case "set_winner": {
+        const winner = athleteSlot === 1 ? match.athlete1 : match.athlete2;
+        if (!winner) return;
+        updateMatchResult(match.id, {
+          matchId: match.id,
+          winnerId: winner.id,
+          score1: athleteSlot === 1 ? 1 : 0,
+          score2: athleteSlot === 1 ? 0 : 1,
+        });
+        setNotification(`🏆 ${winner.name} thắng trận!`);
+        setTimeout(() => setNotification(""), 3000);
+        break;
+      }
+      case "reset_match": {
+        if (!window.confirm("Reset trận đấu này? Kết quả sẽ bị xóa.")) return;
+        removeMatchResult(match.id);
+        setNotification("↩️ Đã reset trận đấu.");
+        setTimeout(() => setNotification(""), 3000);
+        break;
+      }
+      default:
+        return;
+    }
+  };
+
   // Select a match to score - opens the external scoreboard
   const handleSelectMatch = (match) => {
     if (!canScore) {
-      setError('Chức năng bấm điểm chưa được bật');
+      setError("Chức năng bấm điểm chưa được bật");
       return;
     }
 
@@ -126,22 +208,24 @@ function SecretaryPage() {
     if (!match.athlete1 && !match.athlete2) return;
 
     if (!selectedCategory) return;
-    
+
     // Determine round name
-    const roundName = selectedCategory.bracket?.roundNames?.[match.round - 1] || `Round ${match.round}`;
+    const roundName =
+      selectedCategory.bracket?.roundNames?.[match.round - 1] ||
+      `Round ${match.round}`;
 
     try {
       openScoreboard(
         match,
-        selectedCategory.type || 'kumite',
+        selectedCategory.type || "kumite",
         selectedCategory.name,
         matchData.tournamentName,
         roundName
       );
-      setNotification('📺 Đã mở bảng điểm. Vui lòng thao tác trên cửa sổ mới.');
-      setTimeout(() => setNotification(''), 5000);
+      setNotification("📺 Đã mở bảng điểm. Vui lòng thao tác trên cửa sổ mới.");
+      setTimeout(() => setNotification(""), 5000);
     } catch (err) {
-      setError('Không thể mở bảng điểm: ' + err.message);
+      setError("Không thể mở bảng điểm: " + err.message);
     }
   };
 
@@ -149,20 +233,20 @@ function SecretaryPage() {
   const handleExport = async (format) => {
     const data = getMatchExportData();
     try {
-      if (format === 'json') {
+      if (format === "json") {
         await exportResultsToJson(data);
       } else {
         await exportResultsToExcel(data);
       }
     } catch (err) {
-      setError('Lỗi khi xuất file: ' + err.message);
+      setError("Lỗi khi xuất file: " + err.message);
     }
   };
 
   // Back to role select
   const handleBack = () => {
     resetRole();
-    navigate('/');
+    navigate("/");
   };
 
   if (role !== ROLES.SECRETARY) return null;
@@ -179,19 +263,16 @@ function SecretaryPage() {
           </div>
           <div className="header-right">
             {!matchData && (
-              <button 
-                className="open-file-btn" 
+              <button
+                className="open-file-btn"
                 onClick={handleOpenFile}
                 disabled={loading}
               >
-                {loading ? '⏳ Đang tải...' : '📂 Mở file .kmatch'}
+                {loading ? "⏳ Đang tải..." : "📂 Mở file .kmatch"}
               </button>
             )}
             {matchData && (
-              <button 
-                className="open-file-btn small" 
-                onClick={handleOpenFile}
-              >
+              <button className="open-file-btn small" onClick={handleOpenFile}>
                 🔄 Đổi file
               </button>
             )}
@@ -199,7 +280,9 @@ function SecretaryPage() {
         </header>
 
         {error && <div className="error-message">{error}</div>}
-        {notification && <div className="notification-toast">{notification}</div>}
+        {notification && (
+          <div className="notification-toast">{notification}</div>
+        )}
 
         {!matchData ? (
           <div className="no-file-section">
@@ -213,11 +296,19 @@ function SecretaryPage() {
         ) : (
           <>
             {/* Status Banner */}
-            <div className={`status-banner ${scoringEnabled ? 'enabled' : 'disabled'}`}>
+            <div
+              className={`status-banner ${
+                scoringEnabled ? "enabled" : "disabled"
+              }`}
+            >
               <div className="status-info">
-                <span className="status-icon">{scoringEnabled ? '🟢' : '🔴'}</span>
+                <span className="status-icon">
+                  {scoringEnabled ? "🟢" : "🔴"}
+                </span>
                 <span className="status-text">
-                  {scoringEnabled ? 'Bấm điểm đang được bật' : 'Bấm điểm đang TẮT'}
+                  {scoringEnabled
+                    ? "Bấm điểm đang được bật"
+                    : "Bấm điểm đang TẮT"}
                 </span>
               </div>
               <div className="tournament-info">
@@ -231,10 +322,12 @@ function SecretaryPage() {
               <div className="categories-sidebar">
                 <h3>Hạng mục thi đấu</h3>
                 <div className="categories-list">
-                  {matchData.categories?.map(cat => (
+                  {matchData.categories?.map((cat) => (
                     <button
                       key={cat.id}
-                      className={`category-btn ${selectedCategory?.id === cat.id ? 'active' : ''}`}
+                      className={`category-btn ${
+                        selectedCategory?.id === cat.id ? "active" : ""
+                      }`}
                       onClick={() => setSelectedCategory(cat)}
                     >
                       {cat.name}
@@ -250,46 +343,96 @@ function SecretaryPage() {
               <div className="bracket-view-area">
                 {selectedCategory ? (
                   <>
-               <div className="bracket-header-info">
-                        <h2>{selectedCategory.name}</h2>
-                        <div className="bracket-stats">
-                          <span>{selectedCategory.bracket?.matches?.filter(m => !m.isBye).length || 0} trận đấu</span>
-                        </div>
-                     </div>
-                     
-                     {/* Bracket + Medal Table */}
-                     <div className="secretary-bracket-medal-wrapper">
-                        {/* Bracket Component */}
-                        <div className="secretary-bracket-wrapper">
-                          <Bracket 
-                            bracket={bracketWithScores} 
-                            categoryType={selectedCategory.type} 
-                            onMatchClick={handleSelectMatch}
-                          />
-                        </div>
+                    <div className="bracket-header-info">
+                      <h2>{selectedCategory.name}</h2>
+                      <div className="bracket-stats">
+                        <span>
+                          {selectedCategory.bracket?.matches?.filter(
+                            (m) => !m.isBye
+                          ).length || 0}{" "}
+                          trận đấu
+                        </span>
+                      </div>
+                    </div>
 
-                        {/* Medal Table */}
-                        {bracketWithScores && (() => {
+                    {/* Bracket + Medal Table */}
+                    <div className="secretary-bracket-medal-wrapper">
+                      {/* Bracket Component */}
+                      <div className="secretary-bracket-wrapper">
+                        {" "}
+                        <Bracket
+                          bracket={bracketWithScores}
+                          categoryType={selectedCategory.type}
+                          onMatchClick={handleSelectMatch}
+                          onContextAction={handleContextAction}
+                        />
+                      </div>
+
+                      {/* Medal Table */}
+                      {bracketWithScores &&
+                        (() => {
                           const finalMatch = bracketWithScores.matches?.find(
-                            m => m.round === bracketWithScores.numRounds
+                            (m) => m.round === bracketWithScores.numRounds
                           );
                           const champion = finalMatch?.winner;
-                          
+
                           const getLoser = (match) => {
                             if (!match?.winner) return null;
-                            if (match.athlete1?.id === match.winner.id) return match.athlete2;
-                            if (match.athlete2?.id === match.winner.id) return match.athlete1;
+                            if (match.athlete1?.id === match.winner.id)
+                              return match.athlete2;
+                            if (match.athlete2?.id === match.winner.id)
+                              return match.athlete1;
                             return null;
                           };
-                          
+
                           const silverMedalist = getLoser(finalMatch);
-                          const semiFinalRound = bracketWithScores.numRounds - 1;
-                          const semiFinalMatches = bracketWithScores.matches?.filter(
-                            m => m.round === semiFinalRound && !m.isBye
-                          ) || [];
+                          const semiFinalRound =
+                            bracketWithScores.numRounds - 1;
+                          const semiFinalMatches =
+                            bracketWithScores.matches?.filter(
+                              (m) => m.round === semiFinalRound && !m.isBye
+                            ) || [];
                           const bronzeMedalists = semiFinalMatches
-                            .map(m => getLoser(m))
-                            .filter(a => a !== null);
+                            .map((m) => getLoser(m))
+                            .filter((a) => a !== null);
+
+                          // Tìm thêm bronze từ tứ kết nếu bán kết có auto-advance
+                          if (bronzeMedalists.length < 2 && semiFinalRound > 1) {
+                            const quarterRound = semiFinalRound - 1;
+                            const quarterFinals =
+                              bracketWithScores.matches?.filter(
+                                (m) => m.round === quarterRound && !m.isBye && m.winner
+                              ) || [];
+                            const autoAdvanceSemis = semiFinalMatches.filter(
+                              (m) => m.winner && (!m.athlete1 || !m.athlete2)
+                            );
+                            autoAdvanceSemis.forEach((semi) => {
+                              const advAthlete = semi.winner || semi.athlete1 || semi.athlete2;
+                              if (!advAthlete) return;
+                              const qMatch = quarterFinals.find(
+                                (m) => m.winner?.id === advAthlete.id
+                              );
+                              if (qMatch) {
+                                const qLoser = getLoser(qMatch);
+                                if (qLoser && !bronzeMedalists.some((b) => b.id === qLoser.id)) {
+                                  bronzeMedalists.push(qLoser);
+                                }
+                              }
+                            });
+                            if (bronzeMedalists.length < 2) {
+                              quarterFinals.forEach((qm) => {
+                                const qLoser = getLoser(qm);
+                                if (
+                                  qLoser &&
+                                  qLoser.id !== champion?.id &&
+                                  qLoser.id !== silverMedalist?.id &&
+                                  !bronzeMedalists.some((b) => b.id === qLoser.id)
+                                ) {
+                                  bronzeMedalists.push(qLoser);
+                                }
+                              });
+                            }
+                          }
 
                           return (
                             <div className="secretary-medal-table-container">
@@ -306,12 +449,18 @@ function SecretaryPage() {
                                       <span className="medal-info">
                                         {champion ? (
                                           <>
-                                            <span className="medal-name">{champion.name}</span>
+                                            <span className="medal-name">
+                                              {champion.name}
+                                            </span>
                                             {champion.club && (
-                                              <span className="medal-club-sm">{champion.club}</span>
+                                              <span className="medal-club-sm">
+                                                {champion.club}
+                                              </span>
                                             )}
                                           </>
-                                        ) : '-'}
+                                        ) : (
+                                          "-"
+                                        )}
                                       </span>
                                     </td>
                                   </tr>
@@ -321,12 +470,18 @@ function SecretaryPage() {
                                       <span className="medal-info">
                                         {silverMedalist ? (
                                           <>
-                                            <span className="medal-name">{silverMedalist.name}</span>
+                                            <span className="medal-name">
+                                              {silverMedalist.name}
+                                            </span>
                                             {silverMedalist.club && (
-                                              <span className="medal-club-sm">{silverMedalist.club}</span>
+                                              <span className="medal-club-sm">
+                                                {silverMedalist.club}
+                                              </span>
                                             )}
                                           </>
-                                        ) : '-'}
+                                        ) : (
+                                          "-"
+                                        )}
                                       </span>
                                     </td>
                                   </tr>
@@ -336,12 +491,18 @@ function SecretaryPage() {
                                       <span className="medal-info">
                                         {bronzeMedalists[0] ? (
                                           <>
-                                            <span className="medal-name">{bronzeMedalists[0].name}</span>
+                                            <span className="medal-name">
+                                              {bronzeMedalists[0].name}
+                                            </span>
                                             {bronzeMedalists[0].club && (
-                                              <span className="medal-club-sm">{bronzeMedalists[0].club}</span>
+                                              <span className="medal-club-sm">
+                                                {bronzeMedalists[0].club}
+                                              </span>
                                             )}
                                           </>
-                                        ) : '-'}
+                                        ) : (
+                                          "-"
+                                        )}
                                       </span>
                                     </td>
                                   </tr>
@@ -351,12 +512,18 @@ function SecretaryPage() {
                                       <span className="medal-info">
                                         {bronzeMedalists[1] ? (
                                           <>
-                                            <span className="medal-name">{bronzeMedalists[1].name}</span>
+                                            <span className="medal-name">
+                                              {bronzeMedalists[1].name}
+                                            </span>
                                             {bronzeMedalists[1].club && (
-                                              <span className="medal-club-sm">{bronzeMedalists[1].club}</span>
+                                              <span className="medal-club-sm">
+                                                {bronzeMedalists[1].club}
+                                              </span>
                                             )}
                                           </>
-                                        ) : '-'}
+                                        ) : (
+                                          "-"
+                                        )}
                                       </span>
                                     </td>
                                   </tr>
@@ -365,7 +532,7 @@ function SecretaryPage() {
                             </div>
                           );
                         })()}
-                     </div>
+                    </div>
                   </>
                 ) : (
                   <div className="select-category-hint">
@@ -381,16 +548,16 @@ function SecretaryPage() {
                 Đã lưu kết quả: <strong>{matchResults.length}</strong> trận
               </div>
               <div className="export-buttons">
-                <button 
+                <button
                   className="export-btn json"
-                  onClick={() => handleExport('json')}
+                  onClick={() => handleExport("json")}
                   disabled={matchResults.length === 0}
                 >
                   📄 Xuất JSON
                 </button>
-                <button 
+                <button
                   className="export-btn excel"
-                  onClick={() => handleExport('excel')}
+                  onClick={() => handleExport("excel")}
                   disabled={matchResults.length === 0}
                 >
                   📊 Xuất Excel

@@ -192,6 +192,8 @@ export function parseCoachExcelFile(file) {
 
         let clubName = "";
         let coachName = "";
+        let teamLeaderName = "";
+        let additionalCoaches = [];
 
         // Try to read info from "Thông tin" sheet
         const infoSheet = workbook.Sheets["Thông tin"];
@@ -199,11 +201,18 @@ export function parseCoachExcelFile(file) {
           const infoData = XLSX.utils.sheet_to_json(infoSheet, { header: 1 });
           for (const row of infoData) {
             const label = String(row[0] || "").trim();
-            if (label.includes("CLB") || label.includes("Câu lạc bộ")) {
+            if (label === "Tên CLB:" || label === "CLB:") {
               clubName = String(row[1] || "").trim();
             }
-            if (label.includes("HLV") || label.includes("Huấn luyện")) {
+            if (label === "Tên HLV:" || label === "HLV:" || label === "HLV / CLB:") {
               coachName = String(row[1] || "").trim();
+            }
+            if (label === "Trưởng đoàn:") {
+              teamLeaderName = String(row[1] || "").trim();
+            }
+            if (label === "HLV phụ:") {
+              const hm = String(row[1] || "").trim();
+              if (hm) additionalCoaches.push(...hm.split(',').map(s => s.trim()).filter(Boolean));
             }
           }
         }
@@ -215,7 +224,7 @@ export function parseCoachExcelFile(file) {
         const athleteSheet = workbook.Sheets[athleteSheetName];
 
         if (!athleteSheet) {
-          resolve({ athletes: [], errors: ["Không tìm thấy sheet danh sách VĐV"], clubName, coachName });
+          resolve({ athletes: [], errors: ["Không tìm thấy sheet danh sách VĐV"], clubName, coachName, teamLeaderName, additionalCoaches });
           return;
         }
 
@@ -282,7 +291,7 @@ export function parseCoachExcelFile(file) {
           });
         }
 
-        resolve({ athletes, errors, clubName, coachName });
+        resolve({ athletes, errors, clubName, coachName, teamLeaderName, additionalCoaches });
       } catch (error) {
         reject(new Error("Không thể đọc file Excel: " + error.message));
       }

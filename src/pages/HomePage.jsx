@@ -331,14 +331,66 @@ export default function HomePage() {
   const handleAcceptImport = () => {
     if (!importResult) return;
 
-    // TODO: Add athletes to tournament
     const tournament = tournaments.find(
       (t) => t.id === importResult.data.tournamentId
     );
     if (tournament) {
-      // Import logic here - dispatch action to add athletes
+      const data = importResult.data;
+      const clubName = data.clubName || data.coachName || 'Chưa Rõ';
+      
+      // Save club registration info (coaches, team leader)
+      const existingRegs = tournament.clubRegistrations || {};
+      const existingReg = existingRegs[clubName] || { coaches: [], teamLeader: '' };
+      
+      // Merge coaches - combine without duplicates
+      const allCoaches = [data.coachName, ...(data.additionalCoaches || [])].filter(Boolean);
+      const mergedCoaches = [...new Set([...existingReg.coaches, ...allCoaches])].filter(Boolean);
+      
+      // Team leader: use new one if provided, otherwise keep existing
+      const teamLeader = data.teamLeaderName || existingReg.teamLeader || '';
+      
+      dispatch({
+        type: ACTIONS.UPDATE_CLUB_REGISTRATIONS,
+        payload: {
+          tournamentId: tournament.id,
+          clubRegistrations: {
+            ...existingRegs,
+            [clubName]: {
+              coaches: mergedCoaches,
+              teamLeader,
+            },
+          },
+        },
+      });
+
+      // Dispatch action to add athletes
+      let importedCount = 0;
+      if (data.athletes && data.athletes.length > 0) {
+        const athletesByCat = {};
+        data.athletes.forEach(a => {
+           if (!athletesByCat[a.eventId]) athletesByCat[a.eventId] = [];
+           // ensure club is set correctly using the fallback clubName
+           a.club = a.club || clubName;
+           athletesByCat[a.eventId].push(a);
+        });
+        
+        Object.keys(athletesByCat).forEach(categoryId => {
+           // Find if category actually exists in tournament to avoid invalid dispatches
+           if (tournament.categories.find(c => c.id === categoryId)) {
+             dispatch({
+                type: ACTIONS.IMPORT_ATHLETES,
+                payload: {
+                   categoryId,
+                   athletes: athletesByCat[categoryId]
+                }
+             });
+             importedCount += athletesByCat[categoryId].length;
+           }
+        });
+      }
+      
       alert(
-        `Đã import ${importResult.data.athletes.length} VĐV từ ${importResult.data.coachName}!`
+        `Đã import ${importedCount} VĐV từ file!\nĐã cập nhật thông tin ban huấn luyện cho đoàn: ${clubName}`
       );
     } else {
       alert("Không tìm thấy giải đấu phù hợp với Tournament ID trong file!");

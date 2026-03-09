@@ -223,19 +223,34 @@ function updateStatistics() {
 }
 
 // Export to Excel
+// Format tương thích với admin import (nhiều thư ký xuất → admin import)
 function exportToExcel() {
   if (medalsData.categories.length === 0) {
     alert("⚠️ Không có dữ liệu để xuất!");
     return;
   }
 
-  // Prepare data for Excel
-  const excelData = [];
+  // Sheet 1: Kết quả format tương thích admin import
+  const importCompatData = [];
+  medalsData.categories.forEach((category) => {
+    importCompatData.push({
+      "Hạng mục": category.categoryName,
+      "HCV (Vàng)": category.gold.athlete,
+      "CLB HCV": category.gold.unit,
+      "HCB (Bạc)": category.silver.athlete,
+      "CLB HCB": category.silver.unit,
+      "HCĐ 1 (Đồng)": category.bronze1.athlete,
+      "CLB HCĐ 1": category.bronze1.unit,
+      "HCĐ 2 (Đồng)": category.bronze2.athlete,
+      "CLB HCĐ 2": category.bronze2.unit,
+    });
+  });
 
-  // Header row
+  // Sheet 2: Bảng trình bày đẹp (giữ format cũ)
+  const excelData = [];
   excelData.push(["BẢNG KẾT QUẢ THI ĐẤU KUMITE VÀ TRAO HUY CHƯƠNG"]);
   excelData.push([medalsData.eventName]);
-  excelData.push([]); // Empty row
+  excelData.push([]);
   excelData.push([
     "STT",
     "Nội dung thi đấu",
@@ -249,7 +264,6 @@ function exportToExcel() {
     "Đơn vị",
   ]);
 
-  // Data rows
   medalsData.categories.forEach((category, index) => {
     excelData.push([
       index + 1,
@@ -265,46 +279,57 @@ function exportToExcel() {
     ]);
   });
 
-  // Add statistics
-  excelData.push([]); // Empty row
+  excelData.push([]);
   excelData.push(["THỐNG KÊ HUY CHƯƠNG"]);
   excelData.push(["Tổng số nội dung thi đấu:", medalsData.categories.length]);
   excelData.push(["Tổng số HCV:", medalsData.categories.length]);
   excelData.push(["Tổng số HCB:", medalsData.categories.length]);
   excelData.push(["Tổng số HCĐ:", medalsData.categories.length * 2]);
 
-  // Create workbook
+  // Create workbook with 2 sheets
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(excelData);
 
-  // Set column widths
-  ws["!cols"] = [
-    { wch: 5 }, // STT
-    { wch: 35 }, // Nội dung
-    { wch: 25 }, // HCV
-    { wch: 25 }, // Đơn vị
-    { wch: 25 }, // HCB
-    { wch: 25 }, // Đơn vị
-    { wch: 25 }, // HCĐ 1
-    { wch: 25 }, // Đơn vị
-    { wch: 25 }, // HCĐ 2
-    { wch: 25 }, // Đơn vị
+  // Sheet 1: Format tương thích import
+  const wsImport = XLSX.utils.json_to_sheet(importCompatData);
+  wsImport["!cols"] = [
+    { wch: 40 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
   ];
+  XLSX.utils.book_append_sheet(wb, wsImport, "Kết Quả Import");
 
-  // Add worksheet to workbook
-  XLSX.utils.book_append_sheet(wb, ws, "Kết Quả Kumite");
+  // Sheet 2: Format trình bày đẹp
+  const wsPrint = XLSX.utils.aoa_to_sheet(excelData);
+  wsPrint["!cols"] = [
+    { wch: 5 },
+    { wch: 35 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+  ];
+  XLSX.utils.book_append_sheet(wb, wsPrint, "Bảng Kết Quả Kumite");
 
-  // Generate filename with timestamp
   const timestamp = new Date()
     .toISOString()
     .replace(/[:.]/g, "-")
     .substring(0, 19);
-  const filename = `KetQua_HuyChuong_Kumite_${timestamp}.xlsx`;
+  const filename = `KetQua_Kumite_HuyChuong_${timestamp}.xlsx`;
 
-  // Save file
   XLSX.writeFile(wb, filename);
-
-  alert("✅ Đã xuất file Excel thành công!");
+  alert(
+    "✅ Đã xuất file Excel thành công!\nSheet 'Kết Quả Import' dùng để import vào Admin."
+  );
 }
 
 // Initialize on page load

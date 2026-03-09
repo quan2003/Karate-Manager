@@ -425,7 +425,9 @@ function updateAkaDisplay() {
   } else {
     const select = document.getElementById("akaTeamSelect");
     const manualTeam = document.getElementById("akaTeamName").value;
-    const manualMembers = document.getElementById("akaTeamMembers") ? document.getElementById("akaTeamMembers").value : "";
+    const manualMembers = document.getElementById("akaTeamMembers")
+      ? document.getElementById("akaTeamMembers").value
+      : "";
 
     if (select.value !== "") {
       state.aka.team = select.value;
@@ -433,7 +435,7 @@ function updateAkaDisplay() {
     } else if (manualTeam) {
       state.aka.team = manualTeam;
     }
-    
+
     if (manualMembers) {
       state.aka.athlete = manualMembers;
     } else {
@@ -463,14 +465,16 @@ function updateAoDisplay() {
   } else {
     const select = document.getElementById("aoTeamSelect");
     const manualTeam = document.getElementById("aoTeamName").value;
-    const manualMembers = document.getElementById("aoTeamMembers") ? document.getElementById("aoTeamMembers").value : "";
+    const manualMembers = document.getElementById("aoTeamMembers")
+      ? document.getElementById("aoTeamMembers").value
+      : "";
 
     if (select.value !== "") {
       state.ao.team = select.value;
     } else if (manualTeam) {
       state.ao.team = manualTeam;
     }
-    
+
     if (manualMembers) {
       state.ao.athlete = manualMembers;
     } else {
@@ -1085,8 +1089,10 @@ function resetMatch() {
     document.getElementById("aoTeamSelect").selectedIndex = 0;
     document.getElementById("akaTeamName").value = "";
     document.getElementById("aoTeamName").value = "";
-    if (document.getElementById("akaTeamMembers")) document.getElementById("akaTeamMembers").value = "";
-    if (document.getElementById("aoTeamMembers")) document.getElementById("aoTeamMembers").value = "";
+    if (document.getElementById("akaTeamMembers"))
+      document.getElementById("akaTeamMembers").value = "";
+    if (document.getElementById("aoTeamMembers"))
+      document.getElementById("aoTeamMembers").value = "";
     document.getElementById("akaKataSelect").selectedIndex = 0;
     document.getElementById("aoKataSelect").selectedIndex = 0;
     saveState();
@@ -1695,8 +1701,36 @@ function exportMedalsToExcel() {
     { wch: 25 }, // HCĐ 2
     { wch: 25 }, // Đơn Vị HCĐ 2
   ];
-
   XLSX.utils.book_append_sheet(wb, ws, "Huy Chương");
+
+  // Sheet 2: Format tương thích admin import
+  const importCompatData = [];
+  medalData.forEach((row) => {
+    importCompatData.push({
+      "Hạng mục": row["Nội Dung"],
+      "HCV (Vàng)": row["HCV"],
+      "CLB HCV": row["Đơn Vị HCV"],
+      "HCB (Bạc)": row["HCB"],
+      "CLB HCB": row["Đơn Vị HCB"],
+      "HCĐ 1 (Đồng)": row["HCĐ 1"],
+      "CLB HCĐ 1": row["Đơn Vị HCĐ 1"],
+      "HCĐ 2 (Đồng)": row["HCĐ 2"],
+      "CLB HCĐ 2": row["Đơn Vị HCĐ 2"],
+    });
+  });
+  const wsImport = XLSX.utils.json_to_sheet(importCompatData);
+  wsImport["!cols"] = [
+    { wch: 40 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+    { wch: 25 },
+  ];
+  XLSX.utils.book_append_sheet(wb, wsImport, "Kết Quả Import");
 
   // Generate filename with date
   const now = new Date();
@@ -1742,8 +1776,8 @@ function clearMatchHistory() {
 // ==================== BRACKET INTEGRATION FUNCTIONS ====================
 
 // Key dùng chung với React app
-const PENDING_MATCH_KEY = 'pending_match';
-const MATCH_RESULT_KEY = 'match_result';
+const PENDING_MATCH_KEY = "pending_match";
+const MATCH_RESULT_KEY = "match_result";
 
 // Biến lưu thông tin trận đấu từ bracket
 let pendingMatchData = null;
@@ -1756,14 +1790,14 @@ function checkForPendingMatch() {
     const data = localStorage.getItem(PENDING_MATCH_KEY);
     if (data) {
       pendingMatchData = JSON.parse(data);
-      
+
       // Chỉ load nếu là trận kata
-      if (pendingMatchData.categoryType === 'kata') {
+      if (pendingMatchData.categoryType === "kata") {
         loadPendingMatch();
       }
     }
   } catch (error) {
-    console.error('Error checking pending match:', error);
+    console.error("Error checking pending match:", error);
   }
 }
 
@@ -1772,99 +1806,131 @@ function checkForPendingMatch() {
  */
 function loadPendingMatch() {
   if (!pendingMatchData) {
-    alert('Không có trận đấu nào đang chờ!');
+    alert("Không có trận đấu nào đang chờ!");
     return;
   }
-  
+
   // Set tên VĐV (AKA = athlete1, AO = athlete2) - IN HOA
   if (pendingMatchData.athlete1) {
     const name = pendingMatchData.athlete1.name.toUpperCase();
-    const club = pendingMatchData.athlete1.club ? pendingMatchData.athlete1.club.toUpperCase() : '';
-    
+    const club = pendingMatchData.athlete1.club
+      ? pendingMatchData.athlete1.club.toUpperCase()
+      : "";
+
     // Set for individual config
     state.aka.athlete = name;
     state.aka.unit = club;
-    
+
     // Set for team config
     state.aka.team = name;
-    
+
     // Process members if exist for sigma format display in team mode
-    if (pendingMatchData.athlete1.members && pendingMatchData.athlete1.members.length > 0) {
-      const membersText = pendingMatchData.athlete1.members.map(m => {
-        const parts = m.name.trim().split(" ");
-        return parts.length > 0 ? parts[parts.length - 1] : m.name;
-      }).join(', ');
+    if (
+      pendingMatchData.athlete1.members &&
+      pendingMatchData.athlete1.members.length > 0
+    ) {
+      const membersText = pendingMatchData.athlete1.members
+        .map((m) => {
+          const parts = m.name.trim().split(" ");
+          return parts.length > 0 ? parts[parts.length - 1] : m.name;
+        })
+        .join(", ");
       state.aka.athlete = membersText.toUpperCase();
     }
-    
-    const akaNameInput = document.getElementById('akaAthleteName');
-    const akaUnitInput = document.getElementById('akaUnit');
-    const akaTeamNameInput = document.getElementById('akaTeamName');
-    const akaTeamMembersInput = document.getElementById('akaTeamMembers');
-    
-    if (akaNameInput) akaNameInput.value = pendingMatchData.athlete1.name.toUpperCase();
+
+    const akaNameInput = document.getElementById("akaAthleteName");
+    const akaUnitInput = document.getElementById("akaUnit");
+    const akaTeamNameInput = document.getElementById("akaTeamName");
+    const akaTeamMembersInput = document.getElementById("akaTeamMembers");
+
+    if (akaNameInput)
+      akaNameInput.value = pendingMatchData.athlete1.name.toUpperCase();
     if (akaUnitInput) akaUnitInput.value = state.aka.unit;
     if (akaTeamNameInput) akaTeamNameInput.value = state.aka.team;
     if (akaTeamMembersInput) akaTeamMembersInput.value = state.aka.athlete;
   }
   if (pendingMatchData.athlete2) {
     const name = pendingMatchData.athlete2.name.toUpperCase();
-    const club = pendingMatchData.athlete2.club ? pendingMatchData.athlete2.club.toUpperCase() : '';
-    
+    const club = pendingMatchData.athlete2.club
+      ? pendingMatchData.athlete2.club.toUpperCase()
+      : "";
+
     // Set for individual config
     state.ao.athlete = name;
     state.ao.unit = club;
-    
+
     // Set for team config
     state.ao.team = name;
-    
+
     // Process members if exist for sigma format display in team mode
-    if (pendingMatchData.athlete2.members && pendingMatchData.athlete2.members.length > 0) {
-      const membersText = pendingMatchData.athlete2.members.map(m => {
-        const parts = m.name.trim().split(" ");
-        return parts.length > 0 ? parts[parts.length - 1] : m.name;
-      }).join(', ');
+    if (
+      pendingMatchData.athlete2.members &&
+      pendingMatchData.athlete2.members.length > 0
+    ) {
+      const membersText = pendingMatchData.athlete2.members
+        .map((m) => {
+          const parts = m.name.trim().split(" ");
+          return parts.length > 0 ? parts[parts.length - 1] : m.name;
+        })
+        .join(", ");
       state.ao.athlete = membersText.toUpperCase();
     }
-    
-    const aoNameInput = document.getElementById('aoAthleteName');
-    const aoUnitInput = document.getElementById('aoUnit');
-    const aoTeamNameInput = document.getElementById('aoTeamName');
-    const aoTeamMembersInput = document.getElementById('aoTeamMembers');
-    
-    if (aoNameInput) aoNameInput.value = pendingMatchData.athlete2.name.toUpperCase();
+
+    const aoNameInput = document.getElementById("aoAthleteName");
+    const aoUnitInput = document.getElementById("aoUnit");
+    const aoTeamNameInput = document.getElementById("aoTeamName");
+    const aoTeamMembersInput = document.getElementById("aoTeamMembers");
+
+    if (aoNameInput)
+      aoNameInput.value = pendingMatchData.athlete2.name.toUpperCase();
     if (aoUnitInput) aoUnitInput.value = state.ao.unit;
     if (aoTeamNameInput) aoTeamNameInput.value = state.ao.team;
     if (aoTeamMembersInput) aoTeamMembersInput.value = state.ao.athlete;
   }
-  
+
   // Set thông tin giải đấu
   if (pendingMatchData.tournamentName) {
     state.tournamentTitle = pendingMatchData.tournamentName;
-    const tournamentInput = document.getElementById('tournamentTitle');
-    if (tournamentInput) tournamentInput.value = pendingMatchData.tournamentName;
+    const tournamentInput = document.getElementById("tournamentTitle");
+    if (tournamentInput)
+      tournamentInput.value = pendingMatchData.tournamentName;
   }
-  
+
   if (pendingMatchData.categoryName) {
     state.matchInfo = pendingMatchData.categoryName;
-    const matchInfoInput = document.getElementById('matchInfo');
+    const matchInfoInput = document.getElementById("matchInfo");
     if (matchInfoInput) matchInfoInput.value = pendingMatchData.categoryName;
-    
+
     // Auto-detect team vs individual mode
     const lowerName = pendingMatchData.categoryName.toLowerCase();
-    if (lowerName.includes('đồng đội') || lowerName.includes('hỗn hợp')) {
-      setContentType('team');
+    if (lowerName.includes("đồng đội") || lowerName.includes("hỗn hợp")) {
+      setContentType("team");
     } else {
-      setContentType('individual');
+      setContentType("individual");
     }
   }
-  
+
   if (pendingMatchData.roundName) {
     state.currentRound = pendingMatchData.roundName;
   }
-  
+
+  // Load schedule mat number
+  if (pendingMatchData.matNumber) {
+    state.eventTitle = `Thảm ${pendingMatchData.matNumber}`;
+    const eventInput = document.getElementById("eventTitle");
+    if (eventInput) eventInput.value = state.eventTitle;
+  }
+
+  // Load sponsor logos
+  if (pendingMatchData.sponsorLogos) {
+    state.sponsorLogos = pendingMatchData.sponsorLogos;
+  }
+
   // Load existing scores if match has data (for re-editing)
-  if ((pendingMatchData.score1 && pendingMatchData.score1 > 0) || (pendingMatchData.score2 && pendingMatchData.score2 > 0)) {
+  if (
+    (pendingMatchData.score1 && pendingMatchData.score1 > 0) ||
+    (pendingMatchData.score2 && pendingMatchData.score2 > 0)
+  ) {
     state.aka.score = pendingMatchData.score1 || 0;
     state.ao.score = pendingMatchData.score2 || 0;
     state.scoringStarted = true;
@@ -1873,20 +1939,23 @@ function loadPendingMatch() {
     state.ao.score = 0;
     state.scoringStarted = false;
   }
-  
+
   // Clear Kata info from previous match
   state.aka.kataName = "";
   state.ao.kataName = "";
-  if (document.getElementById("akaKataSelect")) document.getElementById("akaKataSelect").selectedIndex = 0;
-  if (document.getElementById("aoKataSelect")) document.getElementById("aoKataSelect").selectedIndex = 0;
-  if (document.getElementById("akaKataSearch")) document.getElementById("akaKataSearch").value = "";
-  if (document.getElementById("aoKataSearch")) document.getElementById("aoKataSearch").value = "";
+  if (document.getElementById("akaKataSelect"))
+    document.getElementById("akaKataSelect").selectedIndex = 0;
+  if (document.getElementById("aoKataSelect"))
+    document.getElementById("aoKataSelect").selectedIndex = 0;
+  if (document.getElementById("akaKataSearch"))
+    document.getElementById("akaKataSearch").value = "";
+  if (document.getElementById("aoKataSearch"))
+    document.getElementById("aoKataSearch").value = "";
 
-  
   saveState();
   updateUI();
-  
-  console.log('✅ Đã load VĐV từ sơ đồ thi đấu:', pendingMatchData);
+
+  console.log("✅ Đã load VĐV từ sơ đồ thi đấu:", pendingMatchData);
 }
 
 /**
@@ -1895,32 +1964,36 @@ function loadPendingMatch() {
  */
 function finishMatch() {
   if (!pendingMatchData) {
-    alert('Không có trận đấu nào đang chờ từ sơ đồ!');
+    alert("Không có trận đấu nào đang chờ từ sơ đồ!");
     return;
   }
-  
+
   // Xác định winner dựa vào điểm kata
   let winnerId = null;
-  let winnerName = '';
-  
+  let winnerName = "";
+
   if (state.aka.score > state.ao.score) {
     winnerId = pendingMatchData.athlete1?.id;
-    winnerName = state.aka.athlete || 'AKA';
+    winnerName = state.aka.athlete || "AKA";
   } else if (state.ao.score > state.aka.score) {
     winnerId = pendingMatchData.athlete2?.id;
-    winnerName = state.ao.athlete || 'AO';
+    winnerName = state.ao.athlete || "AO";
   }
-  
+
   if (!winnerId) {
-    alert('Chưa có người thắng! Đảm bảo điểm của 2 VĐV không bằng nhau.');
+    alert("Chưa có người thắng! Đảm bảo điểm của 2 VĐV không bằng nhau.");
     return;
   }
-  
+
   // Confirm
-  if (!confirm(`Xác nhận kết thúc trận?\\n\\n🏆 Người thắng: ${winnerName}\\n📊 Điểm: ${state.aka.score} - ${state.ao.score}`)) {
+  if (
+    !confirm(
+      `Xác nhận kết thúc trận?\\n\\n🏆 Người thắng: ${winnerName}\\n📊 Điểm: ${state.aka.score} - ${state.ao.score}`
+    )
+  ) {
     return;
   }
-  
+
   const result = {
     matchId: pendingMatchData.matchId,
     winnerId: winnerId,
@@ -1928,38 +2001,49 @@ function finishMatch() {
     score2: state.ao.score,
     timestamp: Date.now(),
   };
-  
+
   // Lưu vào localStorage
   localStorage.setItem(MATCH_RESULT_KEY, JSON.stringify(result));
-  
+
   // Gửi postMessage đến opener window (React app)
   if (window.opener) {
-    window.opener.postMessage({
-      type: 'MATCH_RESULT',
-      result: result,
-    }, '*');
+    window.opener.postMessage(
+      {
+        type: "MATCH_RESULT",
+        result: result,
+      },
+      "*"
+    );
   }
-  
+
   // Clear pending match
   localStorage.removeItem(PENDING_MATCH_KEY);
   pendingMatchData = null;
-  
-  alert('✅ Đã gửi kết quả về sơ đồ thi đấu!\\n\\nCửa sổ sẽ sẵn sàng cho trận tiếp theo.');
-  
+
+  alert(
+    "✅ Đã gửi kết quả về sơ đồ thi đấu!\\n\\nCửa sổ sẽ sẵn sàng cho trận tiếp theo."
+  );
+
   // Reset cho trận tiếp theo
   state.aka.score = 0;
   state.ao.score = 0;
   state.aka.kataName = "";
   state.ao.kataName = "";
   state.scoringStarted = false;
-  
-  if (document.getElementById("akaScore")) document.getElementById("akaScore").textContent = 0;
-  if (document.getElementById("aoScore")) document.getElementById("aoScore").textContent = 0;
-  if (document.getElementById("akaKataSelect")) document.getElementById("akaKataSelect").selectedIndex = 0;
-  if (document.getElementById("aoKataSelect")) document.getElementById("aoKataSelect").selectedIndex = 0;
-  if (document.getElementById("akaKataSearch")) document.getElementById("akaKataSearch").value = "";
-  if (document.getElementById("aoKataSearch")) document.getElementById("aoKataSearch").value = "";
-  
+
+  if (document.getElementById("akaScore"))
+    document.getElementById("akaScore").textContent = 0;
+  if (document.getElementById("aoScore"))
+    document.getElementById("aoScore").textContent = 0;
+  if (document.getElementById("akaKataSelect"))
+    document.getElementById("akaKataSelect").selectedIndex = 0;
+  if (document.getElementById("aoKataSelect"))
+    document.getElementById("aoKataSelect").selectedIndex = 0;
+  if (document.getElementById("akaKataSearch"))
+    document.getElementById("akaKataSearch").value = "";
+  if (document.getElementById("aoKataSearch"))
+    document.getElementById("aoKataSearch").value = "";
+
   saveState();
   updateUI();
 }
@@ -1976,7 +2060,7 @@ window.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("storage", () => {
     loadState();
   });
-  
+
   // Tự động kiểm tra và load VĐV từ bracket
   checkForPendingMatch();
 });

@@ -75,6 +75,10 @@ function parseJsonFile(content) {
       return { success: false, error: 'File không có danh sách VĐV' };
     }
     
+    // Ensure teamLeaderName and additionalCoaches exist
+    if (!data.teamLeaderName) data.teamLeaderName = '';
+    if (!Array.isArray(data.additionalCoaches)) data.additionalCoaches = [];
+    
     // Check if late submission
     const exportTime = new Date(data.exportTime);
     const isLate = false; // TODO: Compare with tournament endTime
@@ -153,13 +157,19 @@ function parseExcelFile(content) {
     const infoSheet = workbook.Sheets['Thông tin'] || workbook.Sheets[workbook.SheetNames[0]];
     let tournamentId = '';
     let coachName = '';
+    let clubName = '';
+    let teamLeaderName = '';
+    let additionalCoachesStr = '';
     let exportTime = new Date().toISOString();
     
     if (infoSheet) {
       const infoRows = XLSX.utils.sheet_to_json(infoSheet, { header: 1 });
       for (const row of infoRows) {
         if (row[0] === 'Mã giải đấu:') tournamentId = row[1];
-        if (row[0] === 'HLV / CLB:') coachName = row[1];
+        if (row[0] === 'HLV / CLB:' || row[0] === 'Tên HLV:') coachName = row[1];
+        if (row[0] === 'Tên CLB:') clubName = row[1] || '';
+        if (row[0] === 'Trưởng đoàn:') teamLeaderName = row[1] || '';
+        if (row[0] === 'HLV phụ:') additionalCoachesStr = row[1] || '';
         if (row[0] === 'Thời gian xuất:') {
           // Try to parse Vietnamese date format
           exportTime = row[1];
@@ -167,11 +177,18 @@ function parseExcelFile(content) {
       }
     }
     
+    const additionalCoaches = additionalCoachesStr 
+      ? additionalCoachesStr.split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+    
     return {
       success: true,
       data: {
         tournamentId,
         coachName,
+        clubName,
+        teamLeaderName,
+        additionalCoaches,
         exportTime,
         athletes
       },

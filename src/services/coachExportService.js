@@ -12,13 +12,17 @@ export async function exportToExcel(data) {
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: Thông tin chung
+  const allCoaches = [data.coachName, ...(data.additionalCoaches || [])].filter(Boolean);
   const infoData = [
     ["DANH SÁCH VĐV"],
     [""],
     ["Mã giải đấu:", data.tournamentId],
     ["Tên giải đấu:", data.tournamentName],
     ["Tên HLV:", data.coachName],
+    ["HLV phụ:", (data.additionalCoaches || []).filter(Boolean).join(", ")],
     ["Tên CLB:", data.clubName || ""],
+    ["Trưởng đoàn:", data.teamLeaderName || ""],
+    ["Tổng số HLV:", allCoaches.length],
     ["Thời gian xuất:", new Date(data.exportTime).toLocaleString("vi-VN")],
     ["Số VĐV:", data.athletes.length],
     [""],

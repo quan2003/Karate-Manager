@@ -62,6 +62,16 @@ function addCanvasPage(pdf, canvas, isFirstPage) {
 }
 
 /**
+ * Gets the base absolute URL, handling Electron file:// protocol correctly
+ */
+export function getAppBaseUrl() {
+  if (typeof window === 'undefined') return '/';
+  let url = window.location.href.split('#')[0].split('?')[0];
+  if (url.endsWith('.html')) url = url.substring(0, url.lastIndexOf('/'));
+  return url.endsWith('/') ? url : url + '/';
+}
+
+/**
  * Determine how many splits a category needs based on tournament settings
  * @param {Object} category
  * @param {Object} splitSettings - { enabled: bool, threshold: number }
@@ -82,6 +92,7 @@ export async function exportBracketToPDF(
 ) {
   const scheduleInfo = options.scheduleInfo || null;
   const splitSettings = options.splitSettings || null;
+  const sponsorLogos = options.sponsorLogos || null;
   try {
     const originalCursor = document.body.style.cursor;
     document.body.style.cursor = "wait";
@@ -89,13 +100,13 @@ export async function exportBracketToPDF(
     let pdf = null;
 
     if (numSplits <= 1) {
-      const html = generateBracketHTML(category, tournamentName, scheduleInfo, null, 1, 1);
+      const html = generateBracketHTML(category, tournamentName, scheduleInfo, null, 1, 1, sponsorLogos);
       const canvas = await renderBracketToCanvas(html);
       pdf = addCanvasPage(null, canvas, true);
     } else {
       for (let half = 0; half < numSplits; half++) {
         const splitSchedule = { ...scheduleInfo, splitLabel: `Trận ${half + 1}/${numSplits}` };
-        const html = generateBracketHTML(category, tournamentName, splitSchedule, half, half + 1, numSplits);
+        const html = generateBracketHTML(category, tournamentName, splitSchedule, half, half + 1, numSplits, sponsorLogos);
         const canvas = await renderBracketToCanvas(html);
         pdf = half === 0 ? addCanvasPage(null, canvas, true) : addCanvasPage(pdf, canvas, false);
       }
@@ -124,7 +135,8 @@ export async function exportAllBracketsToPDF(
   tournamentName = "Giai_dau",
   filename = null,
   schedule = null,
-  splitSettings = null
+  splitSettings = null,
+  sponsorLogos = null
 ) {
   const categoriesWithBracket = categories.filter((c) => c.bracket);
 
@@ -155,7 +167,7 @@ export async function exportAllBracketsToPDF(
           ? { ...scheduleInfo, splitLabel: `Trận ${half + 1}/${numSplits}` }
           : scheduleInfo;
         const splitHalf = numSplits > 1 ? half : null;
-        const html = generateBracketHTML(category, tournamentName, splitSchedule, splitHalf, half + 1, numSplits);
+        const html = generateBracketHTML(category, tournamentName, splitSchedule, splitHalf, half + 1, numSplits, sponsorLogos);
         const canvas = await renderBracketToCanvas(html);
         if (pageCount === 0) {
           pdf = addCanvasPage(null, canvas, true);
@@ -180,13 +192,27 @@ export async function exportAllBracketsToPDF(
 }
 
 /**
+ * Helper to load image for jsPDF
+ */
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = (e) => reject(e);
+    img.src = url;
+  });
+}
+
+/**
  * Export Score Sheet to PDF
  * Generates a printable score sheet for all real matches in a category
  */
-export function exportScoreSheetToPDF(
+export async function exportScoreSheetToPDF(
   category,
   matches,
-  filename = "bang_diem.pdf"
+  filename = "bang_diem.pdf",
+  sponsorLogos = null
 ) {
   if (!matches || matches.length === 0) {
     alert("Không có trận đấu nào để xuất bảng điểm!");
@@ -205,10 +231,52 @@ export function exportScoreSheetToPDF(
     const margin = 15;
     const contentWidth = pageWidth - margin * 2;
 
+    // Logo header area
+    let logoY = margin;
+    const systemLogo = sponsorLogos?.systemLogo || null;
+    const sponsors = sponsorLogos?.sponsors || [];
+    
+    // Always load the app icon
+    let appIcon = null;
+    try {
+      appIcon = await loadImage(`${getAppBaseUrl()}icon.png`);
+    } catch (e) {
+      console.warn("Could not load default icon.png", e);
+    }
+    
+    // Always show logo header row
+    // Left: systemLogo (tournament logo)
+    if (systemLogo) {
+      try {
+        pdf.addImage(systemLogo, 'PNG', margin, logoY, 25, 25);
+      } catch(e) { /* ignore logo errors */ }
+    }
+    // Center: app icon (always shown)
+    if (appIcon) {
+      try {
+        const centerX = (pageWidth - 20) / 2;
+        pdf.addImage(appIcon, 'PNG', centerX, logoY, 20, 20);
+      } catch(e) { /* ignore */ }
+    }
+    // Right: sponsor logos
+    if (sponsors.length > 0) {
+      const sponsorWidth = 22;
+      const sponsorGap = 3;
+      let sx = pageWidth - margin;
+      for (let i = sponsors.length - 1; i >= 0; i--) {
+        sx -= sponsorWidth;
+        try {
+          pdf.addImage(sponsors[i], 'PNG', sx, logoY, sponsorWidth, 20);
+        } catch(e) { /* ignore */ }
+        sx -= sponsorGap;
+      }
+    }
+    logoY += 28;
+
     // Title
     pdf.setFontSize(16);
     pdf.setFont("helvetica", "bold");
-    pdf.text("BANG DIEM THI DAU", pageWidth / 2, margin + 5, {
+    pdf.text("BANG DIEM THI DAU", pageWidth / 2, logoY + 5, {
       align: "center",
     });
 
@@ -216,10 +284,10 @@ export function exportScoreSheetToPDF(
     pdf.setFontSize(12);
     pdf.setFont("helvetica", "normal");
     const categoryName = transliterate(category.name || "");
-    pdf.text(categoryName, pageWidth / 2, margin + 12, { align: "center" });
+    pdf.text(categoryName, pageWidth / 2, logoY + 12, { align: "center" });
 
     // Table header
-    const tableTop = margin + 20;
+    const tableTop = logoY + 20;
     const colWidths = {
       stt: 12,
       round: 30,
@@ -361,7 +429,7 @@ export function exportScoreSheetToPDF(
  * Generate HTML cho bracket từ category data
  * Style: SportData gradients, Box Logo, Referees, Footer custom
  */
-function generateBracketHTML(category, tournamentName = "", scheduleInfo = null, splitHalf = null, splitIndex = 1, totalSplits = 1) {
+function generateBracketHTML(category, tournamentName = "", scheduleInfo = null, splitHalf = null, splitIndex = 1, totalSplits = 1, sponsorLogos = null) {
   const { bracket, name } = category;
   if (!bracket || !bracket.matches) return "<div>Không có dữ liệu</div>";
   const isTeamBracket = bracket.isTeamBracket || false;
@@ -646,6 +714,33 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
     ? (scheduleInfo?.splitLabel || `Trận ${splitIndex}/${totalSplits}`)
     : 'Trận';
   
+  // Sponsor logos bar above header
+  const appIconUrl = `${getAppBaseUrl()}icon.png`;
+  const sponsorsList = sponsorLogos?.sponsors || [];
+  const systemLogo = sponsorLogos?.systemLogo || null;
+  
+  // Always show logo bar with app icon in center
+  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:4px 10px;">`;
+  // Left: systemLogo (tournament logo) if available
+  if (systemLogo) {
+    html += `<img src="${systemLogo}" style="height:50px;max-width:150px;object-fit:contain;" />`;
+  } else {
+    html += `<div></div>`;
+  }
+  // Center: app icon (always shown)
+  html += `<img src="${appIconUrl}" style="height:55px;width:55px;object-fit:contain;" />`;
+  // Right: sponsor logos if available
+  if (sponsorsList.length > 0) {
+    html += `<div style="display:flex;align-items:center;gap:10px;">`;
+    sponsorsList.forEach(logo => {
+      html += `<img src="${logo}" style="height:45px;max-width:120px;object-fit:contain;" />`;
+    });
+    html += `</div>`;
+  } else {
+    html += `<div></div>`;
+  }
+  html += `</div>`;
+  
   html += `<div class="pdf-header">`;
   html += `<div class="pdf-header-left"><div class="pdf-category-name">${name}${totalSplits > 1 ? ' - ' + splitLabel : ''}</div><div class="pdf-tournament-name">${tournamentName}</div></div>`;
   html += `<div class="pdf-info-bar">`;
@@ -654,7 +749,12 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
   if (timeLabel) html += `<div class="pdf-info-item">${timeLabel}</div>`;
   html += `<div class="pdf-info-item" style="background:#fff;">${splitLabel}</div>`;
   html += `</div>`;
-  html += `<div class="pdf-header-right"><div class="pdf-logo-text">Karate</div><div class="pdf-logo-sub">QUẢN LÝ GIẢI ĐẤU</div></div>`;
+  // Header right: system logo or app icon
+  if (systemLogo) {
+    html += `<div class="pdf-header-right" style="padding:4px;"><img src="${systemLogo}" style="max-height:60px;max-width:210px;object-fit:contain;" /></div>`;
+  } else {
+    html += `<div class="pdf-header-right" style="padding:4px;"><img src="${appIconUrl}" style="max-height:60px;max-width:60px;object-fit:contain;" /></div>`;
+  }
   html += `</div>`; 
   html += `<div class="pdf-content"><div class="pdf-bracket-area"><div class="pdf-rounds">`;
 

@@ -419,6 +419,66 @@
   color: var(--color-text-muted);
 }
 
+/* Stats Table (Delegation) */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.stats-table th {
+  background: #1e3a5f;
+  color: #fff;
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  border-bottom: 2px solid #0f2744;
+}
+
+.stats-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.stats-table tbody tr:hover {
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.stats-table tbody tr:nth-child(even) {
+  background: rgba(248, 250, 252, 0.5);
+}
+
+.stats-table tbody tr:nth-child(even):hover {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.stats-table input[type="text"] {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+/* Delegation table (official format) */
+.delegation-table td,
+.delegation-table th {
+  border: 1px solid #cbd5e1;
+}
+
+.delegation-table tfoot td {
+  background: #fef9c3;
+  border-top: 2px solid #1e3a5f;
+  font-weight: 700;
+}
+
 .stats-content .empty-icon {
   font-size: 48px;
   margin-bottom: var(--spacing-4);

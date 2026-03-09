@@ -360,7 +360,8 @@ export default function TournamentPage() {
       return;
     }
     const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
-    await exportAllBracketsToPDF(tournament.categories, tournament.name, null, tournament.schedule || null, splitSettings);
+    const sponsorLogos = tournament.sponsorLogos || null;
+    await exportAllBracketsToPDF(tournament.categories, tournament.name, null, tournament.schedule || null, splitSettings, sponsorLogos);
   };
 
   const handleImportCategories = async (e) => {
@@ -413,7 +414,7 @@ export default function TournamentPage() {
 
     for (const file of files) {
       try {
-        const { athletes, errors, clubName, coachName } = await parseCoachExcelFile(file);
+        const { athletes, errors, clubName, coachName, teamLeaderName, additionalCoaches } = await parseCoachExcelFile(file);
         if (errors.length > 0) {
           allErrors.push(...errors.map((err) => `[${file.name}] ${err}`));
         }
@@ -421,6 +422,8 @@ export default function TournamentPage() {
           fileName: file.name,
           clubName: clubName || file.name,
           coachName,
+          teamLeaderName,
+          additionalCoaches,
           athletes,
         });
       } catch (error) {
@@ -480,6 +483,45 @@ export default function TournamentPage() {
 
   const handleConfirmClubImport = () => {
     if (!clubImportResult) return;
+
+    // Dispatch update for club registrations based on parsed coach names & team leaders
+    const existingRegs = tournament.clubRegistrations || {};
+    let newRegs = { ...existingRegs };
+    let regsUpdated = false;
+
+    clubImportResult.results.forEach(result => {
+       const cName = result.clubName || result.fileName;
+       if (!newRegs[cName]) {
+          newRegs[cName] = { coaches: [], teamLeader: '' };
+       }
+       
+       if (result.coachName && !newRegs[cName].coaches.includes(result.coachName)) {
+           newRegs[cName].coaches.push(result.coachName);
+           regsUpdated = true;
+       }
+       if (result.additionalCoaches && result.additionalCoaches.length > 0) {
+           result.additionalCoaches.forEach(hm => {
+               if (!newRegs[cName].coaches.includes(hm)) {
+                   newRegs[cName].coaches.push(hm);
+                   regsUpdated = true;
+               }
+           });
+       }
+       if (result.teamLeaderName && !newRegs[cName].teamLeader) {
+           newRegs[cName].teamLeader = result.teamLeaderName;
+           regsUpdated = true;
+       }
+    });
+
+    if (regsUpdated) {
+        dispatch({
+          type: ACTIONS.UPDATE_CLUB_REGISTRATIONS,
+          payload: {
+             tournamentId: tournament.id,
+             clubRegistrations: newRegs
+          }
+        });
+    }
 
     // Group by categoryId
     const grouped = {};
@@ -745,6 +787,15 @@ export default function TournamentPage() {
             </span>
             <span className="stat-label">Đã bốc thăm</span>
           </div>
+          <div className="stat-item">
+            <span className="stat-value" style={{color: '#059669'}}>
+              {tournament.categories.filter((c) => {
+                if (!c.bracket?.matches) return false;
+                return c.bracket.matches.some(m => !m.isBye && m.winner);
+              }).length}
+            </span>
+            <span className="stat-label">Đã có kết quả</span>
+          </div>
         </div>
 
         {/* Medal estimation */}
@@ -833,6 +884,163 @@ export default function TournamentPage() {
               </span>
             </>
           )}
+        </div>
+
+        {/* Sponsor & Logo Settings */}
+        <div style={{
+          background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px',
+          padding: '16px 20px', marginBottom: '20px'
+        }}>
+          <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            🏷️ Logo hệ thống & Nhà tài trợ
+          </h3>
+          
+          {/* System Logo */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '8px' }}>
+              Logo giải đấu (hiển thị trên PDF)
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              {tournament.sponsorLogos?.systemLogo && (
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <img 
+                    src={tournament.sponsorLogos.systemLogo} 
+                    alt="Logo giải đấu" 
+                    style={{ height: '60px', maxWidth: '180px', objectFit: 'contain', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', padding: '4px' }} 
+                  />
+                  <button
+                    onClick={() => {
+                      const updated = { ...(tournament.sponsorLogos || {}) };
+                      delete updated.systemLogo;
+                      dispatch({
+                        type: ACTIONS.UPDATE_SPONSOR_LOGOS,
+                        payload: { tournamentId: tournament.id, sponsorLogos: updated }
+                      });
+                      toast.success("Đã xóa logo giải đấu");
+                    }}
+                    style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '20px', height: '20px', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                    title="Xóa logo"
+                  >×</button>
+                </div>
+              )}
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#e0f2fe', color: '#0369a1', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, border: '1px dashed #7dd3fc', transition: 'all 0.2s' }}>
+                📷 {tournament.sponsorLogos?.systemLogo ? 'Đổi logo' : 'Tải lên logo giải đấu'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    if (file.size > 2 * 1024 * 1024) {
+                      toast.error("File quá lớn! Tối đa 2MB.");
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                      dispatch({
+                        type: ACTIONS.UPDATE_SPONSOR_LOGOS,
+                        payload: {
+                          tournamentId: tournament.id,
+                          sponsorLogos: {
+                            ...(tournament.sponsorLogos || {}),
+                            systemLogo: evt.target.result,
+                          }
+                        }
+                      });
+                      toast.success("Đã cập nhật logo giải đấu!");
+                    };
+                    reader.readAsDataURL(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* Sponsor Logos */}
+          <div>
+            <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '8px' }}>
+              Logo nhà tài trợ (hiển thị trên PDF & bảng điểm)
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              {(tournament.sponsorLogos?.sponsors || []).map((logo, idx) => (
+                <div key={idx} style={{ position: 'relative', display: 'inline-block' }}>
+                  <img 
+                    src={logo} 
+                    alt={`Tài trợ ${idx + 1}`} 
+                    style={{ height: '55px', maxWidth: '160px', objectFit: 'contain', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', padding: '4px' }} 
+                  />
+                  <button
+                    onClick={() => {
+                      const newSponsors = [...(tournament.sponsorLogos?.sponsors || [])];
+                      newSponsors.splice(idx, 1);
+                      dispatch({
+                        type: ACTIONS.UPDATE_SPONSOR_LOGOS,
+                        payload: {
+                          tournamentId: tournament.id,
+                          sponsorLogos: {
+                            ...(tournament.sponsorLogos || {}),
+                            sponsors: newSponsors,
+                          }
+                        }
+                      });
+                      toast.success("Đã xóa logo nhà tài trợ");
+                    }}
+                    style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '20px', height: '20px', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                    title="Xóa logo"
+                  >×</button>
+                </div>
+              ))}
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#fef3c7', color: '#92400e', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, border: '1px dashed #fbbf24', transition: 'all 0.2s' }}>
+                ➕ Thêm logo nhà tài trợ
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files);
+                    if (!files.length) return;
+                    const currentSponsors = [...(tournament.sponsorLogos?.sponsors || [])];
+                    let loaded = 0;
+                    files.forEach((file) => {
+                      if (file.size > 2 * 1024 * 1024) {
+                        toast.error(`${file.name}: quá lớn (tối đa 2MB)`);
+                        loaded++;
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = (evt) => {
+                        currentSponsors.push(evt.target.result);
+                        loaded++;
+                        if (loaded === files.length) {
+                          dispatch({
+                            type: ACTIONS.UPDATE_SPONSOR_LOGOS,
+                            payload: {
+                              tournamentId: tournament.id,
+                              sponsorLogos: {
+                                ...(tournament.sponsorLogos || {}),
+                                sponsors: currentSponsors,
+                              }
+                            }
+                          });
+                          toast.success(`Đã thêm ${files.length} logo nhà tài trợ!`);
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    });
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {(tournament.sponsorLogos?.sponsors || []).length === 0 && (
+              <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
+                💡 Tải lên logo nhà tài trợ để hiển thị trên file PDF xuất ra và bảng điểm
+              </span>
+            )}
+          </div>
         </div>
         {tournament.categories.length === 0 ? (
           <div className="empty-state">
@@ -934,11 +1142,45 @@ export default function TournamentPage() {
 
                 <div className="category-stats">
                   <span>{category.athletes?.length || 0} VĐV</span>
-                  <p>
-                    {category.bracket && (
-                      <span className="drawn-icon">✓ Đã bốc thăm</span>
-                    )}
-                  </p>
+                  {category.bracket && (() => {
+                    const nonByeMatches = category.bracket.matches?.filter(m => !m.isBye) || [];
+                    const completedMatches = nonByeMatches.filter(m => m.winner);
+                    const total = nonByeMatches.length;
+                    const completed = completedMatches.length;
+                    const isComplete = completed === total && total > 0;
+                    const hasResults = completed > 0;
+                    
+                    return (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                        <span className="drawn-icon">✓ Đã bốc thăm</span>
+                        {isComplete ? (
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            background: 'linear-gradient(135deg, #dcfce7, #d1fae5)',
+                            color: '#059669',
+                            border: '1px solid #86efac',
+                          }}>
+                            🏆 Đã có kết quả
+                          </span>
+                        ) : hasResults ? (
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
+                            color: '#92400e',
+                            border: '1px solid #fcd34d',
+                          }}>
+                            ⏳ Đang thi đấu {completed}/{total}
+                          </span>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <Link

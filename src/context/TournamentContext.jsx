@@ -38,6 +38,8 @@ const ACTIONS = {
   IMPORT_CATEGORIES: "IMPORT_CATEGORIES",
   UPDATE_SCHEDULE: "UPDATE_SCHEDULE",
   UPDATE_CUSTOM_EVENTS: "UPDATE_CUSTOM_EVENTS",
+  UPDATE_SPONSOR_LOGOS: "UPDATE_SPONSOR_LOGOS",
+  UPDATE_CLUB_REGISTRATIONS: "UPDATE_CLUB_REGISTRATIONS",
 };
 
 function tournamentReducer(state, action) {
@@ -430,6 +432,38 @@ function tournamentReducer(state, action) {
         tournaments: state.tournaments.map((t) =>
           t.id === action.payload.tournamentId
             ? { ...t, customEvents: action.payload.customEvents }
+            : t
+        ),
+      };
+      if (state.currentTournament?.id === action.payload.tournamentId) {
+        newState.currentTournament = newState.tournaments.find(
+          (t) => t.id === action.payload.tournamentId
+        );
+      }
+      break;
+
+    case ACTIONS.UPDATE_SPONSOR_LOGOS:
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) =>
+          t.id === action.payload.tournamentId
+            ? { ...t, sponsorLogos: action.payload.sponsorLogos }
+            : t
+        ),
+      };
+      if (state.currentTournament?.id === action.payload.tournamentId) {
+        newState.currentTournament = newState.tournaments.find(
+          (t) => t.id === action.payload.tournamentId
+        );
+      }
+      break;
+
+    case ACTIONS.UPDATE_CLUB_REGISTRATIONS:
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) =>
+          t.id === action.payload.tournamentId
+            ? { ...t, clubRegistrations: action.payload.clubRegistrations }
             : t
         ),
       };

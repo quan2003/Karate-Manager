@@ -53,9 +53,9 @@ function RoleSelectPage() {
   };
 
   const handleSelectRole = (role) => {
-    // Block all access when license is expired
+    // Block access when license is expired (ONLY for Admin)
     const status = getLicenseStatus();
-    if (status.status === "expired") {
+    if (role === ROLES.ADMIN && status.status === "expired") {
       setWarningType("expired");
       setShowLicenseWarning(true);
       return;
@@ -182,11 +182,7 @@ function RoleSelectPage() {
       {showLicenseWarning && (
         <LicenseWarning
           type={warningType}
-          onCancel={
-            warningType === "expired"
-              ? () => {}
-              : () => setShowLicenseWarning(false)
-          }
+          onCancel={() => setShowLicenseWarning(false)}
           onSuccess={handleLicenseSuccess}
         />
       )}

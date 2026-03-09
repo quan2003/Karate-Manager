@@ -1,18 +1,57 @@
+import { useState, useEffect, useRef } from "react";
 import { getMatchesByRound } from "../../utils/drawEngine";
 import "./Bracket.css";
 
 /**
  * Bracket Component - Simple Style
  * Đường nối đơn giản: chỉ có ─ và │
+ * Hỗ trợ right-click context menu cho VĐV
  */
 
 export default function Bracket({
   bracket,
   categoryType = "kumite",
   onMatchClick,
+  onContextAction, // callback: (action, match, athleteSlot) => void
   printMode = false,
 }) {
   const isTeamBracket = bracket?.isTeamBracket || false;
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, match, athleteSlot }
+  const contextMenuRef = useRef(null);
+
+  // Đóng context menu khi click bên ngoài hoặc scroll
+  useEffect(() => {
+    const handleClose = () => setContextMenu(null);
+    window.addEventListener("click", handleClose);
+    window.addEventListener("scroll", handleClose, true);
+    return () => {
+      window.removeEventListener("click", handleClose);
+      window.removeEventListener("scroll", handleClose, true);
+    };
+  }, []);
+
+  const handleContextMenu = (e, match, athleteSlot) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const athlete = athleteSlot === 1 ? match.athlete1 : match.athlete2;
+    if (!athlete) return; // Không hiện menu cho ô trống
+    if (match.isBye) return; // Không hiện menu cho BYE
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      match,
+      athleteSlot,
+      athlete,
+    });
+  };
+
+  const handleAction = (action) => {
+    if (contextMenu && onContextAction) {
+      onContextAction(action, contextMenu.match, contextMenu.athleteSlot);
+    }
+    setContextMenu(null);
+  };
+
   if (!bracket || !bracket.matches) {
     return (
       <div className="bracket-empty">
@@ -42,26 +81,6 @@ export default function Bracket({
           const matches = matchesByRound[round];
           const isLastRound = roundIndex === rounds.length - 1;
 
-          // Tính toán vị trí để VĐV1 và VĐV2 căn với đường ngang từ vòng trước
-          //
-          // Cách tính: Mỗi vòng, VĐV căn với đường ngang của vòng liền trước
-          //
-          // Vòng 1: athleteGap = 50px, topOffset = 0
-          //         Line ở y = 49px
-          //
-          // Tứ kết: căn với line vòng 1
-          //         topOffset = 49 - 12 = 37px
-          //         athleteGap = 114 - 24 = 90px
-          //         Line ở y = 37 + 12 + 90/2 = 37 + 57 = 94px
-          //
-          // Bán kết: căn với line Tứ kết (y = 94)
-          //         topOffset = 94 - 12 = 82px
-          //         athleteGap = 228 - 24 = 204px
-          //         Line ở y = 82 + 12 + 204/2 = 82 + 114 = 196px
-          //
-          // Chung kết: căn với line Bán kết (y = 196)
-          //         topOffset = 196 - 12 = 184px
-
           const gapMultiplier = Math.pow(2, roundIndex);
           const CELL_CENTER = CELL_HEIGHT / 2; // = 12px
 
@@ -82,43 +101,8 @@ export default function Bracket({
           const matchGap =
             BASE_LINE_SPACING * gapMultiplier - currentMatchHeight;
 
-          // TopOffset: tính vị trí đường ngang của vòng trước rồi căn VĐV1 với nó
-          // Vòng 1: topOffset = 0
-          // Các vòng sau: topOffset = lineY_vòng_trước - 12
-          //
-          // lineY tích lũy qua các vòng:
-          // Vòng 1: lineY = 49
-          // Tứ kết: lineY = 37 + 12 + 90/2 = 94 (nhưng thực ra = 49 + 45 = 94)
-          // Bán kết: lineY = 82 + 12 + 204/2 = 196
-          //
-          // Công thức: lineY(n) = lineY(n-1) + (athleteGap(n) - athleteGap(n-1)) / 2
-          // Hoặc đơn giản: mỗi vòng, topOffset tăng thêm (lineSpacing_hiện_tại - lineSpacing_trước) / 2          // TopOffset: căn VĐV1 với đường ngang từ vòng trước
-          //
-          // Cách tính đơn giản hơn:
-          // Vị trí đường ngang vòng 1 = 49px
-          // Mỗi vòng tiếp theo, đường ngang dịch xuống thêm (athleteGap_mới - athleteGap_cũ) / 2
-          //
-          // Vòng 1: lineY = 49
-          // Tứ kết: athleteGap tăng từ 50 lên 90 (+40), lineY = 49 + 40/2 = 49 + 20 = ... sai
-          //
-          // Thử cách khác: lineY = topOffset + CELL_CENTER + athleteGap/2
-          // Vòng 1: lineY = 0 + 12 + 25 = 37... sai, phải là 49
-          //
-          // Đúng rồi: lineY = topOffset + CELL_HEIGHT + athleteGap/2
-          // Vòng 1: lineY = 0 + 24 + 25 = 49 ✓
-          // Tứ kết: topOffset = 37, lineY = 37 + 24 + 45 = 106... không đúng với 94
-          //
-          // Sai! lineY = topOffset + CELL_CENTER + athleteGap/2
-          // Vòng 1: 0 + 12 + 25 = 37...
-          // Thực tế lineY vòng 1 = giữa 2 VĐV = 24 + 25 = 49
-          //
-          // OK: lineY = CELL_HEIGHT + athleteGap/2 (tính từ top của match, không phải topOffset)
-          // Nhưng topOffset làm dịch cả match xuống
-          // Vậy lineY tuyệt đối = topOffset + CELL_HEIGHT + athleteGap/2
-
           let topOffset = 0;
           if (roundIndex > 0) {
-            // Tính lineY tuyệt đối của vòng trước
             let prevTopOffset = 0;
             let prevAthleteGap = GAP_BETWEEN_ATHLETES;
 
@@ -127,19 +111,15 @@ export default function Bracket({
               const iLineSpacing = (BASE_LINE_SPACING * iGapMultiplier) / 2;
               const iAthleteGap = iLineSpacing - CELL_HEIGHT;
 
-              // lineY của vòng (i-1)
               const prevLineY =
                 prevTopOffset + CELL_HEIGHT + prevAthleteGap / 2;
 
-              // topOffset của vòng i = prevLineY - CELL_CENTER
               prevTopOffset = prevLineY - CELL_CENTER;
               prevAthleteGap = iAthleteGap;
             }
 
-            // lineY của vòng trước (roundIndex - 1)
             const prevLineY = prevTopOffset + CELL_HEIGHT + prevAthleteGap / 2;
 
-            // topOffset của vòng hiện tại = prevLineY - CELL_CENTER
             topOffset = prevLineY - CELL_CENTER;
           }
           return (
@@ -167,8 +147,9 @@ export default function Bracket({
                     <div
                       className={`athlete-slot ${
                         match.winner?.id === match.athlete1?.id ? "winner" : ""
-                      }`}
+                      } ${match.athlete1?.disqualified ? "disqualified" : ""}`}
                       onClick={() => onMatchClick && onMatchClick(match)}
+                      onContextMenu={(e) => handleContextMenu(e, match, 1)}
                     >
                       <span className="belt-mark aka"></span>
                       {match.athlete1?.country && (
@@ -178,31 +159,73 @@ export default function Bracket({
                       )}
                       {isTeamBracket ? (
                         <>
-                          <span className="name">
+                          <span
+                            className={`name ${
+                              match.athlete1?.disqualified
+                                ? "name-disqualified"
+                                : ""
+                            }`}
+                          >
                             {match.athlete1?.name || ""}
                           </span>
                           {match.athlete1?.members && (
-                            <span className="club" style={{fontSize: '10px', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px'}} title={match.athlete1.members.map(m => m.name).join(', ')}>
-                              ({match.athlete1.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})
+                            <span
+                              className="club"
+                              style={{
+                                fontSize: "10px",
+                                color: "#475569",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                maxWidth: "140px",
+                              }}
+                              title={match.athlete1.members
+                                .map((m) => m.name)
+                                .join(", ")}
+                            >
+                              (
+                              {match.athlete1.members
+                                .map((m) => m.name.trim().split(/\s+/).pop())
+                                .join(", ")}
+                              )
                             </span>
                           )}
                         </>
                       ) : (
                         <>
-                          <span className="name">{match.athlete1?.name || ""}</span>
+                          <span
+                            className={`name ${
+                              match.athlete1?.disqualified
+                                ? "name-disqualified"
+                                : ""
+                            }`}
+                          >
+                            {match.athlete1?.name || ""}
+                          </span>
                           {match.athlete1?.club && (
-                            <span className="club">({match.athlete1.club})</span>
+                            <span className="club">
+                              ({match.athlete1.club})
+                            </span>
                           )}
                         </>
+                      )}
+                      {match.athlete1?.disqualified && (
+                        <span
+                          className="dq-badge"
+                          title={match.athlete1.disqualifiedReason || "Loại"}
+                        >
+                          ✕
+                        </span>
                       )}
                     </div>{" "}
                     {/* VĐV 2 */}
                     <div
                       className={`athlete-slot athlete-slot-2 ${
                         match.winner?.id === match.athlete2?.id ? "winner" : ""
-                      }`}
+                      } ${match.athlete2?.disqualified ? "disqualified" : ""}`}
                       style={{ marginTop: athleteGap }}
                       onClick={() => onMatchClick && onMatchClick(match)}
+                      onContextMenu={(e) => handleContextMenu(e, match, 2)}
                     >
                       <span className="belt-mark ao"></span>
                       {match.athlete2?.country && (
@@ -212,22 +235,63 @@ export default function Bracket({
                       )}
                       {isTeamBracket ? (
                         <>
-                          <span className="name">
+                          <span
+                            className={`name ${
+                              match.athlete2?.disqualified
+                                ? "name-disqualified"
+                                : ""
+                            }`}
+                          >
                             {match.athlete2?.name || ""}
                           </span>
                           {match.athlete2?.members && (
-                            <span className="club" style={{fontSize: '10px', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px'}} title={match.athlete2.members.map(m => m.name).join(', ')}>
-                              ({match.athlete2.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})
+                            <span
+                              className="club"
+                              style={{
+                                fontSize: "10px",
+                                color: "#475569",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                maxWidth: "140px",
+                              }}
+                              title={match.athlete2.members
+                                .map((m) => m.name)
+                                .join(", ")}
+                            >
+                              (
+                              {match.athlete2.members
+                                .map((m) => m.name.trim().split(/\s+/).pop())
+                                .join(", ")}
+                              )
                             </span>
                           )}
                         </>
                       ) : (
                         <>
-                          <span className="name">{match.athlete2?.name || ""}</span>
+                          <span
+                            className={`name ${
+                              match.athlete2?.disqualified
+                                ? "name-disqualified"
+                                : ""
+                            }`}
+                          >
+                            {match.athlete2?.name || ""}
+                          </span>
                           {match.athlete2?.club && (
-                            <span className="club">({match.athlete2.club})</span>
+                            <span className="club">
+                              ({match.athlete2.club})
+                            </span>
                           )}
                         </>
+                      )}
+                      {match.athlete2?.disqualified && (
+                        <span
+                          className="dq-badge"
+                          title={match.athlete2.disqualifiedReason || "Loại"}
+                        >
+                          ✕
+                        </span>
                       )}
                     </div>
                     {/* Đường nối: dọc + ngang */}
@@ -287,8 +351,15 @@ export default function Bracket({
                           </span>
                         )}
                         {isTeamBracket && match.winner?.members && (
-                          <span className="champion-club" style={{fontSize: '10px', color: '#64748b'}}>
-                            ({match.winner.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})
+                          <span
+                            className="champion-club"
+                            style={{ fontSize: "10px", color: "#64748b" }}
+                          >
+                            (
+                            {match.winner.members
+                              .map((m) => m.name.trim().split(/\s+/).pop())
+                              .join(", ")}
+                            )
                           </span>
                         )}
                       </div>
@@ -300,6 +371,57 @@ export default function Bracket({
           );
         })}
       </div>
+
+      {/* ===== RIGHT-CLICK CONTEXT MENU ===== */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="bracket-context-menu"
+          style={{
+            position: "fixed",
+            top: contextMenu.y,
+            left: contextMenu.x,
+            zIndex: 9999,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="context-menu-header">
+            <span className="context-menu-athlete">
+              {contextMenu.athlete?.name}
+            </span>
+            <small className="context-menu-club">
+              {contextMenu.athlete?.club || ""}
+            </small>
+          </div>
+          <div className="context-menu-divider" />
+          <button
+            className="context-menu-item danger"
+            onClick={() => handleAction("disqualify")}
+          >
+            <span className="context-menu-icon">🚫</span>
+            <span>Loại (sức khỏe / vi phạm)</span>
+          </button>
+          <button
+            className="context-menu-item success"
+            onClick={() => handleAction("set_winner")}
+          >
+            <span className="context-menu-icon">🏆</span>
+            <span>Chọn thắng (auto win)</span>
+          </button>
+          {contextMenu.match.winner && (
+            <>
+              <div className="context-menu-divider" />
+              <button
+                className="context-menu-item warning"
+                onClick={() => handleAction("reset_match")}
+              >
+                <span className="context-menu-icon">↩️</span>
+                <span>Reset trận đấu</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

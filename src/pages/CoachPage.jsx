@@ -23,6 +23,8 @@ function CoachPage() {
     coachAthletes,
     coachName,
     clubName,
+    teamLeaderName,
+    additionalCoaches,
     canEdit,
     loadKrtData,
     refreshTimeStatus,
@@ -31,6 +33,8 @@ function CoachPage() {
     deleteAthlete,
     updateCoachName,
     updateClubName,
+    updateTeamLeaderName,
+    updateAdditionalCoaches,
     getExportData,
     resetRole,
   } = useRole();
@@ -807,6 +811,59 @@ function CoachPage() {
               placeholder="CLB Karate Hà Nội"
               disabled={!canEdit && timeStatus === TIME_STATUS.BEFORE}
             />
+          </div>
+        </div>
+
+        {/* Team Leader + Additional Coaches */}
+        <div className="coach-name-section">
+          <div className="coach-name-field">
+            <label>Trưởng đoàn:</label>
+            <input
+              type="text"
+              value={teamLeaderName}
+              onChange={(e) => updateTeamLeaderName(e.target.value)}
+              placeholder="Nguyễn Văn C"
+              disabled={!canEdit && timeStatus === TIME_STATUS.BEFORE}
+            />
+            <small style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>Mỗi CLB chỉ có 1 trưởng đoàn</small>
+          </div>
+          <div className="coach-name-field">
+            <label>HLV phụ:</label>
+            {additionalCoaches.map((name, idx) => (
+              <div key={idx} style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => {
+                    const updated = [...additionalCoaches];
+                    updated[idx] = e.target.value;
+                    updateAdditionalCoaches(updated);
+                  }}
+                  placeholder={`HLV phụ ${idx + 1}`}
+                  disabled={!canEdit && timeStatus === TIME_STATUS.BEFORE}
+                />
+                <button
+                  type="button"
+                  className="delete-btn"
+                  onClick={() => {
+                    const updated = additionalCoaches.filter((_, i) => i !== idx);
+                    updateAdditionalCoaches(updated);
+                  }}
+                  disabled={!canEdit && timeStatus === TIME_STATUS.BEFORE}
+                  style={{ padding: '4px 8px', fontSize: '12px' }}
+                >✕</button>
+              </div>
+            ))}
+            {additionalCoaches.length < 2 && (
+              <button
+                type="button"
+                className="add-btn"
+                onClick={() => updateAdditionalCoaches([...additionalCoaches, ''])}
+                disabled={!canEdit && timeStatus === TIME_STATUS.BEFORE}
+                style={{ fontSize: '12px', padding: '4px 8px' }}
+              >+ Thêm HLV phụ</button>
+            )}
+            <small style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>Tối đa 3 HLV (gồm HLV chính)</small>
           </div>
         </div>
         {/* Events List */}

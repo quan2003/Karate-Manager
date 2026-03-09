@@ -5,7 +5,11 @@ import {
   useTournamentDispatch,
   ACTIONS,
 } from "../context/TournamentContext";
-import { updateMatchResult } from "../utils/drawEngine";
+import {
+  updateMatchResult,
+  disqualifyAthlete,
+  resetMatch,
+} from "../utils/drawEngine";
 import {
   exportBracketToPDF,
   exportScoreSheetToPDF,
@@ -145,12 +149,16 @@ export default function BracketPage() {
 
     // Nếu có cả 2 VĐV, mở scoreboard (cho phép cả khi đã có winner để sửa)
     if (match.athlete1 && match.athlete2) {
+      const scheduleInfo = tournament.schedule?.[category.id] || null;
+      const sponsorLogos = tournament.sponsorLogos || null;
       openScoreboard(
         match,
         category.type, // 'kumite' or 'kata'
         category.name,
         tournament.name,
-        getRoundName(match)
+        getRoundName(match),
+        scheduleInfo,
+        sponsorLogos
       );
     }
   };
@@ -167,6 +175,7 @@ export default function BracketPage() {
           orientation: "landscape",
           scheduleInfo: tournament.schedule?.[category.id] || null,
           splitSettings: tournament.splitSettings || null,
+          sponsorLogos: tournament.sponsorLogos || null,
         }
       );
     } catch (error) {
@@ -175,12 +184,73 @@ export default function BracketPage() {
       setExporting(false);
     }
   };
-
-  const handleExportScoreSheet = () => {
+  const handleExportScoreSheet = async () => {
     const matches = category.bracket.matches.filter(
       (m) => !m.isBye && m.athlete1 && m.athlete2
     );
-    exportScoreSheetToPDF(category, matches, `${category.name}_bang_diem.pdf`);
+    setExporting(true);
+    try {
+      await exportScoreSheetToPDF(
+        category,
+        matches,
+        `${category.name}_bang_diem.pdf`,
+        tournament.sponsorLogos || null
+      );
+    } catch (e) {
+      console.error(e);
+      alert("Lỗi xuất bảng điểm: " + e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Handle right-click context menu actions from Bracket component
+  const handleContextAction = (action, match, athleteSlot) => {
+    if (!category?.bracket) return;
+
+    let updatedBracket;
+
+    switch (action) {
+      case "disqualify": {
+        const athlete = athleteSlot === 1 ? match.athlete1 : match.athlete2;
+        const reason = window.prompt(
+          `Lý do loại ${athlete?.name || "VĐV"}:`,
+          "Vi phạm"
+        );
+        if (reason === null) return; // User cancelled
+        updatedBracket = disqualifyAthlete(
+          category.bracket,
+          match.id,
+          athleteSlot,
+          reason || "Loại"
+        );
+        break;
+      }
+      case "set_winner": {
+        updatedBracket = updateMatchResult(
+          category.bracket,
+          match.id,
+          athleteSlot === 1 ? 1 : 0,
+          athleteSlot === 1 ? 0 : 1,
+          (athleteSlot === 1 ? match.athlete1 : match.athlete2)?.id
+        );
+        break;
+      }
+      case "reset_match": {
+        if (!window.confirm("Reset trận đấu này? Kết quả sẽ bị xóa.")) return;
+        updatedBracket = resetMatch(category.bracket, match.id);
+        break;
+      }
+      default:
+        return;
+    }
+
+    if (updatedBracket) {
+      dispatch({
+        type: ACTIONS.UPDATE_CATEGORY,
+        payload: { id: category.id, bracket: updatedBracket },
+      });
+    }
   };
   // Calculate progress
   const completedMatches = category.bracket.matches.filter(
@@ -214,6 +284,47 @@ export default function BracketPage() {
   const bronzeMedalists = semiFinalMatches
     .map((m) => getLoser(m))
     .filter((a) => a !== null);
+
+  // Nếu chỉ có ít hơn 2 bronze từ bán kết, tìm thêm từ tứ kết
+  // Trường hợp: 1 trận bán kết chỉ có 1 VĐV (auto-advance do BYE vòng trước)
+  if (bronzeMedalists.length < 2 && semiFinalRound > 1) {
+    const quarterRound = semiFinalRound - 1;
+    const quarterFinals = category.bracket.matches.filter(
+      (m) => m.round === quarterRound && !m.isBye && m.winner
+    );
+    // Tìm bán kết mà chỉ có 1 VĐV (auto-advance)
+    const autoAdvanceSemis = semiFinalMatches.filter(
+      (m) => m.winner && (!m.athlete1 || !m.athlete2)
+    );
+    autoAdvanceSemis.forEach((semi) => {
+      const advancedAthlete = semi.winner || semi.athlete1 || semi.athlete2;
+      if (!advancedAthlete) return;
+      const qMatch = quarterFinals.find(
+        (m) => m.winner?.id === advancedAthlete.id
+      );
+      if (qMatch) {
+        const qLoser = getLoser(qMatch);
+        if (qLoser && !bronzeMedalists.some((b) => b.id === qLoser.id)) {
+          bronzeMedalists.push(qLoser);
+        }
+      }
+    });
+    
+    // Fallback: tìm tất cả loser tứ kết mà không phải champion/silver
+    if (bronzeMedalists.length < 2) {
+      quarterFinals.forEach((qm) => {
+        const qLoser = getLoser(qm);
+        if (
+          qLoser &&
+          qLoser.id !== champion?.id &&
+          qLoser.id !== silverMedalist?.id &&
+          !bronzeMedalists.some((b) => b.id === qLoser.id)
+        ) {
+          bronzeMedalists.push(qLoser);
+        }
+      });
+    }
+  }
   const isTeamBracket = category.bracket?.isTeamBracket || false;
   return (
     <div className="page bracket-page">
@@ -267,12 +378,13 @@ export default function BracketPage() {
         </header>
 
         <div className="bracket-scroll-container">
+          {" "}
           <Bracket
             bracket={category.bracket}
             categoryType={category.type}
             onMatchClick={handleMatchClick}
+            onContextAction={handleContextAction}
           />
-
           {/* Medal Table - Always visible, auto-update */}
           <div className="medal-table-container">
             <table className="medal-table">
@@ -296,7 +408,14 @@ export default function BracketPage() {
                             </span>
                           )}
                           {isTeamBracket && champion.members && (
-                            <span className="medal-club"> ({champion.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>
+                            <span className="medal-club">
+                              {" "}
+                              (
+                              {champion.members
+                                .map((m) => m.name.trim().split(/\s+/).pop())
+                                .join(", ")}
+                              )
+                            </span>
                           )}
                         </>
                       ) : (
@@ -319,7 +438,14 @@ export default function BracketPage() {
                             </span>
                           )}
                           {isTeamBracket && silverMedalist.members && (
-                            <span className="medal-club"> ({silverMedalist.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>
+                            <span className="medal-club">
+                              {" "}
+                              (
+                              {silverMedalist.members
+                                .map((m) => m.name.trim().split(/\s+/).pop())
+                                .join(", ")}
+                              )
+                            </span>
                           )}
                         </>
                       ) : (
@@ -342,7 +468,14 @@ export default function BracketPage() {
                             </span>
                           )}
                           {isTeamBracket && bronzeMedalists[0].members && (
-                            <span className="medal-club"> ({bronzeMedalists[0].members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>
+                            <span className="medal-club">
+                              {" "}
+                              (
+                              {bronzeMedalists[0].members
+                                .map((m) => m.name.trim().split(/\s+/).pop())
+                                .join(", ")}
+                              )
+                            </span>
                           )}
                         </>
                       ) : (
@@ -365,7 +498,14 @@ export default function BracketPage() {
                             </span>
                           )}
                           {isTeamBracket && bronzeMedalists[1].members && (
-                            <span className="medal-club"> ({bronzeMedalists[1].members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>
+                            <span className="medal-club">
+                              {" "}
+                              (
+                              {bronzeMedalists[1].members
+                                .map((m) => m.name.trim().split(/\s+/).pop())
+                                .join(", ")}
+                              )
+                            </span>
                           )}
                         </>
                       ) : (

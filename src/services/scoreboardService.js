@@ -14,7 +14,7 @@ const MATCH_RESULT_KEY = 'match_result';
  * @param {string} tournamentName - Tên giải đấu
  * @param {string} roundName - Tên vòng đấu (vd: "Bán kết")
  */
-export function openScoreboard(match, categoryType, categoryName, tournamentName, roundName) {
+export function openScoreboard(match, categoryType, categoryName, tournamentName, roundName, scheduleInfo = null, sponsorLogos = null) {
   // Chuẩn bị data để gửi sang scoreboard
   const pendingMatch = {
     matchId: match.id,
@@ -38,6 +38,10 @@ export function openScoreboard(match, categoryType, categoryName, tournamentName
     score1: match.score1,
     score2: match.score2,
     hasWinner: !!match.winner,
+    // Schedule info (mat number)
+    matNumber: scheduleInfo?.mat || null,
+    // Sponsor logos (base64 images)
+    sponsorLogos: sponsorLogos || null,
     timestamp: Date.now(),
   };
   
