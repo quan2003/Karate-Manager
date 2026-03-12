@@ -26,6 +26,12 @@ jobs:
         with:
           node-version: 20
 
+      # 🔧 FIX better-sqlite3 build
+      - name: Fix Python distutils
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install setuptools
+
       - name: Install dependencies
         run: npm install
 
