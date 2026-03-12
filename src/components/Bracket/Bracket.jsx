@@ -407,8 +407,11 @@ export default function Bracket({
           >
             <span className="context-menu-icon">🏆</span>
             <span>Chọn thắng (auto win)</span>
-          </button>
-          {contextMenu.match.winner && (
+          </button>{" "}
+          {(contextMenu.match.winner ||
+            contextMenu.match.disqualification ||
+            contextMenu.match.athlete1?.disqualified ||
+            contextMenu.match.athlete2?.disqualified) && (
             <>
               <div className="context-menu-divider" />
               <button

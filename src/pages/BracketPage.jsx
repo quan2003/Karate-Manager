@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   useTournament,
@@ -19,6 +19,7 @@ import {
   listenForMatchResult,
 } from "../services/scoreboardService";
 import Bracket from "../components/Bracket/Bracket";
+import appIcon from "../assets/icon.png";
 import "./BracketPage.css";
 
 export default function BracketPage() {
@@ -26,6 +27,14 @@ export default function BracketPage() {
   const { tournaments, currentTournament, currentCategory } = useTournament();
   const dispatch = useTournamentDispatch();
   const [exporting, setExporting] = useState(false);
+  // Custom dialog — replaces window.prompt / window.confirm (Electron blocks those)
+  const [dialog, setDialog] = useState(null);
+  const dialogInputRef = useRef(null);
+  useEffect(() => {
+    if (dialog?.type === "prompt" && dialogInputRef.current) {
+      setTimeout(() => dialogInputRef.current?.focus(), 50);
+    }
+  }, [dialog]);
 
   // Calculate category and tournament FIRST before using in effects
   const category =
@@ -203,53 +212,70 @@ export default function BracketPage() {
       setExporting(false);
     }
   };
-
   // Handle right-click context menu actions from Bracket component
   const handleContextAction = (action, match, athleteSlot) => {
     if (!category?.bracket) return;
 
-    let updatedBracket;
-
     switch (action) {
       case "disqualify": {
         const athlete = athleteSlot === 1 ? match.athlete1 : match.athlete2;
-        const reason = window.prompt(
-          `Lý do loại ${athlete?.name || "VĐV"}:`,
-          "Vi phạm"
-        );
-        if (reason === null) return; // User cancelled
-        updatedBracket = disqualifyAthlete(
-          category.bracket,
-          match.id,
-          athleteSlot,
-          reason || "Loại"
-        );
+        const opponent = athleteSlot === 1 ? match.athlete2 : match.athlete1;
+        setDialog({
+          type: "prompt",
+          title: "🚫 Loại VĐV (sức khỏe / vi phạm)",
+          message: `Lý do loại ${athlete?.name || "VĐV"}:`,
+          defaultValue: "Vi phạm",
+          onOk: (reason) => {
+            setDialog(null);
+            if (reason === null || reason === undefined) return;
+            const updatedBracket = disqualifyAthlete(
+              category.bracket,
+              match.id,
+              athleteSlot,
+              reason || "Loại"
+            );
+            dispatch({
+              type: ACTIONS.UPDATE_CATEGORY,
+              payload: { id: category.id, bracket: updatedBracket },
+            });
+          },
+          onCancel: () => setDialog(null),
+        });
         break;
       }
       case "set_winner": {
-        updatedBracket = updateMatchResult(
+        const updatedBracket = updateMatchResult(
           category.bracket,
           match.id,
           athleteSlot === 1 ? 1 : 0,
           athleteSlot === 1 ? 0 : 1,
           (athleteSlot === 1 ? match.athlete1 : match.athlete2)?.id
         );
+        dispatch({
+          type: ACTIONS.UPDATE_CATEGORY,
+          payload: { id: category.id, bracket: updatedBracket },
+        });
         break;
       }
       case "reset_match": {
-        if (!window.confirm("Reset trận đấu này? Kết quả sẽ bị xóa.")) return;
-        updatedBracket = resetMatch(category.bracket, match.id);
+        setDialog({
+          type: "confirm",
+          title: "↩️ Reset trận đấu",
+          message: "Reset trận đấu này? Kết quả sẽ bị xóa.",
+          onOk: () => {
+            setDialog(null);
+            const updatedBracket = resetMatch(category.bracket, match.id);
+            dispatch({
+              type: ACTIONS.UPDATE_CATEGORY,
+              payload: { id: category.id, bracket: updatedBracket },
+            });
+          },
+          onCancel: () => setDialog(null),
+        });
         break;
       }
       default:
         return;
-    }
-
-    if (updatedBracket) {
-      dispatch({
-        type: ACTIONS.UPDATE_CATEGORY,
-        payload: { id: category.id, bracket: updatedBracket },
-      });
     }
   };
   // Calculate progress
@@ -309,7 +335,7 @@ export default function BracketPage() {
         }
       }
     });
-    
+
     // Fallback: tìm tất cả loser tứ kết mà không phải champion/silver
     if (bronzeMedalists.length < 2) {
       quarterFinals.forEach((qm) => {
@@ -344,7 +370,10 @@ export default function BracketPage() {
         </nav>
         <header className="page-header bracket-header">
           <div>
-            <h1 className="page-title">{category.name}</h1>
+            <h1 className="page-title">
+              <img src={appIcon} alt="" className="page-title-logo" />
+              {category.name}
+            </h1>
             <div className="bracket-info">
               <span>📊 {category.bracket.size} slots</span>
               <span>•</span>
@@ -513,12 +542,61 @@ export default function BracketPage() {
                       )}
                     </span>
                   </td>
-                </tr>
+                </tr>{" "}
               </tbody>
             </table>
           </div>
         </div>
       </div>
+
+      {/* ===== CUSTOM DIALOG (replaces window.prompt / window.confirm) ===== */}
+      {dialog && (
+        <div
+          className="bracket-dialog-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) dialog.onCancel();
+          }}
+        >
+          <div className="bracket-dialog">
+            <div className="bracket-dialog-title">{dialog.title}</div>
+            <div className="bracket-dialog-message">{dialog.message}</div>
+            {dialog.type === "prompt" && (
+              <input
+                ref={dialogInputRef}
+                className="bracket-dialog-input"
+                type="text"
+                defaultValue={dialog.defaultValue || ""}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") dialog.onOk(e.target.value);
+                  if (e.key === "Escape") dialog.onCancel();
+                }}
+              />
+            )}
+            <div className="bracket-dialog-actions">
+              <button
+                className="bracket-dialog-btn cancel"
+                onClick={dialog.onCancel}
+              >
+                Hủy
+              </button>
+              <button
+                className={`bracket-dialog-btn ok ${
+                  dialog.type === "confirm" ? "danger" : "primary"
+                }`}
+                onClick={() => {
+                  if (dialog.type === "prompt") {
+                    dialog.onOk(dialogInputRef.current?.value ?? "");
+                  } else {
+                    dialog.onOk();
+                  }
+                }}
+              >
+                {dialog.type === "confirm" ? "Xác nhận" : "OK"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

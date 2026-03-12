@@ -75,8 +75,6 @@
   --transition-slow: 350ms ease;
 }
 
-
-
 /* Reset & Base */
 *,
 *::before,
@@ -426,6 +424,9 @@ tr:hover {
 .page-title {
   font-size: var(--font-size-3xl);
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   background: linear-gradient(
     135deg,
     var(--color-text-primary),
@@ -434,6 +435,16 @@ tr:hover {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+.page-title-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+  /* Override gradient text-fill for img */
+  -webkit-text-fill-color: initial;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
 }
 
 /* Grid */

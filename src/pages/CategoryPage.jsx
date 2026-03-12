@@ -11,6 +11,7 @@ import AthleteList from "../components/AthleteList/AthleteList";
 import Modal from "../components/common/Modal";
 import ConfirmDialog from "../components/common/ConfirmDialog";
 import { useToast } from "../components/common/Toast";
+import appIcon from "../assets/icon.png";
 import "./CategoryPage.css";
 
 export default function CategoryPage() {
@@ -257,7 +258,10 @@ export default function CategoryPage() {
             <div className="category-type-badge">
               {category.type === "kumite" ? "⚔️ Kumite" : "🥋 Kata"}
             </div>
-            <h1 className="page-title">{category.name}</h1>
+            <h1 className="page-title">
+              <img src={appIcon} alt="" className="page-title-logo" />
+              {category.name}
+            </h1>
             <div className="category-meta">
               {category.gender && (
                 <span>

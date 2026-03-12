@@ -32,7 +32,7 @@ export default function Sidebar() {
       }
     };
     fetchPendingCount();
-    const interval = setInterval(fetchPendingCount, 30000);
+    const interval = setInterval(fetchPendingCount, 5 * 60 * 1000); // 5 minutes
     return () => clearInterval(interval);
   }, []);
   const navItems = [
@@ -67,8 +67,19 @@ export default function Sidebar() {
       >
         <div className="flex flex-col h-full p-6">
           <div className="mb-8">
+            {" "}
             <h1 className="text-xl font-bold text-white flex items-center gap-2">
-              <span>🥋</span> Karate Admin
+              <img
+                src="/icon.png"
+                alt=""
+                style={{
+                  width: 28,
+                  height: 28,
+                  objectFit: "contain",
+                  filter: "brightness(0) invert(1)",
+                }}
+              />
+              Karate Admin
             </h1>
             <p className="text-xs text-slate-500 mt-1">v1.1.0</p>
           </div>
@@ -109,7 +120,9 @@ export default function Sidebar() {
                 />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold">
-                  {(user?.name || user?.username || 'A').charAt(0).toUpperCase()}
+                  {(user?.name || user?.username || "A")
+                    .charAt(0)
+                    .toUpperCase()}
                 </div>
               )}
               <div className="overflow-hidden">
@@ -117,7 +130,8 @@ export default function Sidebar() {
                   {user?.name || user?.username}
                 </p>
                 <p className="text-xs text-slate-500 truncate">
-                  {user?.email || (user?.loginType === 'account' ? `@${user?.username}` : '')}
+                  {user?.email ||
+                    (user?.loginType === "account" ? `@${user?.username}` : "")}
                 </p>
               </div>
             </div>

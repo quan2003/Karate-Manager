@@ -18,6 +18,7 @@ import ConfirmDialog from "../components/common/ConfirmDialog";
 import DateInput from "../components/common/DateInput";
 import DateTimeInput from "../components/common/DateTimeInput";
 import BackupManager from "../components/BackupManager/BackupManager";
+import appIcon from "../assets/icon.png";
 import "./HomePage.css";
 
 export default function HomePage() {
@@ -336,19 +337,27 @@ export default function HomePage() {
     );
     if (tournament) {
       const data = importResult.data;
-      const clubName = data.clubName || data.coachName || 'Chưa Rõ';
-      
+      const clubName = data.clubName || data.coachName || "Chưa Rõ";
+
       // Save club registration info (coaches, team leader)
       const existingRegs = tournament.clubRegistrations || {};
-      const existingReg = existingRegs[clubName] || { coaches: [], teamLeader: '' };
-      
+      const existingReg = existingRegs[clubName] || {
+        coaches: [],
+        teamLeader: "",
+      };
+
       // Merge coaches - combine without duplicates
-      const allCoaches = [data.coachName, ...(data.additionalCoaches || [])].filter(Boolean);
-      const mergedCoaches = [...new Set([...existingReg.coaches, ...allCoaches])].filter(Boolean);
-      
+      const allCoaches = [
+        data.coachName,
+        ...(data.additionalCoaches || []),
+      ].filter(Boolean);
+      const mergedCoaches = [
+        ...new Set([...existingReg.coaches, ...allCoaches]),
+      ].filter(Boolean);
+
       // Team leader: use new one if provided, otherwise keep existing
-      const teamLeader = data.teamLeaderName || existingReg.teamLeader || '';
-      
+      const teamLeader = data.teamLeaderName || existingReg.teamLeader || "";
+
       dispatch({
         type: ACTIONS.UPDATE_CLUB_REGISTRATIONS,
         payload: {
@@ -367,28 +376,28 @@ export default function HomePage() {
       let importedCount = 0;
       if (data.athletes && data.athletes.length > 0) {
         const athletesByCat = {};
-        data.athletes.forEach(a => {
-           if (!athletesByCat[a.eventId]) athletesByCat[a.eventId] = [];
-           // ensure club is set correctly using the fallback clubName
-           a.club = a.club || clubName;
-           athletesByCat[a.eventId].push(a);
+        data.athletes.forEach((a) => {
+          if (!athletesByCat[a.eventId]) athletesByCat[a.eventId] = [];
+          // ensure club is set correctly using the fallback clubName
+          a.club = a.club || clubName;
+          athletesByCat[a.eventId].push(a);
         });
-        
-        Object.keys(athletesByCat).forEach(categoryId => {
-           // Find if category actually exists in tournament to avoid invalid dispatches
-           if (tournament.categories.find(c => c.id === categoryId)) {
-             dispatch({
-                type: ACTIONS.IMPORT_ATHLETES,
-                payload: {
-                   categoryId,
-                   athletes: athletesByCat[categoryId]
-                }
-             });
-             importedCount += athletesByCat[categoryId].length;
-           }
+
+        Object.keys(athletesByCat).forEach((categoryId) => {
+          // Find if category actually exists in tournament to avoid invalid dispatches
+          if (tournament.categories.find((c) => c.id === categoryId)) {
+            dispatch({
+              type: ACTIONS.IMPORT_ATHLETES,
+              payload: {
+                categoryId,
+                athletes: athletesByCat[categoryId],
+              },
+            });
+            importedCount += athletesByCat[categoryId].length;
+          }
         });
       }
-      
+
       alert(
         `Đã import ${importedCount} VĐV từ file!\nĐã cập nhật thông tin ban huấn luyện cho đoàn: ${clubName}`
       );
@@ -428,7 +437,10 @@ export default function HomePage() {
               </svg>
               Đổi vai trò
             </button>
-            <h1 className="page-title">🥋 Karate Tournament Manager</h1>
+            <h1 className="page-title">
+              <img src={appIcon} alt="" className="page-title-logo" />
+              Karate Tournament Manager
+            </h1>
             <p className="page-subtitle">
               Hệ thống quản lý & bốc thăm thi đấu Karate (Admin)
             </p>
@@ -459,7 +471,11 @@ export default function HomePage() {
               className="btn btn-secondary btn-lg"
               onClick={() => setShowBackupManager(true)}
               title="Sao lưu & đồng bộ dữ liệu giữa nhiều Admin"
-              style={{ background: "linear-gradient(135deg, #3b82f6, #1d4ed8)", color: "#fff", border: "none" }}
+              style={{
+                background: "linear-gradient(135deg, #3b82f6, #1d4ed8)",
+                color: "#fff",
+                border: "none",
+              }}
             >
               💾 Backup / Đồng bộ
             </button>

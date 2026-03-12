@@ -244,7 +244,7 @@ export default function LicensePage() {
     // Auto-refresh every 30 seconds
     const interval = setInterval(() => {
       fetchLicenses(true);
-    }, 30000);
+    }, 5 * 60 * 1000); // 5 minutes
     return () => clearInterval(interval);
   }, []);
 
@@ -260,8 +260,10 @@ export default function LicensePage() {
         setLicenses(res.data.licenses);
       }
     } catch (error) {
-      console.error("Error fetching licenses:", error);
-      if (!silent) showNotify("Lỗi tải danh sách license", "error");
+      if (!silent) {
+        console.error("Error fetching licenses:", error);
+        showNotify("Lỗi tải danh sách license", "error");
+      }
     } finally {
       if (!silent) setLoading(false);
     }

@@ -20,6 +20,7 @@ import {
   exportScheduleToPDF,
   exportScheduleToExcel,
 } from "../services/scheduleExportService";
+import appIcon from "../assets/icon.png";
 import "./SchedulePage.css";
 
 // Generate 30-minute time slots between start and end (HH:mm format)
@@ -540,7 +541,10 @@ export default function SchedulePage() {
 
         <header className="page-header">
           <div>
-            <h1 className="page-title">📋 Lịch thi đấu & Chia thảm</h1>
+            <h1 className="page-title">
+              <img src={appIcon} alt="" className="page-title-logo" />
+              Lịch thi đấu & Chia thảm
+            </h1>
             <div className="tournament-meta">
               <span>🏆 {tournament.name}</span>
               <span>📅 {new Date(tournament.date).toLocaleDateString("vi-VN")}</span>

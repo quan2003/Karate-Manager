@@ -258,6 +258,39 @@
   align-items: center;
 }
 
+.edit-btn, .delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edit-btn {
+  color: var(--color-primary-light);
+  opacity: 0.6;
+}
+
+.edit-btn:hover {
+  background: var(--color-bg-tertiary);
+  opacity: 1;
+}
+
+.delete-btn {
+  color: var(--color-error);
+  opacity: 0.6;
+}
+
+.delete-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  opacity: 1;
+}
+
 .category-type {
   font-size: var(--font-size-xs);
   font-weight: 600;

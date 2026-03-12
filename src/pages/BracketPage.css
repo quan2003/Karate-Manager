@@ -143,6 +143,125 @@
   font-size: var(--font-size-sm);
 }
 
+/* ============================================
+   CUSTOM DIALOG (Electron-safe modal)
+   ============================================ */
+.bracket-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  animation: bDialogFadeIn 0.15s ease-out;
+}
+
+@keyframes bDialogFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.bracket-dialog {
+  background: white;
+  border-radius: 14px;
+  padding: 1.8rem 2rem;
+  min-width: 340px;
+  max-width: 460px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  animation: bDialogSlideIn 0.18s ease-out;
+}
+
+@keyframes bDialogSlideIn {
+  from {
+    transform: translateY(-12px) scale(0.97);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.bracket-dialog-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: 0.6rem;
+}
+
+.bracket-dialog-message {
+  font-size: 0.92rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.bracket-dialog-input {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  margin-bottom: 1.2rem;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.bracket-dialog-input:focus {
+  border-color: var(--color-primary);
+}
+
+.bracket-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.bracket-dialog-btn {
+  padding: 0.55rem 1.4rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.bracket-dialog-btn.cancel {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.bracket-dialog-btn.cancel:hover {
+  background: var(--color-bg-secondary);
+}
+
+.bracket-dialog-btn.ok.primary {
+  background: var(--color-primary);
+  color: white;
+}
+
+.bracket-dialog-btn.ok.primary:hover {
+  opacity: 0.88;
+}
+
+.bracket-dialog-btn.ok.danger {
+  background: #dc2626;
+  color: white;
+}
+
+.bracket-dialog-btn.ok.danger:hover {
+  background: #b91c1c;
+}
+
 @media (max-width: 768px) {
   .container-fluid {
     padding: 0 var(--spacing-4);

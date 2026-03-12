@@ -71,6 +71,43 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   // =============================================
+  // SQLite Database Operations
+  // =============================================
+  db: {
+    // Tournaments
+    getTournaments: () => ipcRenderer.invoke('db:getTournaments'),
+    saveTournaments: (tournaments) => ipcRenderer.invoke('db:saveTournaments', tournaments),
+    deleteTournament: (id) => ipcRenderer.invoke('db:deleteTournament', id),
+
+    // Settings
+    getSetting: (key) => ipcRenderer.invoke('db:getSetting', key),
+    setSetting: (key, value) => ipcRenderer.invoke('db:setSetting', key, value),
+    deleteSetting: (key) => ipcRenderer.invoke('db:deleteSetting', key),
+
+    // Auto backups
+    saveAutoBackup: (id, reason, data, size) => ipcRenderer.invoke('db:saveAutoBackup', id, reason, data, size),
+    getAutoBackups: () => ipcRenderer.invoke('db:getAutoBackups'),
+    getAutoBackupById: (id) => ipcRenderer.invoke('db:getAutoBackupById', id),
+
+    // Backup history
+    saveBackupHistory: (meta) => ipcRenderer.invoke('db:saveBackupHistory', meta),
+    getBackupHistory: () => ipcRenderer.invoke('db:getBackupHistory'),
+
+    // Session data (Coach / Secretary)
+    getSessionData: (tournamentId, key) => ipcRenderer.invoke('db:getSessionData', tournamentId, key),
+    setSessionData: (tournamentId, key, value) => ipcRenderer.invoke('db:setSessionData', tournamentId, key, value),
+    deleteSessionData: (tournamentId, key) => ipcRenderer.invoke('db:deleteSessionData', tournamentId, key),
+
+    // Migration
+    importFromLocalStorage: (lsData) => ipcRenderer.invoke('db:importFromLocalStorage', lsData),
+    isMigrationDone: () => ipcRenderer.invoke('db:isMigrationDone'),
+    markMigrationDone: () => ipcRenderer.invoke('db:markMigrationDone'),
+
+    // Stats
+    getDataStats: () => ipcRenderer.invoke('db:getDataStats'),
+  },
+
+  // =============================================
   // IPC communication (legacy)
   // =============================================
   send: (channel, data) => {

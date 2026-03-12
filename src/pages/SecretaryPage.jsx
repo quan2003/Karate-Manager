@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRole, ROLES } from "../context/RoleContext";
 import {
@@ -13,9 +13,9 @@ import {
 import {
   updateMatchResult as updateBracketWithResult,
   disqualifyAthlete,
-  resetMatch,
 } from "../utils/drawEngine";
 import Bracket from "../components/Bracket/Bracket";
+import appIcon from "../assets/icon.png";
 import "./SecretaryPage.css";
 
 /**
@@ -36,11 +36,26 @@ function SecretaryPage() {
     getMatchExportData,
     resetRole,
   } = useRole();
-
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState("");
+
+  // Sidebar search/filter
+  const [sidebarSearch, setSidebarSearch] = useState("");
+  const [sidebarFilter, setSidebarFilter] = useState("all"); // all | kata | kumite
+
+  // Custom dialog (replaces window.prompt / window.confirm for Electron compatibility)
+  const [dialog, setDialog] = useState(null);
+  // dialog shape: { type: "prompt"|"confirm", title, message, defaultValue, onOk, onCancel }
+  const dialogInputRef = useRef(null);
+
+  // Focus input when prompt dialog opens
+  useEffect(() => {
+    if (dialog?.type === "prompt" && dialogInputRef.current) {
+      setTimeout(() => dialogInputRef.current?.focus(), 50);
+    }
+  }, [dialog]);
 
   // Redirect if not Secretary
   useEffect(() => {
@@ -140,7 +155,6 @@ function SecretaryPage() {
 
     return clonedBracket;
   }, [selectedCategory, matchResults]);
-
   // Handle right-click context menu actions from Bracket component
   const handleContextAction = (action, match, athleteSlot) => {
     if (!selectedCategory?.bracket) return;
@@ -148,28 +162,33 @@ function SecretaryPage() {
     switch (action) {
       case "disqualify": {
         const athlete = athleteSlot === 1 ? match.athlete1 : match.athlete2;
-        const reason = window.prompt(
-          `Lý do loại ${athlete?.name || "VĐV"}:`,
-          "Vi phạm"
-        );
-        if (reason === null) return; // User cancelled
-
         const opponent = athleteSlot === 1 ? match.athlete2 : match.athlete1;
-        updateMatchResult(match.id, {
-          matchId: match.id,
-          disqualification: true,
-          disqualifiedSlot: athleteSlot,
-          disqualifiedReason: reason || "Loại",
-          winnerId: opponent?.id || null,
-          score1: null,
-          score2: null,
+        setDialog({
+          type: "prompt",
+          title: "🚫 Loại VĐV (sức khỏe / vi phạm)",
+          message: `Lý do loại ${athlete?.name || "VĐV"}:`,
+          defaultValue: "Vi phạm",
+          onOk: (reason) => {
+            setDialog(null);
+            if (reason === null || reason === undefined) return;
+            updateMatchResult(match.id, {
+              matchId: match.id,
+              disqualification: true,
+              disqualifiedSlot: athleteSlot,
+              disqualifiedReason: reason || "Loại",
+              winnerId: opponent?.id || null,
+              score1: null,
+              score2: null,
+            });
+            setNotification(
+              `🚫 Đã loại ${athlete?.name || "VĐV"}. ${
+                opponent?.name || ""
+              } thắng tự động.`
+            );
+            setTimeout(() => setNotification(""), 3000);
+          },
+          onCancel: () => setDialog(null),
         });
-        setNotification(
-          `🚫 Đã loại ${athlete?.name || "VĐV"}. ${
-            opponent?.name || ""
-          } thắng tự động.`
-        );
-        setTimeout(() => setNotification(""), 3000);
         break;
       }
       case "set_winner": {
@@ -186,10 +205,18 @@ function SecretaryPage() {
         break;
       }
       case "reset_match": {
-        if (!window.confirm("Reset trận đấu này? Kết quả sẽ bị xóa.")) return;
-        removeMatchResult(match.id);
-        setNotification("↩️ Đã reset trận đấu.");
-        setTimeout(() => setNotification(""), 3000);
+        setDialog({
+          type: "confirm",
+          title: "↩️ Reset trận đấu",
+          message: "Reset trận đấu này? Toàn bộ kết quả và loại VĐV sẽ bị xóa.",
+          onOk: () => {
+            setDialog(null);
+            removeMatchResult(match.id);
+            setNotification("↩️ Đã reset trận đấu.");
+            setTimeout(() => setNotification(""), 3000);
+          },
+          onCancel: () => setDialog(null),
+        });
         break;
       }
       default:
@@ -250,7 +277,6 @@ function SecretaryPage() {
   };
 
   if (role !== ROLES.SECRETARY) return null;
-
   return (
     <div className="secretary-page">
       <div className="secretary-container">
@@ -259,7 +285,10 @@ function SecretaryPage() {
             <button className="back-btn" onClick={handleBack}>
               ← Đổi vai trò
             </button>
-            <h1>🎯 Thư Ký</h1>
+            <h1 className="page-title">
+              <img src={appIcon} alt="" className="page-title-logo" />
+              Thư Ký
+            </h1>
           </div>
           <div className="header-right">
             {!matchData && (
@@ -278,12 +307,10 @@ function SecretaryPage() {
             )}
           </div>
         </header>
-
         {error && <div className="error-message">{error}</div>}
         {notification && (
           <div className="notification-toast">{notification}</div>
         )}
-
         {!matchData ? (
           <div className="no-file-section">
             <div className="no-file-icon">📂</div>
@@ -315,27 +342,86 @@ function SecretaryPage() {
                 <strong>{matchData.tournamentName}</strong>
                 <span>{matchData.location}</span>
               </div>
-            </div>
-
+            </div>{" "}
             <div className="secretary-content">
               {/* Categories Sidebar */}
               <div className="categories-sidebar">
                 <h3>Hạng mục thi đấu</h3>
-                <div className="categories-list">
-                  {matchData.categories?.map((cat) => (
+
+                {/* Search */}
+                <div className="sidebar-search-wrap">
+                  <span className="sidebar-search-icon">🔍</span>
+                  <input
+                    className="sidebar-search-input"
+                    type="text"
+                    placeholder="Tìm hạng mục..."
+                    value={sidebarSearch}
+                    onChange={(e) => setSidebarSearch(e.target.value)}
+                  />
+                  {sidebarSearch && (
                     <button
-                      key={cat.id}
-                      className={`category-btn ${
-                        selectedCategory?.id === cat.id ? "active" : ""
-                      }`}
-                      onClick={() => setSelectedCategory(cat)}
+                      className="sidebar-search-clear"
+                      onClick={() => setSidebarSearch("")}
                     >
-                      {cat.name}
-                      <span className="match-count">
-                        {cat.matches?.length || 0} trận
-                      </span>
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter tabs */}
+                <div className="sidebar-filter-tabs">
+                  {["all", "kata", "kumite"].map((f) => (
+                    <button
+                      key={f}
+                      className={`sidebar-filter-tab ${
+                        sidebarFilter === f ? "active" : ""
+                      }`}
+                      onClick={() => setSidebarFilter(f)}
+                    >
+                      {f === "all"
+                        ? "Tất cả"
+                        : f === "kata"
+                        ? "🥋 Kata"
+                        : "⚔️ Kumite"}
                     </button>
                   ))}
+                </div>
+
+                <div className="categories-list">
+                  {(() => {
+                    const cats =
+                      matchData.categories?.filter((cat) => {
+                        const matchesSearch =
+                          sidebarSearch.trim() === "" ||
+                          cat.name
+                            .toLowerCase()
+                            .includes(sidebarSearch.toLowerCase().trim());
+                        const matchesFilter =
+                          sidebarFilter === "all" || cat.type === sidebarFilter;
+                        return matchesSearch && matchesFilter;
+                      }) || [];
+                    if (cats.length === 0) {
+                      return (
+                        <div className="sidebar-no-result">
+                          Không tìm thấy hạng mục
+                        </div>
+                      );
+                    }
+                    return cats.map((cat) => (
+                      <button
+                        key={cat.id}
+                        className={`category-btn ${
+                          selectedCategory?.id === cat.id ? "active" : ""
+                        }`}
+                        onClick={() => setSelectedCategory(cat)}
+                      >
+                        <span className="category-btn-name">{cat.name}</span>
+                        <span className="match-count">
+                          {cat.matches?.length || 0} trận
+                        </span>
+                      </button>
+                    ));
+                  })()}
                 </div>
               </div>
 
@@ -397,24 +483,36 @@ function SecretaryPage() {
                             .filter((a) => a !== null);
 
                           // Tìm thêm bronze từ tứ kết nếu bán kết có auto-advance
-                          if (bronzeMedalists.length < 2 && semiFinalRound > 1) {
+                          if (
+                            bronzeMedalists.length < 2 &&
+                            semiFinalRound > 1
+                          ) {
                             const quarterRound = semiFinalRound - 1;
                             const quarterFinals =
                               bracketWithScores.matches?.filter(
-                                (m) => m.round === quarterRound && !m.isBye && m.winner
+                                (m) =>
+                                  m.round === quarterRound &&
+                                  !m.isBye &&
+                                  m.winner
                               ) || [];
                             const autoAdvanceSemis = semiFinalMatches.filter(
                               (m) => m.winner && (!m.athlete1 || !m.athlete2)
                             );
                             autoAdvanceSemis.forEach((semi) => {
-                              const advAthlete = semi.winner || semi.athlete1 || semi.athlete2;
+                              const advAthlete =
+                                semi.winner || semi.athlete1 || semi.athlete2;
                               if (!advAthlete) return;
                               const qMatch = quarterFinals.find(
                                 (m) => m.winner?.id === advAthlete.id
                               );
                               if (qMatch) {
                                 const qLoser = getLoser(qMatch);
-                                if (qLoser && !bronzeMedalists.some((b) => b.id === qLoser.id)) {
+                                if (
+                                  qLoser &&
+                                  !bronzeMedalists.some(
+                                    (b) => b.id === qLoser.id
+                                  )
+                                ) {
                                   bronzeMedalists.push(qLoser);
                                 }
                               }
@@ -426,7 +524,9 @@ function SecretaryPage() {
                                   qLoser &&
                                   qLoser.id !== champion?.id &&
                                   qLoser.id !== silverMedalist?.id &&
-                                  !bronzeMedalists.some((b) => b.id === qLoser.id)
+                                  !bronzeMedalists.some(
+                                    (b) => b.id === qLoser.id
+                                  )
                                 ) {
                                   bronzeMedalists.push(qLoser);
                                 }
@@ -541,7 +641,6 @@ function SecretaryPage() {
                 )}
               </div>
             </div>
-
             {/* Export Footer */}
             <div className="export-section">
               <div className="export-info">
@@ -563,10 +662,59 @@ function SecretaryPage() {
                   📊 Xuất Excel
                 </button>
               </div>
-            </div>
+            </div>{" "}
           </>
-        )}
+        )}{" "}
       </div>
+
+      {/* ===== CUSTOM DIALOG (replaces window.prompt / window.confirm) ===== */}
+      {dialog && (
+        <div
+          className="secretary-dialog-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) dialog.onCancel();
+          }}
+        >
+          <div className="secretary-dialog">
+            <div className="secretary-dialog-title">{dialog.title}</div>
+            <div className="secretary-dialog-message">{dialog.message}</div>
+            {dialog.type === "prompt" && (
+              <input
+                ref={dialogInputRef}
+                className="secretary-dialog-input"
+                type="text"
+                defaultValue={dialog.defaultValue || ""}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") dialog.onOk(e.target.value);
+                  if (e.key === "Escape") dialog.onCancel();
+                }}
+              />
+            )}
+            <div className="secretary-dialog-actions">
+              <button
+                className="secretary-dialog-btn cancel"
+                onClick={dialog.onCancel}
+              >
+                Hủy
+              </button>
+              <button
+                className={`secretary-dialog-btn ok ${
+                  dialog.type === "confirm" ? "danger" : "primary"
+                }`}
+                onClick={() => {
+                  if (dialog.type === "prompt") {
+                    dialog.onOk(dialogInputRef.current?.value ?? "");
+                  } else {
+                    dialog.onOk();
+                  }
+                }}
+              >
+                {dialog.type === "confirm" ? "Xác nhận" : "OK"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

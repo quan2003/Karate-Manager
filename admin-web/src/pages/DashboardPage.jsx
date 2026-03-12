@@ -23,8 +23,8 @@ export default function DashboardPage() {
         setStats(res.data.stats);
       }
     } catch (error) {
-      console.error("Failed to fetch stats", error);
       if (!silent) {
+        console.error("Failed to fetch stats", error);
         // Dummy data for visual check
         setStats({
           totalLicenses: 0,
@@ -41,8 +41,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchStats();
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(() => fetchStats(true), 30000);
+    // Auto-refresh every 5 minutes
+    const interval = setInterval(() => fetchStats(true), 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
   const StatCard = ({ title, value, icon: Icon, color, bg, highlight }) => (

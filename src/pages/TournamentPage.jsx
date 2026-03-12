@@ -22,6 +22,7 @@ import { createKmatchData, saveKmatchFile } from "../services/matchService";
 import { generateBracket } from "../utils/drawEngine";
 import DateTimeInput from "../components/common/DateTimeInput";
 import { useToast } from "../components/common/Toast";
+import appIcon from "../assets/icon.png";
 import "./TournamentPage.css";
 
 export default function TournamentPage() {
@@ -29,18 +30,44 @@ export default function TournamentPage() {
   const { tournaments, currentTournament } = useTournament();
   const dispatch = useTournamentDispatch();
   const { toast } = useToast();
+  const [editingId, setEditingId] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
     message: "",
     onConfirm: null,
   });
-  // Bulk draw state
   const [showBulkDrawModal, setShowBulkDrawModal] = useState(false);
   const [bulkDrawSelection, setBulkDrawSelection] = useState({});
   const [bulkDrawResults, setBulkDrawResults] = useState(null);
   const [bulkDrawing, setBulkDrawing] = useState(false);
   const fileInputRef = useRef(null);
+
+  const handleOpenModal = () => {
+    setEditingId(null);
+    setFormData({
+      name: "",
+      type: "kumite",
+      gender: "male",
+      ageGroup: "",
+      weightClass: "",
+      format: "single_elimination",
+    });
+    setShowModal(true);
+  };
+
+  const handleEditCategory = (category) => {
+    setEditingId(category.id);
+    setFormData({
+      name: category.name || "",
+      type: category.type || "kumite",
+      gender: category.gender || "male",
+      ageGroup: category.ageGroup || "",
+      weightClass: category.weightClass || "",
+      format: category.format || "single_elimination",
+    });
+    setShowModal(true);
+  };
   const [formData, setFormData] = useState({
     name: "",
     type: "kumite",
@@ -118,13 +145,25 @@ export default function TournamentPage() {
     e.preventDefault();
     if (!formData.name.trim()) return;
 
-    dispatch({
-      type: ACTIONS.ADD_CATEGORY,
-      payload: {
-        tournamentId: tournament.id,
-        ...formData,
-      },
-    });
+    if (editingId) {
+      dispatch({
+        type: ACTIONS.UPDATE_CATEGORY,
+        payload: {
+          id: editingId,
+          ...formData,
+        },
+      });
+      toast.success("Đã cập nhật hạng mục!");
+    } else {
+      dispatch({
+        type: ACTIONS.ADD_CATEGORY,
+        payload: {
+          tournamentId: tournament.id,
+          ...formData,
+        },
+      });
+      toast.success("Đã thêm hạng mục mới!");
+    }
 
     setFormData({
       name: "",
@@ -134,6 +173,7 @@ export default function TournamentPage() {
       weightClass: "",
       format: "single_elimination",
     });
+    setEditingId(null);
     setShowModal(false);
   };
   const handleDeleteCategory = (categoryId) => {
@@ -660,7 +700,10 @@ export default function TournamentPage() {
 
         <header className="page-header">
           <div>
-            <h1 className="page-title">{tournament.name}</h1>
+            <h1 className="page-title">
+              <img src={appIcon} alt="" className="page-title-logo" />
+              {tournament.name}
+            </h1>
             <div className="tournament-meta">
               <span>
                 📅 {new Date(tournament.date).toLocaleDateString("vi-VN")}
@@ -751,9 +794,18 @@ export default function TournamentPage() {
             <span className="action-label">Lịch thi<br/>đấu</span>
           </Link>
 
+          <Link
+            to={`/athletes/${tournament.id}`}
+            className="tournament-action-btn action-schedule"
+            title="Quản lý toàn bộ VĐV"
+          >
+            <span className="action-icon">👥</span>
+            <span className="action-label">Quản lý<br/>VĐV</span>
+          </Link>
+
           <button
             className="tournament-action-btn action-add"
-            onClick={() => setShowModal(true)}
+            onClick={handleOpenModal}
           >
             <span className="action-icon">➕</span>
             <span className="action-label">Thêm hạng<br/>mục</span>
@@ -1049,7 +1101,7 @@ export default function TournamentPage() {
             <p>Thêm các hạng mục thi đấu như Kumite Nam -60kg, Kata Nữ...</p>
             <button
               className="btn btn-primary"
-              onClick={() => setShowModal(true)}
+              onClick={handleOpenModal}
             >
               Thêm hạng mục
             </button>
@@ -1113,13 +1165,22 @@ export default function TournamentPage() {
                   <span className={`category-type ${category.type}`}>
                     {category.type === "kumite" ? "⚔️ Kumite" : "🥋 Kata"}
                   </span>
-                  <button
-                    className="delete-btn"
-                    onClick={() => handleDeleteCategory(category.id)}
-                    title="Xóa"
-                  >
-                    🗑️
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      className="edit-btn"
+                      onClick={() => handleEditCategory(category)}
+                      title="Sửa"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      className="delete-btn"
+                      onClick={() => handleDeleteCategory(category.id)}
+                      title="Xóa"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </div>
 
                 <h3 className="category-name">{category.name}</h3>
@@ -1199,7 +1260,7 @@ export default function TournamentPage() {
         <Modal
           isOpen={showModal}
           onClose={() => setShowModal(false)}
-          title="Thêm hạng mục mới"
+          title={editingId ? "Cập nhật hạng mục" : "Thêm hạng mục mới"}
         >
           <form onSubmit={handleSubmit}>
             <div className="input-group">
@@ -1306,7 +1367,7 @@ export default function TournamentPage() {
                 Hủy
               </button>
               <button type="submit" className="btn btn-primary">
-                Thêm hạng mục
+                {editingId ? "Cập nhật" : "Thêm hạng mục"}
               </button>
             </div>
           </form>

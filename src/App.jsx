@@ -11,12 +11,18 @@ import CoachPage from "./pages/CoachPage";
 import SecretaryPage from "./pages/SecretaryPage";
 import StatisticsPage from "./pages/StatisticsPage";
 import SchedulePage from "./pages/SchedulePage";
+import AthletesPage from "./pages/AthletesPage";
 
-import { initializeTrialIfNeeded, revalidateLicenseWithServer } from "./services/licenseService";
+import {
+  initializeTrialIfNeeded,
+  revalidateLicenseWithServer,
+} from "./services/licenseService";
 import TrialWatermark from "./components/TrialWatermark/TrialWatermark";
 import LicenseBadge from "./components/LicenseBadge/LicenseBadge";
 import LicenseGuard from "./components/LicenseGuard";
+import ErrorBoundary from "./components/ErrorBoundary/ErrorBoundary";
 import { ToastProvider } from "./components/common/Toast";
+import appIcon from "./assets/icon.png";
 import "./index.css";
 
 function App() {
@@ -28,47 +34,123 @@ function App() {
   }, []);
 
   return (
-    <ToastProvider>
-    <RoleProvider>
-      <TournamentProvider>
-        <Router>
-          <div className="app">
-            <TrialWatermark />
-            <LicenseBadge />
-            <Routes>
-              {/* Role Selection */}
-              <Route path="/" element={<RoleSelectPage />} />
+    <ErrorBoundary>
+      <ToastProvider>
+        <RoleProvider>
+          <TournamentProvider>
+            <Router>
+              <div className="app">
+                <TrialWatermark />
+                <LicenseBadge />
+                <Routes>
+                  {/* Role Selection */}
+                  <Route path="/" element={<RoleSelectPage />} />
 
-              {/* Admin Routes */}
-              <Route path="/admin" element={<LicenseGuard><HomePage /></LicenseGuard>} />
-              <Route path="/tournament/:id" element={<LicenseGuard><TournamentPage /></LicenseGuard>} />
-              <Route path="/category/:id" element={<LicenseGuard><CategoryPage /></LicenseGuard>} />
-              <Route path="/bracket/:id" element={<LicenseGuard><BracketPage /></LicenseGuard>} />
-              <Route path="/statistics/:id" element={<LicenseGuard><StatisticsPage /></LicenseGuard>} />
-              <Route path="/schedule/:id" element={<LicenseGuard><SchedulePage /></LicenseGuard>} />
+                  {/* Admin Routes */}
+                  <Route
+                    path="/admin"
+                    element={
+                      <LicenseGuard>
+                        <HomePage />
+                      </LicenseGuard>
+                    }
+                  />
+                  <Route
+                    path="/tournament/:id"
+                    element={
+                      <LicenseGuard>
+                        <TournamentPage />
+                      </LicenseGuard>
+                    }
+                  />
+                  <Route
+                    path="/category/:id"
+                    element={
+                      <LicenseGuard>
+                        <CategoryPage />
+                      </LicenseGuard>
+                    }
+                  />
+                  <Route
+                    path="/bracket/:id"
+                    element={
+                      <LicenseGuard>
+                        <BracketPage />
+                      </LicenseGuard>
+                    }
+                  />
+                  <Route
+                    path="/statistics/:id"
+                    element={
+                      <LicenseGuard>
+                        <StatisticsPage />
+                      </LicenseGuard>
+                    }
+                  />
+                  <Route
+                    path="/schedule/:id"
+                    element={
+                      <LicenseGuard>
+                        <SchedulePage />
+                      </LicenseGuard>
+                    }
+                  />
+                  <Route
+                    path="/athletes/:id"
+                    element={
+                      <LicenseGuard>
+                        <AthletesPage />
+                      </LicenseGuard>
+                    }
+                  />
 
-              {/* Coach Routes */}
-              <Route path="/coach" element={<LicenseGuard><CoachPage /></LicenseGuard>} />
+                  {/* Coach Routes */}
+                  <Route
+                    path="/coach"
+                    element={
+                      <LicenseGuard>
+                        <CoachPage />
+                      </LicenseGuard>
+                    }
+                  />
 
-              {/* Secretary Routes */}
-              <Route path="/secretary" element={<LicenseGuard><SecretaryPage /></LicenseGuard>} />
+                  {/* Secretary Routes */}
+                  <Route
+                    path="/secretary"
+                    element={
+                      <LicenseGuard>
+                        <SecretaryPage />
+                      </LicenseGuard>
+                    }
+                  />
+                </Routes>
 
-
-            </Routes>
-
-            <footer className="app-footer">
-              <div className="container">
-                <p>🥋 Karate Tournament Manager © 2026</p>
-                <p className="footer-note">
-                  Tác giả: Trương Lưu Quân - 0336.440.523
-                </p>
+                <footer className="app-footer">
+                  <div className="container">
+                    <p>
+                      <img
+                        src={appIcon}
+                        alt=""
+                        style={{
+                          width: 18,
+                          height: 18,
+                          verticalAlign: "middle",
+                          marginRight: 6,
+                        }}
+                      />
+                      Karate Tournament Manager © 2026
+                    </p>
+                    <p className="footer-note">
+                      Tác giả: Trương Lưu Quân - 0336.440.523
+                    </p>
+                  </div>
+                </footer>
               </div>
-            </footer>
-          </div>
-        </Router>
-      </TournamentProvider>
-    </RoleProvider>
-    </ToastProvider>
+            </Router>
+          </TournamentProvider>
+        </RoleProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }
 

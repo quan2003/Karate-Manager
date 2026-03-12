@@ -3,8 +3,11 @@ import {
   useContext,
   useState,
   useCallback,
-  useEffect,
 } from "react";
+import {
+  dbGetSessionData,
+  dbSetSessionData,
+} from "../services/dbService";
 
 const RoleContext = createContext(null);
 
@@ -70,44 +73,29 @@ export function RoleProvider({ children }) {
    * Load dữ liệu từ file .krt (Coach)
    */
   const loadKrtData = useCallback(
-    (data) => {
+    async (data) => {
       setTournamentData(data);
       const status = checkTimeStatus(data.startTime, data.endTime);
       setTimeStatus(status);
 
-      // Load danh sách VĐV từ localStorage nếu có
-      const savedAthletes = localStorage.getItem(
-        `coach_athletes_${data.tournamentId}`
-      );
+      // Load danh sách VĐV từ SQLite nếu có
+      const savedAthletes = await dbGetSessionData(data.tournamentId, 'coach_athletes');
       if (savedAthletes) {
-        setCoachAthletes(JSON.parse(savedAthletes));
+        try { setCoachAthletes(JSON.parse(savedAthletes)); } catch { setCoachAthletes([]); }
       } else {
         setCoachAthletes([]);
       }
-      const savedCoachName = localStorage.getItem(
-        `coach_name_${data.tournamentId}`
-      );
-      if (savedCoachName) {
-        setCoachName(savedCoachName);
-      }
 
-      const savedClubName = localStorage.getItem(
-        `club_name_${data.tournamentId}`
-      );
-      if (savedClubName) {
-        setClubName(savedClubName);
-      }
+      const savedCoachName = await dbGetSessionData(data.tournamentId, 'coach_name');
+      if (savedCoachName) setCoachName(savedCoachName);
 
-      const savedTeamLeader = localStorage.getItem(
-        `team_leader_${data.tournamentId}`
-      );
-      if (savedTeamLeader) {
-        setTeamLeaderName(savedTeamLeader);
-      }
+      const savedClubName = await dbGetSessionData(data.tournamentId, 'club_name');
+      if (savedClubName) setClubName(savedClubName);
 
-      const savedAdditionalCoaches = localStorage.getItem(
-        `additional_coaches_${data.tournamentId}`
-      );
+      const savedTeamLeader = await dbGetSessionData(data.tournamentId, 'team_leader');
+      if (savedTeamLeader) setTeamLeaderName(savedTeamLeader);
+
+      const savedAdditionalCoaches = await dbGetSessionData(data.tournamentId, 'additional_coaches');
       if (savedAdditionalCoaches) {
         try {
           setAdditionalCoaches(JSON.parse(savedAdditionalCoaches));
@@ -123,16 +111,14 @@ export function RoleProvider({ children }) {
    * Load dữ liệu từ file .kmatch (Secretary)
    */
   const loadMatchData = useCallback(
-    (data) => {
+    async (data) => {
       setMatchData(data);
       setScoringEnabled(data.scoringEnabled || false);
 
-      // Load kết quả từ localStorage nếu có
-      const savedResults = localStorage.getItem(
-        `match_results_${data.tournamentId}`
-      );
+      // Load kết quả từ SQLite nếu có
+      const savedResults = await dbGetSessionData(data.tournamentId, 'match_results');
       if (savedResults) {
-        setMatchResults(JSON.parse(savedResults));
+        try { setMatchResults(JSON.parse(savedResults)); } catch { setMatchResults([]); }
       } else {
         setMatchResults([]);
       }
@@ -146,18 +132,7 @@ export function RoleProvider({ children }) {
     [checkTimeStatus]
   );
 
-  // Load system config on mount
-  useEffect(() => {
-    try {
-      const savedLicense = localStorage.getItem("krt_license");
-      if (savedLicense) setLicenseData(JSON.parse(savedLicense));
-
-      const savedConfig = localStorage.getItem("krt_system_config");
-      if (savedConfig) setSystemConfig(JSON.parse(savedConfig));
-    } catch (e) {
-      console.error("Error loading system config:", e);
-    }
-  }, []);
+  // Note: setLicenseData/setSystemConfig were removed with Owner state - cleaned up
 
   /**
    * Owner actions removed
@@ -187,7 +162,7 @@ export function RoleProvider({ children }) {
    * Thêm VĐV mới (chỉ khi trong thời hạn)
    */
   const addAthlete = useCallback(
-    (athlete) => {
+    async (athlete) => {
       if (timeStatus !== TIME_STATUS.DURING) {
         return {
           success: false,
@@ -203,10 +178,7 @@ export function RoleProvider({ children }) {
 
       setCoachAthletes((prev) => {
         const updated = [...prev, newAthlete];
-        localStorage.setItem(
-          `coach_athletes_${tournamentData.tournamentId}`,
-          JSON.stringify(updated)
-        );
+        dbSetSessionData(tournamentData.tournamentId, 'coach_athletes', JSON.stringify(updated));
         return updated;
       });
 
@@ -233,10 +205,7 @@ export function RoleProvider({ children }) {
             ? { ...a, ...updates, updatedAt: new Date().toISOString() }
             : a
         );
-        localStorage.setItem(
-          `coach_athletes_${tournamentData.tournamentId}`,
-          JSON.stringify(updated)
-        );
+        dbSetSessionData(tournamentData.tournamentId, 'coach_athletes', JSON.stringify(updated));
         return updated;
       });
 
@@ -259,10 +228,7 @@ export function RoleProvider({ children }) {
 
       setCoachAthletes((prev) => {
         const updated = prev.filter((a) => a.id !== id);
-        localStorage.setItem(
-          `coach_athletes_${tournamentData.tournamentId}`,
-          JSON.stringify(updated)
-        );
+        dbSetSessionData(tournamentData.tournamentId, 'coach_athletes', JSON.stringify(updated));
         return updated;
       });
 
@@ -278,7 +244,7 @@ export function RoleProvider({ children }) {
     (name) => {
       setCoachName(name);
       if (tournamentData) {
-        localStorage.setItem(`coach_name_${tournamentData.tournamentId}`, name);
+        dbSetSessionData(tournamentData.tournamentId, 'coach_name', name);
       }
     },
     [tournamentData]
@@ -291,7 +257,7 @@ export function RoleProvider({ children }) {
     (name) => {
       setClubName(name);
       if (tournamentData) {
-        localStorage.setItem(`club_name_${tournamentData.tournamentId}`, name);
+        dbSetSessionData(tournamentData.tournamentId, 'club_name', name);
       }
     },
     [tournamentData]
@@ -304,7 +270,7 @@ export function RoleProvider({ children }) {
     (name) => {
       setTeamLeaderName(name);
       if (tournamentData) {
-        localStorage.setItem(`team_leader_${tournamentData.tournamentId}`, name);
+        dbSetSessionData(tournamentData.tournamentId, 'team_leader', name);
       }
     },
     [tournamentData]
@@ -317,8 +283,9 @@ export function RoleProvider({ children }) {
     (coaches) => {
       setAdditionalCoaches(coaches);
       if (tournamentData) {
-        localStorage.setItem(
-          `additional_coaches_${tournamentData.tournamentId}`,
+        dbSetSessionData(
+          tournamentData.tournamentId,
+          'additional_coaches',
           JSON.stringify(coaches)
         );
       }
@@ -371,10 +338,7 @@ export function RoleProvider({ children }) {
           ];
         }
         if (matchData) {
-          localStorage.setItem(
-            `match_results_${matchData.tournamentId}`,
-            JSON.stringify(updated)
-          );
+          dbSetSessionData(matchData.tournamentId, 'match_results', JSON.stringify(updated));
         }
         return updated;
       });
@@ -391,10 +355,7 @@ export function RoleProvider({ children }) {
       setMatchResults((prev) => {
         const updated = prev.filter((r) => r.matchId !== matchId);
         if (matchData) {
-          localStorage.setItem(
-            `match_results_${matchData.tournamentId}`,
-            JSON.stringify(updated)
-          );
+          dbSetSessionData(matchData.tournamentId, 'match_results', JSON.stringify(updated));
         }
         return updated;
       });

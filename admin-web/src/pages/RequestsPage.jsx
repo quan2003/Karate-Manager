@@ -137,7 +137,7 @@ export default function RequestsPage() {
 
   useEffect(() => {
     fetchRequests();
-    const interval = setInterval(() => fetchRequests(true), 30000);
+    const interval = setInterval(() => fetchRequests(true), 5 * 60 * 1000); // 5 minutes
     return () => clearInterval(interval);
   }, []);
 
@@ -153,8 +153,10 @@ export default function RequestsPage() {
         setRequests(res.data.requests);
       }
     } catch (error) {
-      console.error("Error fetching requests:", error);
-      if (!silent) showNotify("Lỗi tải danh sách yêu cầu", "error");
+      if (!silent) {
+        console.error("Error fetching requests:", error);
+        showNotify("Lỗi tải danh sách yêu cầu", "error");
+      }
     } finally {
       if (!silent) setLoading(false);
     }

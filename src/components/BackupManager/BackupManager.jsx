@@ -24,6 +24,7 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
   const [comparison, setComparison] = useState(null);
   const [autoBackups, setAutoBackups] = useState([]);
   const [dataInfo, setDataInfo] = useState(null);
+  const [tournamentCount, setTournamentCount] = useState(0);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -36,9 +37,17 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
     }
   }, [isOpen]);
 
-  const refreshInfo = () => {
-    setDataInfo(getDataSizeInfo());
-    setAutoBackups(getAutoBackupHistory());
+  const refreshInfo = async () => {
+    const info = await getDataSizeInfo();
+    setDataInfo(info);
+    const backups = await getAutoBackupHistory();
+    setAutoBackups(backups);
+    // Đếm số giải đấu từ backup service
+    try {
+      const { createBackupData } = await import("../../services/backupService");
+      const bd = await createBackupData();
+      setTournamentCount(bd.data?.meta?.tournamentCount || 0);
+    } catch { setTournamentCount(0); }
   };
 
   const showStatus = (type, message) => {
@@ -78,7 +87,8 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
       }
 
       setBackupData(result.data);
-      const comp = compareBackupWithCurrent(result.data);
+      showStatus("info", "⏳ Đang so sánh dữ liệu...");
+      const comp = await compareBackupWithCurrent(result.data);
       setComparison(comp);
       setView("compare");
       setStatus(null);
@@ -90,7 +100,7 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
   };
 
   // ====== RESTORE ======
-  const handleRestore = (mode) => {
+  const handleRestore = async (mode) => {
     if (!backupData) return;
 
     const confirmMsg = mode === "replace"
@@ -99,7 +109,8 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
 
     if (!window.confirm(confirmMsg)) return;
 
-    const result = restoreBackup(backupData, mode);
+    showStatus("info", "⏳ Đang khôi phục dữ liệu...");
+    const result = await restoreBackup(backupData, mode);
     if (result.success) {
       showStatus("success", `✅ ${result.message}`);
       setView("main");
@@ -115,12 +126,13 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
   };
 
   // ====== AUTO-BACKUP RESTORE ======
-  const handleAutoRestore = (backupId) => {
+  const handleAutoRestore = async (backupId) => {
     if (!window.confirm("Khôi phục dữ liệu từ bản auto-backup này?\nDữ liệu hiện tại sẽ được backup trước.")) {
       return;
     }
 
-    const result = restoreFromAutoBackup(backupId);
+    showStatus("info", "⏳ Đang khôi phục...");
+    const result = await restoreFromAutoBackup(backupId);
     if (result.success) {
       showStatus("success", `✅ ${result.message}`);
       refreshInfo();
@@ -133,20 +145,14 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
   };
 
   // ====== CREATE MANUAL AUTO-BACKUP ======
-  const handleCreateCheckpoint = () => {
-    createAutoBackup("Checkpoint thủ công");
+  const handleCreateCheckpoint = async () => {
+    showStatus("info", "⏳ Đang tạo checkpoint...");
+    await createAutoBackup("Checkpoint thủ công");
     showStatus("success", "✅ Đã tạo checkpoint backup");
     refreshInfo();
   };
 
   if (!isOpen) return null;
-
-  const tournaments = (() => {
-    try {
-      const d = localStorage.getItem("karate_tournament_data");
-      return d ? JSON.parse(d).tournaments?.length || 0 : 0;
-    } catch { return 0; }
-  })();
 
   return (
     <div className="backup-manager-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -178,7 +184,7 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
               {/* Info Bar */}
               <div className="backup-info-bar">
                 <div className="backup-info-item">
-                  <span className="backup-info-value">{tournaments}</span>
+                  <span className="backup-info-value">{tournamentCount}</span>
                   <span className="backup-info-label">Giải đấu</span>
                 </div>
                 <div className="backup-info-item">

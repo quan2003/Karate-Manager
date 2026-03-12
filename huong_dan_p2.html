@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"/>
+<title>Hướng dẫn Admin - HLV - Thư ký</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:"Segoe UI", Arial, sans-serif;font-size:13.5px;color:#000;background:#fff;}
+
+/* ===== PAGE SETUP ===== */
+@page{
+  size:A4;
+  margin:22mm 18mm 22mm 18mm;
+  @bottom-center{content:"— Trang "counter(page)" —";font-size:11.5px;color:#000;font-family:"Segoe UI", Arial, sans-serif;font-weight:bold;}
+  @top-right{content:"Karate Tournament Manager";font-size:10px;color:#64748b;font-family:"Segoe UI", Arial, sans-serif;}
+}
+@page:first{@bottom-center{content:none;}@top-right{content:none;}}
+@media print{
+  .no-print{display:none!important;}
+  body{font-size:12.5px;}
+  section{page-break-before:always;}
+  #ch1, #ch5, #ch8 { page-break-before: avoid !important; }
+}
+
+p, li, td, .sc, .s-title, h3.sub3, .ch-pg, .s-pg { color: #000 !important; font-family:"Segoe UI", Arial, sans-serif; }
+a { color: #000; text-decoration: none; }
+.sc, p, li { line-height: 1.75; }
+
+h1.st, h2.sub, .ch-title, .toc-group, .lbox h4, th { color: #1e3a5f !important; font-family:"Segoe UI", Arial, sans-serif; }
+
+/* ===== COVER ===== */
+.cover{
+  page-break-after:always;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:95vh;text-align:center;
+  background:linear-gradient(150deg,#1e3a5f 0%,#0c2340 60%,#0f2744 100%);
+  color:white;padding:40px 30px;
+}
+.cover * { color: white !important; font-family:"Segoe UI", Arial, sans-serif; } 
+.cover img{width:110px;height:110px;border-radius:22px;box-shadow:0 10px 40px rgba(0,0,0,0.5);margin-bottom:28px;border:3px solid rgba(255,255,255,0.2);}
+.cover h1{font-size:26px;font-weight:bold;letter-spacing:2px;margin-bottom:8px;}
+.cover h2{font-size:14px;font-weight:normal;opacity:0.9;margin-bottom:28px;}
+.cover .ver{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:30px;padding:7px 22px;font-size:12px;margin-bottom:36px;display:inline-block;}
+.cover .roles{display:flex;gap:16px;margin-top:10px;}
+.cover .role{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:14px;padding:14px 22px;font-size:12px;text-align:center;}
+.cover .role span{display:block;font-size:26px;margin-bottom:6px;}
+.cover .info{margin-top:40px;font-size:12px;opacity:0.9;line-height:1.8;}
+
+/* ===== TOC ===== */
+.toc{page-break-after:always;padding:10px 0 20px;}
+.toc-header{display:flex;align-items:center;gap:12px;margin-bottom:22px;padding-bottom:12px;border-bottom:3px solid #1e3a5f;}
+.toc-header h2{font-size:20px;color:#1e3a5f;font-weight:bold;}
+
+/* Keep TOC items from splitting across pages */
+.toc-chapter { page-break-inside: avoid; }
+.toc-sub { page-break-inside: avoid; }
+.toc-group { page-break-inside: avoid; page-break-after: avoid; }
+
+.toc-chapter{margin:16px 0 6px;display:flex;align-items:baseline;gap:8px;}
+.toc-chapter .ch-num{background:#1e3a5f !important;color:white !important; width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;flex-shrink:0;transform:translateY(4px);}
+.toc-chapter .ch-title{font-size:14px;font-weight:bold;color:#1e3a5f !important;flex:1;}
+.toc-chapter .ch-pg{font-size:13px;color:#000 !important;font-weight:bold;min-width:40px;text-align:right;}
+.toc-sub{display:flex;align-items:baseline;padding:5px 0 5px 36px;border-bottom:1px dotted #e2e8f0; page-break-inside: avoid;}
+.toc-sub .s-num{font-size:12.5px;color:#1e3a5f !important;font-weight:bold;min-width:36px;}
+.toc-sub .s-title{font-size:12.5px;color:#000 !important;flex:1;font-weight:bold;}
+.toc-sub .s-pg{font-size:12.5px;color:#000 !important;font-weight:bold;min-width:40px;text-align:right;}
+.toc-group{background:#f8fafc;border-left:4px solid #1e3a5f;padding:6px 12px;margin:20px 0 8px;font-size:12.5px;font-weight:bold;color:#1e3a5f !important;letter-spacing:0.5px;text-transform:uppercase;}
+
+.toc-chapter .ch-pg, .toc-sub .s-pg { padding-right: 25px; }
+
+/* ===== SECTIONS ===== */
+section{padding:8px 0; max-width: 900px; margin: 0 auto; padding-top: 10px;}
+h1.st{font-size:20px;border-left:6px solid #1e3a5f;padding-left:14px;margin-bottom:14px; font-weight:bold;}
+h2.sub{font-size:15px;margin:18px 0 8px;padding-bottom:5px;border-bottom:2px solid #e2e8f0; font-weight:bold; page-break-after: avoid; page-break-inside: avoid;}
+h3.sub3{font-size:13.5px;margin:12px 0 7px;font-weight:bold; page-break-after: avoid; page-break-inside: avoid;}
+code{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:1px 5px;font-size:12.5px;}
+
+/* ===== COMPONENTS ===== */
+.box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:11px 15px;margin:10px 0; page-break-inside: avoid;}
+.box.warn{background:#fffbeb;border-color:#fde68a;}
+.box.ok{background:#f0fdf4;border-color:#bbf7d0;}
+.box.err{background:#fef2f2;border-color:#fecaca;}
+.box strong{color:#1e40af !important;}
+.box.warn strong{color:#92400e !important;}
+.box.ok strong{color:#166534 !important;}
+.box.err strong{color:#991b1b !important;}
+
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12.5px; page-break-inside: avoid;}
+th{background:#1e3a5f !important;color:white !important;padding:10px 11px;text-align:left;}
+td{padding:9px 11px;border-bottom:1px solid #cbd5e1;vertical-align:top;}
+tr:nth-child(even) td{background:#f8fafc;}
+
+.step{display:flex;gap:11px;margin:10px 0;align-items:flex-start; page-break-inside: avoid;}
+.sn{background:#1e3a5f !important;color:white !important;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:bold;flex-shrink:0;margin-top:2px;}
+.sc{flex:1;line-height:1.75;}
+
+.lbox{background:#fff;border:2px solid #cbd5e1;border-radius:10px;padding:12px;margin:12px 0; page-break-inside: avoid;}
+.lbox h4{color:#1e3a5f !important;font-size:13.5px;margin-bottom:7px;}
+
+.badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:bold;}
+.ba{background:#dbeafe;color:#1e40af !important;}
+.bh{background:#d1fae5;color:#065f46 !important;}
+.bt{background:#fde8d8;color:#9a3412 !important;}
+
+/* ===== PRINT BUTTON ===== */
+.print-btn{position:fixed;bottom:22px;right:22px;background:#1e3a5f;color:white !important;border:none;border-radius:50px;padding:13px 26px;font-size:14px;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:100;font-family:"Segoe UI", Arial, sans-serif;}
+.print-btn:hover{background:#0f2744;}
+</style>
+</head>
+<body>
+<button class="print-btn no-print" onclick="window.print()">🖨️ In / Lưu PDF</button>
+
+<!-- P2: CHƯƠNG 5 (Admin), 6 (HLV), 7 (Thư ký) - KHÔNG có thẻ HTML/HEAD/BODY riêng, sẽ inject vào file cuối -->
+<!-- CHƯƠNG 5 -->
+<section id="ch5" class="no-break">
+  <h1 class="st">CHƯƠNG 5. HƯỚNG DẪN ADMIN — <span class="badge ba">👨‍💼 Ban tổ chức</span></h1>
+  <p>Admin là vai trò trung tâm, có toàn quyền quản lý giải đấu. Admin tạo giải đấu, bốc thăm, xuất file cho HLV/Thư ký và tổng hợp kết quả cuối cùng.</p>
+
+  <h2 class="sub">5.1. Tạo giải đấu mới</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Từ trang chủ Admin → nhấn nút <strong>"+ Tạo giải đấu mới"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Điền thông tin:<br/>
+    • <strong>Tên giải đấu</strong> (bắt buộc) — VD: "Vô địch Karate TP.HCM 2026"<br/>
+    • <strong>Ngày bắt đầu / Ngày kết thúc</strong><br/>
+    • <strong>Địa điểm tổ chức</strong></div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Nhấn <strong>"Tạo giải đấu"</strong> → Giải đấu mới xuất hiện trong danh sách trang chủ</div></div>
+
+  <h2 class="sub">5.2. Quản lý hạng mục thi đấu</h2>
+  <p>Nhấn <strong>"Mở giải đấu →"</strong> để vào trang quản lý chi tiết.</p>
+
+  <h3 class="sub3">Cách 1: Thêm hạng mục thủ công</h3>
+  <div class="step"><div class="sn">1</div><div class="sc">Nhấn <strong>"➕ Thêm hạng mục"</strong> ở thanh công cụ trên cùng</div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Điền thông tin:<br/>
+    • <strong>Tên hạng mục</strong> — VD: "Kumite Nam -60kg Senior"<br/>
+    • <strong>Nội dung:</strong> Kumite (Đối kháng) hoặc Kata (Quyền)<br/>
+    • <strong>Giới tính:</strong> Nam / Nữ / Hỗn hợp<br/>
+    • <strong>Hạng cân</strong> (cho Kumite), <strong>Lứa tuổi</strong><br/>
+    • <strong>Thể thức:</strong> Loại trực tiếp / Có vòng vớt</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Nhấn <strong>"Thêm hạng mục"</strong></div></div>
+
+  <h3 class="sub3">Cách 2: Import hàng loạt từ Excel</h3>
+  <div class="step"><div class="sn">1</div><div class="sc">Nhấn <strong>"📥 Tải mẫu Excel"</strong> để tải file mẫu hạng mục về máy</div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Mở file Excel mẫu → Điền danh sách hạng mục theo các cột có sẵn</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Nhấn <strong>"📤 Import từ Excel"</strong> → Chọn file đã điền</div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Hệ thống thông báo số hạng mục đã import thành công</div></div>
+
+  <h2 class="sub">5.3. Quản lý Vận động viên (VĐV)</h2>
+  <p>Nhấn <strong>"Quản lý →"</strong> ở hạng mục bất kỳ trên trang giải đấu để vào trang quản lý VĐV của hạng mục đó.</p>
+
+  <h3 class="sub3">Thêm VĐV thủ công</h3>
+  <div class="step"><div class="sn">1</div><div class="sc">Nhấn <strong>"+ Thêm VĐV"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Điền thông tin VĐV: Họ tên · Giới tính · Ngày sinh · Đơn vị/CLB · Cân nặng · Hạt giống (1-8 nếu có)</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Tick <strong>"Thi đấu đồng đội"</strong> nếu đây là hạng mục đồng đội</div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Nhấn <strong>"Thêm VĐV"</strong></div></div>
+
+  <h3 class="sub3">Import VĐV từ nhiều CLB (khuyến nghị)</h3>
+  <div class="step"><div class="sn">1</div><div class="sc">Từ thanh công cụ giải đấu → Nhấn <strong>"🏢 Import VĐV từ CLB"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Chọn <strong>một hoặc nhiều file Excel</strong> từ các HLV gửi về (giữ Ctrl để chọn nhiều file)</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Hệ thống tự động ghép VĐV vào đúng hạng mục theo tên nội dung thi đấu</div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Xem kết quả preview: số VĐV khớp / không khớp → Nhấn <strong>"Chấp nhận import"</strong></div></div>
+
+  <div style="background:#f0fdf4;border-radius:8px;padding:11px 15px;margin:10px 0;border:1px solid #bbf7d0;">
+    <strong style="color:#166534;">📊 Cấu trúc file Excel VĐV chuẩn:</strong>
+    <table style="margin-top:8px;">
+      <tr><th>Cột A</th><th>Cột B</th><th>Cột C</th><th>Cột D</th><th>Cột E</th><th>Cột F</th><th>Cột G</th></tr>
+      <tr><td>Họ tên VĐV</td><td>Giới tính<br/>(Nam/Nữ)</td><td>Ngày sinh<br/>(DD/MM/YYYY)</td><td>Đơn vị/CLB</td><td>Cân nặng<br/>(kg)</td><td>Quốc gia<br/>(VN mặc định)</td><td>Nội dung<br/>thi đấu</td></tr>
+    </table>
+  </div>
+
+  <h2 class="sub">5.4. Bốc thăm tự động</h2>
+  <div class="box warn"><strong>⚠️ Yêu cầu:</strong> Hạng mục cần ít nhất <strong>2 VĐV</strong> mới có thể bốc thăm. Hạng mục đồng đội cần ít nhất <strong>2 CLB</strong> khác nhau.</div>
+
+  <h3 class="sub3">Bốc thăm từng hạng mục</h3>
+  <div class="step"><div class="sn">1</div><div class="sc">Vào trang hạng mục → Nhấn <strong>"🎲 Bốc thăm"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Xem thông tin xác nhận: số VĐV · số slots · số BYE · số hạt giống</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Nhấn <strong>"🎲 Bốc thăm ngay"</strong></div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Hiệu ứng đếm ngược 5 giây kèm xáo trộn tên VĐV → Tự động chuyển sang trang Sơ đồ thi đấu</div></div>
+
+  <h3 class="sub3">Bốc thăm tất cả cùng lúc (Bulk Draw)</h3>
+  <div class="step"><div class="sn">1</div><div class="sc">Từ trang giải đấu → Nhấn <strong>"🎲 Bốc thăm tất cả"</strong> (có badge hiển thị số hạng mục có thể bốc)</div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Chọn/bỏ chọn các hạng mục muốn bốc thăm → Nhấn <strong>"Bốc thăm các nội dung đã chọn"</strong></div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Hệ thống báo kết quả: Thành công · Bỏ qua · Lỗi</div></div>
+
+  <div class="box ok"><strong>✅ Thuật toán bốc thăm thông minh:</strong><br/>
+    • Đặt hạt giống đúng vị trí (Seed 1 đầu trên, Seed 2 đầu dưới bảng)<br/>
+    • Phân bổ để VĐV cùng CLB không gặp nhau ở vòng 1<br/>
+    • Chia BYE đều hai nửa bảng đấu</div>
+
+  <div class="box warn"><strong>⚠️ Bốc thăm lại:</strong> Nhấn <strong>"🔄 Bốc thăm lại"</strong> — Tất cả kết quả trận đấu cũ sẽ bị xóa. Hệ thống tự động tạo auto-backup trước khi xóa.</div>
+
+  <h2 class="sub">5.5. Xem Sơ đồ thi đấu (Bracket)</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Sau khi bốc thăm → Nhấn <strong>"📊 Xem sơ đồ thi đấu"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Bracket hiển thị dạng cây nhánh: AKA 🔴 (đỏ) ở trên, AO 🔵 (xanh) ở dưới. Ô có chữ BYE là lượt trống.</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Nhấn vào ô trận đấu bất kỳ → Mở Scoreboard bấm điểm trực tiếp</div></div>
+
+  <h2 class="sub">5.6. Xuất PDF</h2>
+  <table>
+    <tr><th>Nút bấm</th><th>Vị trí</th><th>Tác dụng</th></tr>
+    <tr><td>📄 Xuất PDF</td><td>Trang sơ đồ thi đấu</td><td>Xuất sơ đồ 1 hạng mục thành file PDF</td></tr>
+    <tr><td>📄 Xuất tất cả PDF</td><td>Trang giải đấu</td><td>Xuất toàn bộ hạng mục đã bốc thăm vào 1 file PDF</td></tr>
+    <tr><td>📄 Xuất kết quả PDF</td><td>Trang Thống kê</td><td>Xuất bảng kết quả / huy chương thành PDF</td></tr>
+  </table>
+
+  <h2 class="sub">5.7. Tạo và xuất file .krt cho HLV</h2>
+  <p>File <code>.krt</code> là file cấu hình giải đấu gửi cho HLV để nhập danh sách VĐV trong thời hạn quy định.</p>
+  <div class="step"><div class="sn">1</div><div class="sc">Từ trang giải đấu → Nhấn <strong>"📤 Xuất (.krt)"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Thiết lập thời gian:<br/>
+    • <strong>Thời gian bắt đầu nhập:</strong> Mốc HLV được phép bắt đầu nhập VĐV<br/>
+    • <strong>Thời gian kết thúc (Deadline):</strong> HLV phải nộp xong trước mốc này</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Kiểm tra danh sách nội dung thi đấu (tự động lấy từ hạng mục đã tạo)</div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Nhấn <strong>"📤 Xuất file .krt"</strong> → Chọn nơi lưu file</div></div>
+  <div class="step"><div class="sn">5</div><div class="sc">Gửi file <code>.krt</code> cho các HLV qua: USB · Email · Zalo · Google Drive</div></div>
+
+  <h2 class="sub">5.8. Tạo và xuất file .kmatch cho Thư ký</h2>
+  <p>File <code>.kmatch</code> là file bấm điểm, phải xuất <strong>sau khi đã bốc thăm xong</strong> ít nhất 1 hạng mục.</p>
+  <div class="step"><div class="sn">1</div><div class="sc">Từ trang giải đấu → Nhấn <strong>"🎯 Xuất (.kmatch)"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Thiết lập:<br/>
+    • <strong>Cho phép nhập điểm ngay:</strong> Tick để Thư ký có thể bấm điểm ngay lập tức<br/>
+    • <strong>Thời gian bắt đầu/kết thúc:</strong> Khoảng thời gian cho phép bấm điểm</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Nhấn <strong>"🎯 Xuất file .kmatch"</strong> → Gửi cho Thư ký</div></div>
+
+  <h2 class="sub">5.9. Import kết quả từ Thư ký</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Nhận file kết quả từ Thư ký (định dạng JSON hoặc Excel)</div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Vào <strong>Trang Thống kê → Tab "Kết quả"</strong></div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Nhấn <strong>"📥 Import kết quả"</strong> → Chọn file</div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Xem preview → Chọn chế độ:<br/>
+    • <strong>Gộp:</strong> Giữ cả dữ liệu cũ và mới<br/>
+    • <strong>Ghi đè:</strong> Thay thế hoàn toàn bằng dữ liệu từ Thư ký</div></div>
+
+  <h2 class="sub">5.10. Trang Thống kê</h2>
+  <p>Nhấn nút <strong>"📊 Thống kê"</strong> của bất kỳ giải đấu nào để vào trang tổng hợp. Gồm 5 tab:</p>
+  <table>
+    <tr><th>Tab</th><th>Nội dung</th></tr>
+    <tr><td>📊 Tổng quan</td><td>Số VĐV, CLB, hạng mục, ước tính huy chương cần trao</td></tr>
+    <tr><td>🏅 Kết quả</td><td>Nhập/sửa kết quả từng hạng mục, xuất Excel/PDF theo buổi</td></tr>
+    <tr><td>🥇 Huy chương</td><td>Bảng tổng hợp huy chương theo CLB/đơn vị, xuất PDF</td></tr>
+    <tr><td>🏢 Đoàn thể thao</td><td>Danh sách VĐV, HLV, trưởng đoàn theo từng CLB</td></tr>
+    <tr><td>💰 Lệ phí</td><td>Tính lệ phí tham dự theo CLB, quản lý trạng thái đã/chưa nộp</td></tr>
+  </table>
+
+  <h2 class="sub">5.11. Quản lý Lịch thi đấu</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Từ trang giải đấu → Nhấn <strong>"📋 Lịch thi đấu"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Kéo thả các hạng mục vào khung thời gian (sáng/chiều từng ngày)</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Xuất lịch ra PDF để in và thông báo cho các đơn vị tham dự</div></div>
+</section>
+
+<!-- CHƯƠNG 6 -->
+<section id="ch6">
+  <h1 class="st">CHƯƠNG 6. HƯỚNG DẪN HUẤN LUYỆN VIÊN <span class="badge bh">🏆 HLV</span></h1>
+  <p>HLV nhận file <code>.krt</code> từ Admin, nhập danh sách VĐV trong thời hạn quy định, rồi xuất file gửi lại cho Admin.</p>
+
+  <div class="box warn"><strong>⚠️ Quan trọng:</strong> HLV chỉ có thể thêm/sửa/xóa VĐV <strong>trong khoảng thời gian Admin quy định</strong>. Ngoài thời hạn, chức năng chỉnh sửa bị khóa hoàn toàn. Liên hệ Admin nếu cần gia hạn thêm thời gian.</div>
+
+  <h2 class="sub">6.1. Mở file .krt</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Mở phần mềm → Nhấn thẻ <strong>"🏆 Huấn luyện viên"</strong> ở màn hình chọn vai trò</div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Nhấn nút <strong>"📁 Mở file .krt"</strong></div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Duyệt đến file <code>.krt</code> do Admin gửi → Nhấn <strong>Open</strong></div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Màn hình hiển thị:<br/>
+    • Tên giải đấu<br/>
+    • Trạng thái thời gian: <span style="color:gray">Chưa đến</span> / <span style="color:green;font-weight:bold">Đang trong thời hạn</span> / <span style="color:red;font-weight:bold">Đã hết hạn</span><br/>
+    • Đồng hồ đếm ngược đến deadline<br/>
+    • Danh sách nội dung thi đấu có thể đăng ký</div></div>
+
+  <h2 class="sub">6.2. Điền thông tin HLV và CLB</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Điền <strong>Tên HLV</strong> vào ô tương ứng ở đầu trang</div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Điền <strong>Tên CLB / Đơn vị</strong></div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Thêm <strong>Trưởng đoàn</strong> và <strong>HLV phụ</strong> (nếu có)</div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Thông tin được lưu tự động vào cơ sở dữ liệu — không cần nhấn Save</div></div>
+
+  <h2 class="sub">6.3. Thêm Vận động viên</h2>
+  <h3 class="sub3">Cách 1: Thêm thủ công từng VĐV</h3>
+  <div class="step"><div class="sn">1</div><div class="sc">Nhấn <strong>"+ Thêm VĐV"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Điền thông tin VĐV:<br/>
+    • <strong>Họ tên</strong> (bắt buộc)<br/>
+    • <strong>Giới tính</strong> (bắt buộc)<br/>
+    • Ngày sinh · Cân nặng (kg)<br/>
+    • <strong>Nội dung thi đấu</strong> (bắt buộc) — chọn từ dropdown danh sách của giải<br/>
+    • Tick <strong>"Thi đấu đồng đội"</strong> nếu VĐV này thi nội dung đồng đội</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Nhấn <strong>"Thêm"</strong> — VĐV xuất hiện trong danh sách</div></div>
+
+  <h3 class="sub3">Cách 2: Import danh sách từ Excel</h3>
+  <div class="step"><div class="sn">1</div><div class="sc">Nhấn <strong>"📥 Tải mẫu Excel"</strong> để tải file mẫu HLV về máy</div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Mở file Excel mẫu → Điền toàn bộ danh sách VĐV của CLB</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Nhấn <strong>"📤 Import Excel"</strong> → Chọn file đã điền</div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Hệ thống tự động ghép VĐV vào đúng nội dung theo tên trong cột Nội dung thi đấu</div></div>
+
+  <div class="box warn"><strong>⚠️ Lưu ý khi import:</strong> Tên nội dung thi đấu trong file Excel phải <strong>khớp hoặc gần khớp</strong> với tên Admin đã thiết lập trong file .krt. VD: "Kumite Nam" sẽ khớp với "Kumite Nam -60kg".</div>
+
+  <h2 class="sub">6.4. Chỉnh sửa và xóa VĐV</h2>
+  <ul>
+    <li>Nhấn <strong>✏️ (Edit)</strong> bên cạnh tên VĐV để mở form chỉnh sửa</li>
+    <li>Nhấn <strong>🗑️ (Delete)</strong> để xóa VĐV — hệ thống yêu cầu xác nhận</li>
+    <li>Cả 2 chức năng chỉ hoạt động khi đang <strong>trong thời hạn nhập</strong></li>
+  </ul>
+
+  <h2 class="sub">6.5. Xuất file gửi Admin</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Cuộn xuống phần <strong>"📤 Xuất file gửi Admin"</strong> ở cuối trang</div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Chọn định dạng xuất:<br/>
+    • <strong>📄 Xuất JSON</strong> — File dữ liệu thuần túy, chính xác nhất (khuyến nghị)<br/>
+    • <strong>📊 Xuất Excel</strong> — Dễ xem và kiểm tra trên máy tính trước khi gửi</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Chọn nơi lưu file → Gửi cho Admin qua: USB · Email · Zalo · Google Drive</div></div>
+
+  <div class="box ok"><strong>✅ Mẹo cho HLV:</strong><br/>
+    • Kiểm tra kỹ tên nội dung thi đấu — phải khớp với danh sách trong file .krt<br/>
+    • Nên gửi file JSON thay vì Excel để giảm khả năng lỗi định dạng<br/>
+    • Gửi file cho Admin trước deadline ít nhất 1 ngày để xử lý kịp thời</div>
+</section>
+
+<!-- CHƯƠNG 7 -->
+<section id="ch7">
+  <h1 class="st">CHƯƠNG 7. HƯỚNG DẪN THƯ KÝ <span class="badge bt">🎯 Bấm điểm</span></h1>
+  <p>Thư ký nhận file <code>.kmatch</code> từ Admin, bấm điểm các trận đấu theo lịch, rồi xuất kết quả gửi lại Admin để cập nhật bracket chính thức.</p>
+
+  <h2 class="sub">7.1. Mở file .kmatch</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Mở phần mềm → Nhấn thẻ <strong>"🎯 Thư ký"</strong> ở màn hình chọn vai trò</div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Nhấn <strong>"📂 Mở file .kmatch"</strong></div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Chọn file <code>.kmatch</code> do Admin gửi</div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Danh sách tất cả trận đấu của giải hiển thị, phân loại theo hạng mục và vòng đấu</div></div>
+
+  <div class="box warn"><strong>⚠️ Kiểm tra trạng thái:</strong> Trên đầu màn hình phải hiển thị <strong style="color:green">"Đang trong thời gian chấm điểm"</strong>. Nếu không, liên hệ Admin để điều chỉnh thời gian trong file .kmatch.</div>
+
+  <h2 class="sub">7.2. Bấm điểm Kumite</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Tìm trận đấu cần bấm trong danh sách → Nhấn vào tên trận</div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Màn hình Scoreboard Kumite mở ra với:<br/>
+    • <strong>AKA</strong> <span style="color:red">■</span> (đỏ) bên trái — <strong>AO</strong> <span style="color:blue">■</span> (xanh) bên phải<br/>
+    • Đồng hồ bấm giờ thi đấu<br/>
+    • Bảng điểm: Yuko / Waza-ari / Ippon và Phạt (Chukoku/Keikoku/Hansoku)</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Nhấn các nút điểm theo diễn biến trận đấu thực tế</div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Kết thúc trận → Xác nhận người thắng cuộc → Kết quả lưu tự động</div></div>
+
+  <h2 class="sub">7.3. Bấm điểm Kata</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Tìm và mở trận Kata trong danh sách</div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Nhập điểm từ từng trọng tài vào các ô tương ứng</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Hệ thống tự động tính tổng (bỏ điểm cao nhất và thấp nhất), xác định người thắng</div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Nhấn <strong>"Xác nhận kết quả"</strong> để lưu</div></div>
+
+  <h2 class="sub">7.4. Xuất kết quả gửi Admin</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Sau khi bấm điểm xong tất cả các trận → Tìm nút <strong>"📤 Xuất kết quả"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Chọn định dạng: <strong>JSON</strong> (khuyến nghị) hoặc <strong>Excel</strong></div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Gửi file kết quả cho Admin để cập nhật bracket và bảng huy chương chính thức</div></div>
+
+  <div class="box ok"><strong>✅ Mẹo cho Thư ký:</strong><br/>
+    • Nếu bị mất điện hoặc tắt đột ngột → Kết quả đã bấm vẫn còn khi mở lại file<br/>
+    • Kiểm tra kỹ người thắng trước khi xác nhận — khó hoàn tác sau khi đã lưu<br/>
+    • Nên chụp ảnh bảng điểm thực tế để đối chiếu nếu cần tranh chấp sau này</div>
+</section>
+</body>
+</html>

@@ -9,6 +9,7 @@ import ConfirmDialog from "../components/common/ConfirmDialog";
 import DateInput from "../components/common/DateInput";
 import SearchableSelect from "../components/common/SearchableSelect";
 import { useToast } from "../components/common/Toast";
+import appIcon from "../assets/icon.png";
 import "./CoachPage.css";
 
 /**
@@ -770,7 +771,10 @@ function CoachPage() {
           <button className="back-btn" onClick={handleBack}>
             ← Quay lại
           </button>
-          <h1>🏆 {tournamentData.tournamentName}</h1>
+          <h1 className="page-title">
+            <img src={appIcon} alt="" className="page-title-logo" />
+            {tournamentData.tournamentName}
+          </h1>
           <button className="open-file-btn small" onClick={handleOpenFile}>
             📁 Đổi file
           </button>
@@ -1149,7 +1153,13 @@ function CoachPage() {
           <div className="coach-stats-bar">
             <div className="coach-stat-item">
               <span className="coach-stat-value">{coachAthletes.length}</span>
-              <span className="coach-stat-label">Tổng VĐV</span>
+              <span className="coach-stat-label">Lượt VĐV</span>
+            </div>
+            <div className="coach-stat-item">
+              <span className="coach-stat-value">
+                {new Set(coachAthletes.map(a => `${(a.name || "").trim().toLowerCase()}_${a.birthDate || a.birthYear || ""}_${a.gender}`)).size}
+              </span>
+              <span className="coach-stat-label">VĐV Thực Tế</span>
             </div>
             <div className="coach-stat-item">
               <span className="coach-stat-value" style={{ color: "#3b82f6" }}>

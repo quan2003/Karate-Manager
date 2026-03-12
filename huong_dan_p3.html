@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"/>
+<title>Backup, FAQ, Xử lý sự cố</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:"Segoe UI", Arial, sans-serif;font-size:13.5px;color:#000;background:#fff;}
+
+/* ===== PAGE SETUP ===== */
+@page{
+  size:A4;
+  margin:22mm 18mm 22mm 18mm;
+  @bottom-center{content:"— Trang "counter(page)" —";font-size:11.5px;color:#000;font-family:"Segoe UI", Arial, sans-serif;font-weight:bold;}
+  @top-right{content:"Karate Tournament Manager";font-size:10px;color:#64748b;font-family:"Segoe UI", Arial, sans-serif;}
+}
+@page:first{@bottom-center{content:none;}@top-right{content:none;}}
+@media print{
+  .no-print{display:none!important;}
+  body{font-size:12.5px;}
+  section{page-break-before:always;}
+  #ch1, #ch5, #ch8 { page-break-before: avoid !important; }
+}
+
+p, li, td, .sc, .s-title, h3.sub3, .ch-pg, .s-pg { color: #000 !important; font-family:"Segoe UI", Arial, sans-serif; }
+a { color: #000; text-decoration: none; }
+.sc, p, li { line-height: 1.75; }
+
+h1.st, h2.sub, .ch-title, .toc-group, .lbox h4, th { color: #1e3a5f !important; font-family:"Segoe UI", Arial, sans-serif; }
+
+/* ===== COVER ===== */
+.cover{
+  page-break-after:always;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:95vh;text-align:center;
+  background:linear-gradient(150deg,#1e3a5f 0%,#0c2340 60%,#0f2744 100%);
+  color:white;padding:40px 30px;
+}
+.cover * { color: white !important; font-family:"Segoe UI", Arial, sans-serif; } 
+.cover img{width:110px;height:110px;border-radius:22px;box-shadow:0 10px 40px rgba(0,0,0,0.5);margin-bottom:28px;border:3px solid rgba(255,255,255,0.2);}
+.cover h1{font-size:26px;font-weight:bold;letter-spacing:2px;margin-bottom:8px;}
+.cover h2{font-size:14px;font-weight:normal;opacity:0.9;margin-bottom:28px;}
+.cover .ver{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:30px;padding:7px 22px;font-size:12px;margin-bottom:36px;display:inline-block;}
+.cover .roles{display:flex;gap:16px;margin-top:10px;}
+.cover .role{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:14px;padding:14px 22px;font-size:12px;text-align:center;}
+.cover .role span{display:block;font-size:26px;margin-bottom:6px;}
+.cover .info{margin-top:40px;font-size:12px;opacity:0.9;line-height:1.8;}
+
+/* ===== TOC ===== */
+.toc{page-break-after:always;padding:10px 0 20px;}
+.toc-header{display:flex;align-items:center;gap:12px;margin-bottom:22px;padding-bottom:12px;border-bottom:3px solid #1e3a5f;}
+.toc-header h2{font-size:20px;color:#1e3a5f;font-weight:bold;}
+
+/* Keep TOC items from splitting across pages */
+.toc-chapter { page-break-inside: avoid; }
+.toc-sub { page-break-inside: avoid; }
+.toc-group { page-break-inside: avoid; page-break-after: avoid; }
+
+.toc-chapter{margin:16px 0 6px;display:flex;align-items:baseline;gap:8px;}
+.toc-chapter .ch-num{background:#1e3a5f !important;color:white !important; width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;flex-shrink:0;transform:translateY(4px);}
+.toc-chapter .ch-title{font-size:14px;font-weight:bold;color:#1e3a5f !important;flex:1;}
+.toc-chapter .ch-pg{font-size:13px;color:#000 !important;font-weight:bold;min-width:40px;text-align:right;}
+.toc-sub{display:flex;align-items:baseline;padding:5px 0 5px 36px;border-bottom:1px dotted #e2e8f0; page-break-inside: avoid;}
+.toc-sub .s-num{font-size:12.5px;color:#1e3a5f !important;font-weight:bold;min-width:36px;}
+.toc-sub .s-title{font-size:12.5px;color:#000 !important;flex:1;font-weight:bold;}
+.toc-sub .s-pg{font-size:12.5px;color:#000 !important;font-weight:bold;min-width:40px;text-align:right;}
+.toc-group{background:#f8fafc;border-left:4px solid #1e3a5f;padding:6px 12px;margin:20px 0 8px;font-size:12.5px;font-weight:bold;color:#1e3a5f !important;letter-spacing:0.5px;text-transform:uppercase;}
+
+.toc-chapter .ch-pg, .toc-sub .s-pg { padding-right: 25px; }
+
+/* ===== SECTIONS ===== */
+section{padding:8px 0; max-width: 900px; margin: 0 auto; padding-top: 10px;}
+h1.st{font-size:20px;border-left:6px solid #1e3a5f;padding-left:14px;margin-bottom:14px; font-weight:bold;}
+h2.sub{font-size:15px;margin:18px 0 8px;padding-bottom:5px;border-bottom:2px solid #e2e8f0; font-weight:bold; page-break-after: avoid; page-break-inside: avoid;}
+h3.sub3{font-size:13.5px;margin:12px 0 7px;font-weight:bold; page-break-after: avoid; page-break-inside: avoid;}
+code{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:1px 5px;font-size:12.5px;}
+
+/* ===== COMPONENTS ===== */
+.box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:11px 15px;margin:10px 0; page-break-inside: avoid;}
+.box.warn{background:#fffbeb;border-color:#fde68a;}
+.box.ok{background:#f0fdf4;border-color:#bbf7d0;}
+.box.err{background:#fef2f2;border-color:#fecaca;}
+.box strong{color:#1e40af !important;}
+.box.warn strong{color:#92400e !important;}
+.box.ok strong{color:#166534 !important;}
+.box.err strong{color:#991b1b !important;}
+
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12.5px; page-break-inside: avoid;}
+th{background:#1e3a5f !important;color:white !important;padding:10px 11px;text-align:left;}
+td{padding:9px 11px;border-bottom:1px solid #cbd5e1;vertical-align:top;}
+tr:nth-child(even) td{background:#f8fafc;}
+
+.step{display:flex;gap:11px;margin:10px 0;align-items:flex-start; page-break-inside: avoid;}
+.sn{background:#1e3a5f !important;color:white !important;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:bold;flex-shrink:0;margin-top:2px;}
+.sc{flex:1;line-height:1.75;}
+
+.lbox{background:#fff;border:2px solid #cbd5e1;border-radius:10px;padding:12px;margin:12px 0; page-break-inside: avoid;}
+.lbox h4{color:#1e3a5f !important;font-size:13.5px;margin-bottom:7px;}
+
+.badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:bold;}
+.ba{background:#dbeafe;color:#1e40af !important;}
+.bh{background:#d1fae5;color:#065f46 !important;}
+.bt{background:#fde8d8;color:#9a3412 !important;}
+
+/* ===== PRINT BUTTON ===== */
+.print-btn{position:fixed;bottom:22px;right:22px;background:#1e3a5f;color:white !important;border:none;border-radius:50px;padding:13px 26px;font-size:14px;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:100;font-family:"Segoe UI", Arial, sans-serif;}
+.print-btn:hover{background:#0f2744;}
+</style>
+</head>
+<body>
+<button class="print-btn no-print" onclick="window.print()">🖨️ In / Lưu PDF</button>
+
+<!-- P3: Chương 8 (Backup), 9 (Quy trình), 10 (FAQ), 11 (Xử lý sự cố) -->
+<!-- CHƯƠNG 8 -->
+<section id="ch8" class="no-break">
+  <h1 class="st">CHƯƠNG 8. BACKUP &amp; ĐỒNG BỘ DỮ LIỆU</h1>
+  <p>Tính năng Backup giúp sao lưu toàn bộ dữ liệu giải đấu và đồng bộ giữa nhiều máy quản lý khác nhau. Đây là tính năng quan trọng khi có nhiều Admin cùng quản lý một giải.</p>
+
+  <h2 class="sub">8.1. Mở Quản lý Backup</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Từ trang chủ Admin → Nhấn nút <strong>"💾 Backup"</strong> hoặc biểu tượng đám mây</div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Cửa sổ <strong>"Quản lý Backup"</strong> mở ra, hiển thị: Số giải đấu · Dung lượng dữ liệu · Số bản auto-backup</div></div>
+
+  <h2 class="sub">8.2. Xuất Backup — Sao lưu dữ liệu</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Nhấn thẻ <strong>"📤 Xuất Backup"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Nhập ghi chú để dễ phân biệt sau — VD: "Backup sau khi import VĐV CLB Hà Nội"</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Nhấn <strong>"💾 Xuất file Backup (.kbackup)"</strong></div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Chọn vị trí lưu → File <code>.kbackup</code> chứa toàn bộ dữ liệu tất cả giải đấu</div></div>
+
+  <h2 class="sub">8.3. Nhập Backup — Khôi phục dữ liệu</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Nhấn thẻ <strong>"📥 Nhập Backup"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Chọn file <code>.kbackup</code> từ Admin khác hoặc từ bản backup cũ của mình</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Hệ thống hiển thị <strong>bảng so sánh chi tiết</strong>:<br/>
+    • Số giải đấu · Hạng mục · VĐV · Đã bốc thăm — của máy hiện tại vs file backup<br/>
+    • Danh sách giải: Mới trong backup / Khác biệt / Chỉ có ở máy này / Giống nhau</div></div>
+  <div class="step"><div class="sn">4</div><div class="sc">Chọn chế độ khôi phục:<br/>
+    • <strong>"🔀 Gộp dữ liệu"</strong> — Giữ cả 2, giải trùng ID giữ bản có nhiều dữ liệu hơn (AN TOÀN)<br/>
+    • <strong>"🔄 Thay thế"</strong> — Xóa hết dữ liệu hiện tại, thay bằng backup (dữ liệu cũ tự auto-backup trước)</div></div>
+
+  <h2 class="sub">8.4. Tạo Checkpoint thủ công</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Nhấn thẻ <strong>"📌 Tạo Checkpoint"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Hệ thống lưu trạng thái hiện tại vào danh sách Auto-backup với nhãn "Checkpoint thủ công"</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Có thể khôi phục checkpoint này sau từ mục <strong>"🕐 Lịch sử Backup"</strong></div></div>
+  <div class="box ok"><strong>💡 Khi nào nên tạo Checkpoint:</strong> Trước khi bốc thăm · Trước khi import dữ liệu lớn · Trước khi thực hiện thay đổi quan trọng</div>
+
+  <h2 class="sub">8.5. Xem lịch sử &amp; Khôi phục Auto-backup</h2>
+  <div class="step"><div class="sn">1</div><div class="sc">Nhấn thẻ <strong>"🕐 Lịch sử Backup"</strong></div></div>
+  <div class="step"><div class="sn">2</div><div class="sc">Danh sách bản auto-backup hiển thị: thời gian tạo · lý do tạo · dung lượng</div></div>
+  <div class="step"><div class="sn">3</div><div class="sc">Nhấn <strong>"Khôi phục"</strong> ở bản muốn phục hồi → Xác nhận → Dữ liệu hiện tại được auto-backup rồi khôi phục</div></div>
+
+  <div class="box ok"><strong>💡 Quy trình đồng bộ nhiều Admin:</strong><br/>
+    1. Admin chính <strong>Xuất Backup</strong> → gửi file <code>.kbackup</code> cho Admin phụ (Zalo/USB/Drive)<br/>
+    2. Admin phụ <strong>Nhập Backup</strong> → chọn <strong>Gộp dữ liệu</strong> → tiếp tục làm việc<br/>
+    3. Khi xong, Admin phụ <strong>Xuất Backup</strong> lại → gửi về cho Admin chính để cập nhật</div>
+</section>
+
+<!-- CHƯƠNG 9 -->
+<section id="ch9">
+  <h1 class="st">CHƯƠNG 9. QUY TRÌNH TỔ CHỨC GIẢI ĐẦY ĐỦ</h1>
+  <p>Quy trình chuẩn từ A đến Z để tổ chức một giải đấu Karate hoàn chỉnh:</p>
+
+  <table>
+    <tr><th>Bước</th><th>Người thực hiện</th><th>Thời gian</th><th>Công việc chi tiết</th></tr>
+    <tr>
+      <td style="text-align:center;font-size:16px;font-weight:bold;">📝<br/>1</td>
+      <td><span class="badge ba">👨‍💼 Admin</span></td>
+      <td>Trước giải<br/>2–4 tuần</td>
+      <td>
+        • Tạo giải đấu mới, điền đầy đủ thông tin<br/>
+        • Thêm/import danh sách hạng mục thi đấu<br/>
+        • Thiết lập thời gian cho HLV đăng ký VĐV<br/>
+        • Xuất file <code>.krt</code> gửi cho tất cả HLV
+      </td>
+    </tr>
+    <tr>
+      <td style="text-align:center;font-size:16px;font-weight:bold;">📋<br/>2</td>
+      <td><span class="badge bh">🏆 HLV</span></td>
+      <td>1–2 tuần</td>
+      <td>
+        • Nhận file <code>.krt</code> từ Admin<br/>
+        • Mở file, điền thông tin CLB/HLV/trưởng đoàn<br/>
+        • Nhập toàn bộ danh sách VĐV (thủ công hoặc Excel)<br/>
+        • Xuất file JSON/Excel gửi lại Admin trước deadline
+      </td>
+    </tr>
+    <tr>
+      <td style="text-align:center;font-size:16px;font-weight:bold;">📥<br/>3</td>
+      <td><span class="badge ba">👨‍💼 Admin</span></td>
+      <td>1–3 ngày<br/>trước giải</td>
+      <td>
+        • Nhận và import file VĐV từ tất cả HLV<br/>
+        • Kiểm tra, bổ sung VĐV còn thiếu, chốt danh sách<br/>
+        • Bốc thăm tự động cho tất cả hạng mục<br/>
+        • Tạo Checkpoint backup sau khi bốc thăm xong
+      </td>
+    </tr>
+    <tr>
+      <td style="text-align:center;font-size:16px;font-weight:bold;">📊<br/>4</td>
+      <td><span class="badge ba">👨‍💼 Admin</span></td>
+      <td>Ngày trước<br/>giải đấu</td>
+      <td>
+        • Xem và kiểm tra từng sơ đồ thi đấu<br/>
+        • Xuất PDF tất cả hạng mục để in, treo tại nhà thi đấu<br/>
+        • Sắp xếp lịch thi đấu (buổi sáng/chiều)<br/>
+        • Xuất file <code>.kmatch</code> gửi cho Thư ký
+      </td>
+    </tr>
+    <tr>
+      <td style="text-align:center;font-size:16px;font-weight:bold;">🎯<br/>5</td>
+      <td><span class="badge bt">🎯 Thư ký</span></td>
+      <td>Ngày thi đấu</td>
+      <td>
+        • Mở file <code>.kmatch</code> trên máy tính riêng<br/>
+        • Bấm điểm từng trận đấu theo lịch<br/>
+        • Kết quả lưu tự động liên tục<br/>
+        • Cuối ngày xuất file kết quả gửi Admin
+      </td>
+    </tr>
+    <tr>
+      <td style="text-align:center;font-size:16px;font-weight:bold;">🏆<br/>6</td>
+      <td><span class="badge ba">👨‍💼 Admin</span></td>
+      <td>Sau giải đấu</td>
+      <td>
+        • Import file kết quả từ Thư ký<br/>
+        • Cập nhật bracket (VĐV thắng tiến vào vòng kế)<br/>
+        • Xem bảng huy chương tổng kết theo CLB<br/>
+        • Xuất báo cáo kết quả Excel/PDF chính thức
+      </td>
+    </tr>
+  </table>
+
+  <div class="box"><strong>📌 Ghi nhớ luồng file:</strong><br/>
+    Admin → [<code>.krt</code>] → HLV → [Excel/JSON] → Admin → [<code>.kmatch</code>] → Thư ký → [Excel/JSON] → Admin
+  </div>
+</section>
+
+<!-- CHƯƠNG 10 -->
+<section id="ch10">
+  <h1 class="st">CHƯƠNG 10. CÂU HỎI THƯỜNG GẶP (FAQ)</h1>
+
+  <div style="border:1px solid #e2e8f0;border-radius:8px;margin:10px 0;overflow:hidden;">
+    <div style="background:#f8fafc;padding:11px 15px;font-weight:bold;color:#1e3a5f;font-size:13px;">❓ Phần mềm có cần internet không?</div>
+    <div style="padding:11px 15px;line-height:1.75;color:#334155;"><strong>Không.</strong> Phần mềm hoạt động 100% offline. Chỉ cần internet khi: kích hoạt license lần đầu, gửi yêu cầu hỗ trợ qua phần mềm, hoặc cập nhật phiên bản mới.</div>
+  </div>
+
+  <div style="border:1px solid #e2e8f0;border-radius:8px;margin:10px 0;overflow:hidden;">
+    <div style="background:#f8fafc;padding:11px 15px;font-weight:bold;color:#1e3a5f;font-size:13px;">❓ Dữ liệu được lưu ở đâu?</div>
+    <div style="padding:11px 15px;line-height:1.75;color:#334155;">Dữ liệu lưu trong <strong>cơ sở dữ liệu SQLite</strong> cục bộ trên máy tính. Dữ liệu tự động lưu ngay lập tức sau mỗi thay đổi — không cần nhấn nút "Lưu" thủ công.</div>
+  </div>
+
+  <div style="border:1px solid #e2e8f0;border-radius:8px;margin:10px 0;overflow:hidden;">
+    <div style="background:#f8fafc;padding:11px 15px;font-weight:bold;color:#1e3a5f;font-size:13px;">❓ Một máy tính có thể dùng nhiều vai trò không?</div>
+    <div style="padding:11px 15px;line-height:1.75;color:#334155;"><strong>Có.</strong> Nhấn "← Quay lại" hoặc "Đổi vai trò" để chuyển đổi tự do giữa Admin / HLV / Thư ký bất kỳ lúc nào mà không mất dữ liệu.</div>
+  </div>
+
+  <div style="border:1px solid #e2e8f0;border-radius:8px;margin:10px 0;overflow:hidden;">
+    <div style="background:#f8fafc;padding:11px 15px;font-weight:bold;color:#1e3a5f;font-size:13px;">❓ Có thể bốc thăm lại không?</div>
+    <div style="padding:11px 15px;line-height:1.75;color:#334155;"><strong>Có.</strong> Nhấn "🔄 Bốc thăm lại" — nhưng LƯU Ý: toàn bộ kết quả trận đấu cũ sẽ bị xóa. Hệ thống tự động tạo auto-backup trước khi xóa để bảo vệ dữ liệu.</div>
+  </div>
+
+  <div style="border:1px solid #e2e8f0;border-radius:8px;margin:10px 0;overflow:hidden;">
+    <div style="background:#f8fafc;padding:11px 15px;font-weight:bold;color:#1e3a5f;font-size:13px;">❓ File .krt là gì? Tại sao cần file này?</div>
+    <div style="padding:11px 15px;line-height:1.75;color:#334155;">File <code>.krt</code> là "thẻ mời" kỹ thuật số do Admin tạo ra. Nó chứa: thông tin giải đấu, danh sách nội dung thi đấu, và giới hạn thời gian nhập VĐV. HLV mở file này để biết thông tin và đăng ký VĐV đúng thời hạn.</div>
+  </div>
+
+  <div style="border:1px solid #e2e8f0;border-radius:8px;margin:10px 0;overflow:hidden;">
+    <div style="background:#f8fafc;padding:11px 15px;font-weight:bold;color:#1e3a5f;font-size:13px;">❓ File .kmatch là gì?</div>
+    <div style="padding:11px 15px;line-height:1.75;color:#334155;">File <code>.kmatch</code> là file chấm điểm chứa toàn bộ sơ đồ thi đấu sau khi bốc thăm xong. Admin tạo và gửi cho Thư ký. Thư ký mở file để bấm điểm từng trận trong thời gian được phép.</div>
+  </div>
+
+  <div style="border:1px solid #e2e8f0;border-radius:8px;margin:10px 0;overflow:hidden;">
+    <div style="background:#f8fafc;padding:11px 15px;font-weight:bold;color:#1e3a5f;font-size:13px;">❓ HLV nhập VĐV sau deadline được không?</div>
+    <div style="padding:11px 15px;line-height:1.75;color:#334155;"><strong>Không được.</strong> Hệ thống tự động khóa chức năng thêm/sửa/xóa VĐV khi hết thời hạn. Nếu cần thêm thời gian, HLV liên hệ Admin để tạo lại file .krt với deadline mới.</div>
+  </div>
+
+  <div style="border:1px solid #e2e8f0;border-radius:8px;margin:10px 0;overflow:hidden;">
+    <div style="background:#f8fafc;padding:11px 15px;font-weight:bold;color:#1e3a5f;font-size:13px;">❓ BYE là gì?</div>
+    <div style="padding:11px 15px;line-height:1.75;color:#334155;">BYE (lượt trống) xuất hiện khi số VĐV không phải lũy thừa của 2 (4, 8, 16, 32...). VĐV được BYE tự động thắng vòng 1 mà không cần thi đấu. Hệ thống phân bổ BYE đều 2 nửa bảng để công bằng.</div>
+  </div>
+
+  <div style="border:1px solid #e2e8f0;border-radius:8px;margin:10px 0;overflow:hidden;">
+    <div style="background:#f8fafc;padding:11px 15px;font-weight:bold;color:#1e3a5f;font-size:13px;">❓ Hạt giống (Seed) là gì? Cách đặt?</div>
+    <div style="padding:11px 15px;line-height:1.75;color:#334155;">Hạt giống là VĐV được xếp hạng từ trước (1-8), thường là VĐV mạnh. Khi thêm VĐV, điền số hạt giống vào ô "Hạt giống". Thuật toán bốc thăm đặt hạt giống vào vị trí cố định để các VĐV mạnh không gặp nhau ở vòng đầu.</div>
+  </div>
+
+  <div style="border:1px solid #e2e8f0;border-radius:8px;margin:10px 0;overflow:hidden;">
+    <div style="background:#f8fafc;padding:11px 15px;font-weight:bold;color:#1e3a5f;font-size:13px;">❓ Cách gửi file giữa Admin và HLV/Thư ký?</div>
+    <div style="padding:11px 15px;line-height:1.75;color:#334155;">
+      • 💾 Copy qua <strong>USB</strong> — Nhanh, không cần internet<br/>
+      • 📧 Gửi qua <strong>Email</strong> — Tiện cho khoảng cách xa<br/>
+      • 💬 Gửi qua <strong>Zalo / Messenger</strong> — Phổ biến nhất ở Việt Nam<br/>
+      • ☁️ Upload lên <strong>Google Drive</strong> rồi chia sẻ link download
+    </div>
+  </div>
+
+  <div style="border:1px solid #e2e8f0;border-radius:8px;margin:10px 0;overflow:hidden;">
+    <div style="background:#f8fafc;padding:11px 15px;font-weight:bold;color:#1e3a5f;font-size:13px;">❓ Phần mềm hỗ trợ thi đấu đồng đội không?</div>
+    <div style="padding:11px 15px;line-height:1.75;color:#334155;"><strong>Có.</strong> Khi tạo hạng mục đồng đội, hệ thống nhóm VĐV theo CLB thành các đội và bốc thăm theo đội. Bracket hiển thị tên CLB thay vì tên VĐV. Huy chương cũng được tính theo đội.</div>
+  </div>
+</section>
+
+<!-- CHƯƠNG 11 -->
+<section id="ch11">
+  <h1 class="st">CHƯƠNG 11. XỬ LÝ SỰ CỐ &amp; LIÊN HỆ HỖ TRỢ</h1>
+
+  <h2 class="sub">11.1. Các lỗi thường gặp và cách xử lý</h2>
+
+  <div style="border-left:4px solid #ef4444;background:#fef2f2;border-radius:0 8px 8px 0;padding:12px 15px;margin:10px 0;">
+    <strong style="color:#991b1b;display:block;margin-bottom:6px;">🔴 Không mở được file .krt hoặc .kmatch</strong>
+    <ul>
+      <li>Kiểm tra file có bị lỗi không → Yêu cầu Admin gửi lại</li>
+      <li>Đảm bảo file đúng phần mở rộng: <code>.krt</code> hoặc <code>.kmatch</code></li>
+      <li>Tránh đặt tên file có ký tự đặc biệt (dấu cách đầu, $ % # ...)</li>
+    </ul>
+  </div>
+
+  <div style="border-left:4px solid #ef4444;background:#fef2f2;border-radius:0 8px 8px 0;padding:12px 15px;margin:10px 0;">
+    <strong style="color:#991b1b;display:block;margin-bottom:6px;">🔴 HLV không thêm được VĐV</strong>
+    <ul>
+      <li>Kiểm tra thanh trạng thái — phải hiển thị <strong style="color:green">"Đang trong thời gian nhập"</strong></li>
+      <li>Nếu hiện <strong>"Chưa đến thời gian"</strong> → Chờ đến ngày Admin quy định</li>
+      <li>Nếu hiện <strong>"Đã hết hạn"</strong> → Liên hệ Admin tạo lại file .krt với deadline mới</li>
+    </ul>
+  </div>
+
+  <div style="border-left:4px solid #ef4444;background:#fef2f2;border-radius:0 8px 8px 0;padding:12px 15px;margin:10px 0;">
+    <strong style="color:#991b1b;display:block;margin-bottom:6px;">🔴 Không bốc thăm được</strong>
+    <ul>
+      <li>Cần ít nhất <strong>2 VĐV</strong> trong hạng mục cá nhân</li>
+      <li>Hạng mục đồng đội cần ít nhất <strong>2 CLB</strong> khác nhau</li>
+      <li>Kiểm tra VĐV không bị trùng dữ liệu</li>
+    </ul>
+  </div>
+
+  <div style="border-left:4px solid #ef4444;background:#fef2f2;border-radius:0 8px 8px 0;padding:12px 15px;margin:10px 0;">
+    <strong style="color:#991b1b;display:block;margin-bottom:6px;">🔴 PDF xuất trống hoặc sai nội dung</strong>
+    <ul>
+      <li>Đảm bảo đã bốc thăm trước khi xuất PDF</li>
+      <li>Chọn máy in "Microsoft Print to PDF" hoặc tương đương</li>
+      <li>Khởi động lại phần mềm và thử lại</li>
+    </ul>
+  </div>
+
+  <div style="border-left:4px solid #ef4444;background:#fef2f2;border-radius:0 8px 8px 0;padding:12px 15px;margin:10px 0;">
+    <strong style="color:#991b1b;display:block;margin-bottom:6px;">🔴 License hết hạn, mất tính năng</strong>
+    <ul>
+      <li>Mở <strong>Quản lý Bản quyền → Tab "Yêu cầu hỗ trợ"</strong></li>
+      <li>Chọn <strong>"🔄 Gia hạn License"</strong> → Điền thông tin → Gửi yêu cầu</li>
+      <li>Hoặc liên hệ trực tiếp: <strong>0336.440.523 (Zalo/Gọi)</strong></li>
+    </ul>
+  </div>
+
+  <div style="border-left:4px solid #ef4444;background:#fef2f2;border-radius:0 8px 8px 0;padding:12px 15px;margin:10px 0;">
+    <strong style="color:#991b1b;display:block;margin-bottom:6px;">🔴 Mất dữ liệu sau khi đóng phần mềm</strong>
+    <ul>
+      <li>Vào <strong>Quản lý Backup → Lịch sử Backup</strong> → Khôi phục bản auto-backup gần nhất</li>
+      <li>Thường xuyên <strong>Xuất Backup</strong> ra file <code>.kbackup</code> để lưu ngoài</li>
+      <li>Không dùng Task Manager để tắt phần mềm đột ngột</li>
+    </ul>
+  </div>
+
+  <div style="border-left:4px solid #ef4444;background:#fef2f2;border-radius:0 8px 8px 0;padding:12px 15px;margin:10px 0;">
+    <strong style="color:#991b1b;display:block;margin-bottom:6px;">🔴 Kích hoạt license báo "Key không hợp lệ"</strong>
+    <ul>
+      <li>Kiểm tra ID Máy — phải giống với ID đã gửi cho nhà cung cấp khi đặt mua</li>
+      <li>Copy/paste key từ email/tin nhắn, tránh gõ tay</li>
+      <li>Liên hệ nhà cung cấp kèm ID Máy hiện tại để được cấp key đúng</li>
+    </ul>
+  </div>
+
+  <div style="border-left:4px solid #ef4444;background:#fef2f2;border-radius:0 8px 8px 0;padding:12px 15px;margin:10px 0;">
+    <strong style="color:#991b1b;display:block;margin-bottom:6px;">🔴 Phần mềm đơ, treo, không phản hồi</strong>
+    <ul>
+      <li>Nhấn <strong>Alt+F4</strong> để đóng rồi mở lại</li>
+      <li>Nếu vẫn bị treo: Dùng Task Manager (Ctrl+Shift+Esc) → End Task → Mở lại</li>
+      <li>Thử khởi động lại máy tính</li>
+      <li>Nếu lỗi lặp lại: Chụp màn hình lỗi → Liên hệ hỗ trợ kỹ thuật</li>
+    </ul>
+  </div>
+
+  <h2 class="sub">11.2. Thông tin liên hệ hỗ trợ kỹ thuật</h2>
+  <div style="background:linear-gradient(135deg,#1e3a5f,#0c2340);color:white;border-radius:12px;padding:22px 26px;margin:16px 0;">
+    <p style="font-size:16px;font-weight: bold;margin-bottom:16px;color:white;">📞 LIÊN HỆ HỖ TRỢ KỸ THUẬT</p>
+    <p style="margin:7px 0;color:rgba(255,255,255,0.9);">📞 <strong style="color:white;">Điện thoại / Zalo:</strong> 0336.440.523</p>
+    <p style="margin:7px 0;color:rgba(255,255,255,0.9);">📧 <strong style="color:white;">Email:</strong> luuquankarate@gmail.com</p>
+    <p style="margin:7px 0;color:rgba(255,255,255,0.9);">👤 <strong style="color:white;">Tác giả:</strong> Trương Lưu Quân</p>
+    <p style="margin:7px 0;color:rgba(255,255,255,0.9);">💻 <strong style="color:white;">Phần mềm:</strong> Karate Tournament Manager v2.0</p>
+    <p style="margin-top:16px;font-size:11px;color:rgba(255,255,255,0.6);">
+      Khi liên hệ, vui lòng cung cấp: <strong>ID Máy tính</strong> · <strong>Phiên bản phần mềm</strong> · <strong>Mô tả lỗi chi tiết</strong> (kèm ảnh chụp màn hình nếu có).
+    </p>
+  </div>
+
+  <p style="text-align:center;margin-top:30px;color:#94a3b8;font-size:11px;">
+    — Hết tài liệu hướng dẫn —<br/>
+    © 2026 Karate Tournament Manager • Bản quyền thuộc về Trương Lưu Quân<br/>
+    Phiên bản tài liệu: 2.0 • Cập nhật: Tháng 3/2026
+  </p>
+</section>
+</body>
+</html>

@@ -8,6 +8,7 @@ import {
 } from "../services/licenseService";
 import LicenseSplash from "../components/LicenseSplash/LicenseSplash";
 import LicenseWarning from "../components/LicenseWarning/LicenseWarning";
+import appIcon from "../assets/icon.png";
 import "./RoleSelectPage.css";
 import packageJson from "../../package.json";
 
@@ -77,7 +78,14 @@ function RoleSelectPage() {
 
       <div className="role-select-container">
         <div className="role-select-header">
-          <div className="logo-icon">🥋</div>
+          {" "}
+          <div className="logo-icon">
+            <img
+              src={appIcon}
+              alt="Karate Tournament Manager"
+              className="logo-img"
+            />
+          </div>
           <h1>Karate Tournament Manager</h1>
           <p className="subtitle">Hệ thống quản lý giải đấu Karate</p>
           {licenseStatus?.status === "expired" && (
@@ -171,7 +179,11 @@ function RoleSelectPage() {
         </div>
 
         <div className="role-select-footer">
-          <p>Phiên bản {packageJson.version} {packageJson.buildDate ? `(${packageJson.buildDate})` : ""} • Offline 100%</p>
+          <p>
+            Phiên bản {packageJson.version}{" "}
+            {packageJson.buildDate ? `(${packageJson.buildDate})` : ""} •
+            Offline 100%
+          </p>
         </div>
       </div>
 

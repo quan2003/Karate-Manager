@@ -166,7 +166,9 @@ const cleanupRevokedExpiredLicenses = async () => {
       "DELETE FROM licenses WHERE status = 'revoked' RETURNING id"
     );
     if (revokedResult.rowCount > 0) {
-      console.log(`[Cleanup] Deleted ${revokedResult.rowCount} revoked license(s)`);
+      console.log(
+        `[Cleanup] Deleted ${revokedResult.rowCount} revoked license(s)`
+      );
     }
 
     // Delete expired licenses (status active but expiry_date has passed)
@@ -174,7 +176,9 @@ const cleanupRevokedExpiredLicenses = async () => {
       "DELETE FROM licenses WHERE status = 'active' AND expiry_date < NOW() RETURNING id"
     );
     if (expiredResult.rowCount > 0) {
-      console.log(`[Cleanup] Deleted ${expiredResult.rowCount} expired license(s)`);
+      console.log(
+        `[Cleanup] Deleted ${expiredResult.rowCount} expired license(s)`
+      );
     }
   } catch (err) {
     console.error("[Cleanup] Error cleaning up licenses:", err.message);
@@ -188,7 +192,9 @@ const cleanupResolvedRequests = async () => {
       "DELETE FROM license_requests WHERE status = 'resolved' AND resolved_at < NOW() - INTERVAL '7 days' RETURNING id"
     );
     if (result.rowCount > 0) {
-      console.log(`[Cleanup] Deleted ${result.rowCount} resolved request(s) older than 7 days`);
+      console.log(
+        `[Cleanup] Deleted ${result.rowCount} resolved request(s) older than 7 days`
+      );
     }
   } catch (err) {
     console.error("[Cleanup] Error cleaning up requests:", err.message);
@@ -258,11 +264,34 @@ async function sendNewRequestEmail(requestData) {
 }
 
 // --- Middleware ---
+// Global limiter: 5000 req / 15 phút / IP (đủ cho nhiều client hợp lệ)
 const limiter = rateLimit({
-  windowMs: process.env.WINDOW_MS || 15 * 60 * 1000,
-  max: process.env.MAX_REQUESTS || 100,
+  windowMs: parseInt(process.env.WINDOW_MS) || 15 * 60 * 1000,
+  max: parseInt(process.env.MAX_REQUESTS) || 5000,
   standardHeaders: true,
   legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Quá nhiều yêu cầu, vui lòng thử lại sau.",
+  },
+  // Dùng IP thực từ reverse proxy (nginx)
+  keyGenerator: (req) =>
+    req.headers["x-forwarded-for"]?.split(",")[0].trim() || req.ip,
+});
+
+// Login limiter riêng: tối đa 20 lần / 15 phút / IP (chống brute-force)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Quá nhiều lần đăng nhập thất bại, vui lòng thử lại sau 15 phút.",
+  },
+  keyGenerator: (req) =>
+    req.headers["x-forwarded-for"]?.split(",")[0].trim() || req.ip,
+  skipSuccessfulRequests: true, // Không đếm những lần login thành công
 });
 
 app.use(limiter);
@@ -350,11 +379,14 @@ app.post("/auth/google", async (req, res) => {
 });
 
 // Account Login Route
-app.post("/auth/login", async (req, res) => {
+app.post("/auth/login", loginLimiter, async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
-    return res.json({ success: false, message: "Vui lòng nhập tên đăng nhập và mật khẩu" });
+    return res.json({
+      success: false,
+      message: "Vui lòng nhập tên đăng nhập và mật khẩu",
+    });
   }
 
   try {
@@ -364,18 +396,31 @@ app.post("/auth/login", async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.json({ success: false, message: "Tên đăng nhập hoặc mật khẩu không đúng" });
+      return res.json({
+        success: false,
+        message: "Tên đăng nhập hoặc mật khẩu không đúng",
+      });
     }
 
     const account = result.rows[0];
-    const isPasswordValid = await bcrypt.compare(password, account.password_hash);
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      account.password_hash
+    );
 
     if (!isPasswordValid) {
-      return res.json({ success: false, message: "Tên đăng nhập hoặc mật khẩu không đúng" });
+      return res.json({
+        success: false,
+        message: "Tên đăng nhập hoặc mật khẩu không đúng",
+      });
     }
 
     const accessToken = jwt.sign(
-      { username: account.username, name: account.display_name, loginType: "account" },
+      {
+        username: account.username,
+        name: account.display_name,
+        loginType: "account",
+      },
       JWT_SECRET,
       { expiresIn: "24h" }
     );
@@ -400,17 +445,26 @@ app.post("/auth/change-password", authMiddleware, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
   if (!currentPassword || !newPassword) {
-    return res.json({ success: false, message: "Vui lòng nhập đầy đủ thông tin" });
+    return res.json({
+      success: false,
+      message: "Vui lòng nhập đầy đủ thông tin",
+    });
   }
 
   if (newPassword.length < 6) {
-    return res.json({ success: false, message: "Mật khẩu mới phải có ít nhất 6 ký tự" });
+    return res.json({
+      success: false,
+      message: "Mật khẩu mới phải có ít nhất 6 ký tự",
+    });
   }
 
   try {
     const username = req.user?.username;
     if (!username) {
-      return res.json({ success: false, message: "Chỉ tài khoản đăng nhập bằng account mới đổi được mật khẩu" });
+      return res.json({
+        success: false,
+        message: "Chỉ tài khoản đăng nhập bằng account mới đổi được mật khẩu",
+      });
     }
 
     const result = await pool.query(
@@ -422,9 +476,15 @@ app.post("/auth/change-password", authMiddleware, async (req, res) => {
       return res.json({ success: false, message: "Tài khoản không tồn tại" });
     }
 
-    const isPasswordValid = await bcrypt.compare(currentPassword, result.rows[0].password_hash);
+    const isPasswordValid = await bcrypt.compare(
+      currentPassword,
+      result.rows[0].password_hash
+    );
     if (!isPasswordValid) {
-      return res.json({ success: false, message: "Mật khẩu hiện tại không đúng" });
+      return res.json({
+        success: false,
+        message: "Mật khẩu hiện tại không đúng",
+      });
     }
 
     const newHash = await bcrypt.hash(newPassword, 10);

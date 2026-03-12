@@ -10,6 +10,7 @@ import { useToast } from "../components/common/Toast";
 import * as XLSX from "xlsx";
 import { updateMatchResult as applyMatchResult } from "../utils/drawEngine";
 import { getAppBaseUrl } from "../services/pdfService";
+import appIcon from "../assets/icon.png";
 import "./StatisticsPage.css";
 
 export default function StatisticsPage() {
@@ -37,28 +38,42 @@ export default function StatisticsPage() {
   const [filterType, setFilterType] = useState("all"); // all | kata | kumite
   const [filterGender, setFilterGender] = useState("all"); // all | male | female
   const [filterSession, setFilterSession] = useState("all"); // all | buoi1 | buoi2 | ...
+  const [filterClub, setFilterClub] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedForExport, setSelectedForExport] = useState(new Set());
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [importPreview, setImportPreview] = useState(null); // { rows, fileName, mergedResults, stats }
   const [importMode, setImportMode] = useState("merge"); // 'merge' | 'overwrite'
   const [editingClubReg, setEditingClubReg] = useState(null); // club name being edited
-  const [clubRegForm, setClubRegForm] = useState({ coaches: [''], teamLeader: '' });
+  const [clubRegForm, setClubRegForm] = useState({
+    coaches: [""],
+    teamLeader: "",
+  });
   const [feeSettings, setFeeSettings] = useState(() => {
-    return tournament?.feeSettings || {
-      individualFee: 300000,
-      teamFee: 500000,
-      enableSurcharge: false,
-      surchargeFee: 150000,
-    };
+    return (
+      tournament?.feeSettings || {
+        individualFee: 300000,
+        teamFee: 500000,
+        enableSurcharge: false,
+        surchargeFee: 150000,
+      }
+    );
   });
   const [feePayments, setFeePayments] = useState(() => {
     return tournament?.feePayments || {};
   });
-  
   // States for checkbox selection in Delegation tab
-  const [selectedDelegationCategories, setSelectedDelegationCategories] = useState(new Set());
-  const [selectedDelegationClubs, setSelectedDelegationClubs] = useState(new Set());
+  const [selectedDelegationCategories, setSelectedDelegationCategories] =
+    useState(new Set());
+  const [selectedDelegationClubs, setSelectedDelegationClubs] = useState(
+    new Set()
+  );
+
+  // PDF loading state
+  const [isPdfLoading, setIsPdfLoading] = useState(false);
+
+  // States for checkbox selection in Medal Tally tab
+  const [selectedTallyClubs, setSelectedTallyClubs] = useState(new Set());
 
   if (!tournament) {
     return (
@@ -74,6 +89,61 @@ export default function StatisticsPage() {
       </div>
     );
   }
+  // ===== PDF PRINT HELPER =====
+  /**
+   * Tạo iframe ẩn, ghi HTML vào, chờ load xong rồi mới print.
+   * Hiển thị loading overlay trong lúc chờ.
+   */
+  const printIframeWithLoading = (htmlContent, title = "In PDF") => {
+    setIsPdfLoading(true);
+    const printFrame = document.createElement("iframe");
+    printFrame.style.position = "fixed";
+    printFrame.style.left = "-9999px";
+    printFrame.style.top = "0";
+    printFrame.style.width = "210mm";
+    printFrame.style.height = "297mm";
+    printFrame.style.border = "none";
+    document.body.appendChild(printFrame);
+
+    const doc = printFrame.contentDocument || printFrame.contentWindow.document;
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+
+    // Chờ iframe load xong (bao gồm cả ảnh logo)
+    const doAfterLoad = () => {
+      // Thêm thêm 400ms sau load để đảm bảo ảnh render xong
+      setTimeout(() => {
+        setIsPdfLoading(false);
+        printFrame.contentWindow.print();
+        setTimeout(() => {
+          if (document.body.contains(printFrame)) {
+            document.body.removeChild(printFrame);
+          }
+        }, 1500);
+      }, 400);
+    };
+
+    // Dùng onload nếu có thể, fallback sang setTimeout nếu iframe load quá nhanh
+    if (printFrame.contentDocument?.readyState === "complete") {
+      doAfterLoad();
+    } else {
+      printFrame.onload = doAfterLoad;
+      // Safety timeout: nếu 8 giây vẫn chưa load thì vẫn print
+      setTimeout(() => {
+        if (isPdfLoading) {
+          setIsPdfLoading(false);
+          try {
+            printFrame.contentWindow.print();
+          } catch (e) {}
+          setTimeout(() => {
+            if (document.body.contains(printFrame))
+              document.body.removeChild(printFrame);
+          }, 1500);
+        }
+      }, 8000);
+    }
+  };
 
   // ===== SCHEDULE SESSION HELPERS =====
   const schedule = tournament.schedule || {};
@@ -126,6 +196,19 @@ export default function StatisticsPage() {
     if (filterSession !== "all") {
       cats = cats.filter((c) => getCategorySessionKey(c.id) === filterSession);
     }
+    if (filterClub !== "all") {
+      const club = filterClub.trim().toLowerCase();
+      cats = cats.filter((c) => {
+        const r = getCategoryResults(c.id);
+        if (!r) return false;
+        return (
+          r.club1?.trim().toLowerCase() === club ||
+          r.club2?.trim().toLowerCase() === club ||
+          r.club3a?.trim().toLowerCase() === club ||
+          r.club3b?.trim().toLowerCase() === club
+        );
+      });
+    }
     if (searchQuery.trim() !== "") {
       const q = searchQuery.toLowerCase().trim();
       cats = cats.filter((c) => c.name.toLowerCase().includes(q));
@@ -174,37 +257,41 @@ export default function StatisticsPage() {
       let extraEventsForSurcharge = 0;
 
       // Tính số đội tham gia của CLB này
-      tournament.categories.forEach(cat => {
+      tournament.categories.forEach((cat) => {
         if (cat.isTeam) {
-           const hasAthletesInTeam = (cat.athletes || []).some(a => a.club?.trim() === club);
-           if (hasAthletesInTeam) {
-              teamEntries += 1;
-           }
-        }
-      });
-      
-      // Tính lệ phí cá nhân
-      const individualEventsByAthlete = {};
-      
-      tournament.categories.forEach(cat => {
-        if (!cat.isTeam) {
-            (cat.athletes || []).forEach(a => {
-                if (a.club?.trim() === club) {
-                    const identifier = `${a.name.trim().toLowerCase()}_${a.birthDate || a.birthYear || ''}_${a.gender}`;
-                    if (!individualEventsByAthlete[identifier]) {
-                        individualEventsByAthlete[identifier] = 0;
-                    }
-                    individualEventsByAthlete[identifier] += 1;
-                }
-            });
+          const hasAthletesInTeam = (cat.athletes || []).some(
+            (a) => a.club?.trim() === club
+          );
+          if (hasAthletesInTeam) {
+            teamEntries += 1;
+          }
         }
       });
 
-      Object.values(individualEventsByAthlete).forEach(eventCount => {
-         individualCount += 1;
-         if (feeSettings.enableSurcharge && eventCount > 1) {
-            extraEventsForSurcharge += (eventCount - 1);
-         }
+      // Tính lệ phí cá nhân
+      const individualEventsByAthlete = {};
+
+      tournament.categories.forEach((cat) => {
+        if (!cat.isTeam) {
+          (cat.athletes || []).forEach((a) => {
+            if (a.club?.trim() === club) {
+              const identifier = `${a.name.trim().toLowerCase()}_${
+                a.birthDate || a.birthYear || ""
+              }_${a.gender}`;
+              if (!individualEventsByAthlete[identifier]) {
+                individualEventsByAthlete[identifier] = 0;
+              }
+              individualEventsByAthlete[identifier] += 1;
+            }
+          });
+        }
+      });
+
+      Object.values(individualEventsByAthlete).forEach((eventCount) => {
+        individualCount += 1;
+        if (feeSettings.enableSurcharge && eventCount > 1) {
+          extraEventsForSurcharge += eventCount - 1;
+        }
       });
 
       const teamFeeTotal = teamEntries * feeSettings.teamFee;
@@ -213,22 +300,25 @@ export default function StatisticsPage() {
       const totalFee = teamFeeTotal + individualFeeTotal + surchargeTotal;
 
       return {
-          club,
-          teamEntries,
-          teamFeeTotal,
-          individualCount,
-          individualFeeTotal,
-          extraEventsForSurcharge,
-          surchargeTotal,
-          totalFee
+        club,
+        teamEntries,
+        teamFeeTotal,
+        individualCount,
+        individualFeeTotal,
+        extraEventsForSurcharge,
+        surchargeTotal,
+        totalFee,
       };
     });
 
-    return summary.sort((a, b) => a.club.localeCompare(b.club, 'vi'));
+    return summary.sort((a, b) => a.club.localeCompare(b.club, "vi"));
   };
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+    }).format(amount);
   };
 
   const getClubs = () => {
@@ -243,6 +333,17 @@ export default function StatisticsPage() {
 
   const getGenderCount = (gender) => {
     return getAllAthletes().filter((a) => a.gender === gender).length;
+  };
+
+  const getUniqueAthletesCount = () => {
+    const unique = new Set();
+    getAllAthletes().forEach((a) => {
+      const key = `${(a.name || "").trim().toLowerCase()}_${
+        a.birthDate || a.birthYear || ""
+      }_${a.gender || ""}_${(a.club || "").trim().toLowerCase()}`;
+      unique.add(key);
+    });
+    return unique.size;
   };
 
   const getEstimatedMedals = () => {
@@ -315,7 +416,8 @@ export default function StatisticsPage() {
           );
           autoAdvanceSemis.forEach((semi) => {
             // VĐV đã tự advance qua bán kết
-            const advancedAthlete = semi.winner || semi.athlete1 || semi.athlete2;
+            const advancedAthlete =
+              semi.winner || semi.athlete1 || semi.athlete2;
             if (!advancedAthlete) return;
             // Tìm trận tứ kết mà VĐV này thắng
             const qMatch = quarterFinals.find(
@@ -328,7 +430,7 @@ export default function StatisticsPage() {
               }
             }
           });
-          
+
           // Nếu vẫn thiếu bronze: tìm tất cả loser tứ kết mà không phải champion/silver
           if (bronzes.length < 2) {
             quarterFinals.forEach((qm) => {
@@ -366,10 +468,20 @@ export default function StatisticsPage() {
     if (!computed) return saved;
 
     // Merge: ưu tiên saved (nếu có giá trị), fallback sang computed
-    const fields = ["first", "second", "third1", "third2", "club1", "club2", "club3a", "club3b"];
+    const fields = [
+      "first",
+      "second",
+      "third1",
+      "third2",
+      "club1",
+      "club2",
+      "club3a",
+      "club3b",
+    ];
     const merged = { _fromBracket: false };
     fields.forEach((f) => {
-      merged[f] = (saved[f] && saved[f].trim() !== "") ? saved[f] : (computed[f] || "");
+      merged[f] =
+        saved[f] && saved[f].trim() !== "" ? saved[f] : computed[f] || "";
     });
     return merged;
   };
@@ -579,15 +691,19 @@ export default function StatisticsPage() {
         const sl = tournament.sponsorLogos || {};
         const sysLogo = sl.systemLogo || null;
         const spons = sl.sponsors || [];
-        if (!sysLogo && spons.length === 0) return '';
+        if (!sysLogo && spons.length === 0) return "";
         let h = '<div class="logo-header">';
-        h += sysLogo ? `<img src="${sysLogo}" class="system-logo" />` : '<div></div>';
+        h += sysLogo
+          ? `<img src="${sysLogo}" class="system-logo" />`
+          : "<div></div>";
         if (spons.length > 0) {
           h += '<div class="sponsor-logos">';
-          spons.forEach(l => { h += `<img src="${l}" class="sponsor-logo" />`; });
-          h += '</div>';
+          spons.forEach((l) => {
+            h += `<img src="${l}" class="sponsor-logo" />`;
+          });
+          h += "</div>";
         }
-        h += '</div>';
+        h += "</div>";
         return h;
       })()}
       <div class="header">
@@ -761,7 +877,206 @@ export default function StatisticsPage() {
     toast.success(
       `Đã xuất ${data.length} kết quả ${filterLabel ? `(${filterLabel})` : ""}`
     );
-  }; // ===== IMPORT RESULTS FROM EXCEL =====
+  };
+
+  // ===== RESULTS BY CLUB HELPERS =====
+  const getResultsByClub = () => {
+    const clubMap = {};
+    const cats = getFilteredCategories();
+
+    cats.forEach((cat) => {
+      const result = getCategoryResults(cat.id);
+      if (!result) return;
+
+      const addResult = (clubName, medalType, athleteName) => {
+        if (!clubName) return;
+        const club = clubName.trim();
+        if (!clubMap[club]) {
+          clubMap[club] = [];
+        }
+        const memberNames = getTeamMemberNames(cat, clubName);
+        clubMap[club].push({
+          categoryName: cat.name,
+          medal: medalType,
+          athleteName: athleteName,
+          memberNames: memberNames,
+        });
+      };
+
+      if (result.club1) addResult(result.club1, "🥇 HCV", result.first);
+      if (result.club2) addResult(result.club2, "🥈 HCB", result.second);
+      if (result.club3a) addResult(result.club3a, "🥉 HCĐ", result.third1);
+      if (result.club3b) addResult(result.club3b, "🥉 HCĐ", result.third2);
+    });
+
+    return clubMap;
+  };
+
+  const handleExportResultsByClubExcel = (specificClubs = null) => {
+    let clubMap = getResultsByClub();
+    
+    if (specificClubs) {
+      const filteredMap = {};
+      specificClubs.forEach(c => {
+        if (clubMap[c]) filteredMap[c] = clubMap[c];
+      });
+      clubMap = filteredMap;
+    }
+
+    if (Object.keys(clubMap).length === 0) {
+      toast.error("Không có kết quả nào để xuất!");
+      return;
+    }
+    const data = [];
+
+    Object.keys(clubMap)
+      .sort()
+      .forEach((club) => {
+        clubMap[club].forEach((res, idx) => {
+          data.push({
+            "CLB/Đơn vị": idx === 0 ? club : "",
+            STT: idx + 1,
+            "VĐV/Đội": res.memberNames
+              ? `${res.athleteName} (${res.memberNames})`
+              : res.athleteName,
+            "Hạng mục": res.categoryName,
+            "Huy chương": res.medal,
+          });
+        });
+        // Add a blank row between clubs for readability
+        data.push({});
+      });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Kết quả theo CLB");
+
+    const colWidths = [
+      { wch: 30 },
+      { wch: 5 },
+      { wch: 40 },
+      { wch: 40 },
+      { wch: 15 },
+    ];
+    ws["!cols"] = colWidths;
+
+    XLSX.writeFile(
+      wb,
+      `KetQua_TheoCLB_${tournament.name.replace(
+        /[^a-zA-Z0-9\u00C0-\u1EF9]/g,
+        "_"
+      )}.xlsx`
+    );
+    toast.success("Đã xuất kết quả theo CLB (Excel)!");
+  };
+
+  const handleExportResultsByClubPDF = (specificClubs = null) => {
+    let clubMap = getResultsByClub();
+
+    if (specificClubs) {
+      const filteredMap = {};
+      specificClubs.forEach(c => {
+        if (clubMap[c]) filteredMap[c] = clubMap[c];
+      });
+      clubMap = filteredMap;
+    }
+
+    if (Object.keys(clubMap).length === 0) {
+      toast.error("Không có kết quả nào để xuất!");
+      return;
+    }
+    const appIconUrl = `${getAppBaseUrl()}icon.png`;
+    const sponsorLogos = tournament.sponsorLogos || {};
+    const systemLogo = sponsorLogos.systemLogo || null;
+    const sponsors = sponsorLogos.sponsors || [];
+
+    let logoHeaderHTML = `<div class="logo-header">`;
+    if (systemLogo) {
+      logoHeaderHTML += `<img src="${systemLogo}" class="system-logo" />`;
+    } else {
+      logoHeaderHTML += `<div></div>`;
+    }
+    logoHeaderHTML += `<img src="${appIconUrl}" class="app-icon" />`;
+    if (sponsors.length > 0) {
+      logoHeaderHTML += `<div class="sponsor-logos">`;
+      sponsors.forEach((logo) => {
+        logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`;
+      });
+      logoHeaderHTML += `</div>`;
+    } else {
+      logoHeaderHTML += `<div></div>`;
+    }
+    logoHeaderHTML += `</div>`;
+
+    let htmlContent = `
+      ${logoHeaderHTML}
+      <h1 style="text-align:center;text-transform:uppercase;font-size:24px;margin-bottom:5px;">KẾT QUẢ THI ĐẤU THEO ĐƠN VỊ</h1>
+      <h2 style="text-align:center;font-size:16px;color:#000;margin-bottom:20px;font-weight:bold;font-style:italic;">${tournament.name}</h2>
+    `;
+
+    Object.keys(clubMap)
+      .sort()
+      .forEach((club) => {
+        htmlContent += `
+        <div style="margin-bottom:24px; page-break-inside: avoid;">
+          <h3 style="background:#f1f5f9; padding:8px 12px; border-left:4px solid #1e3a5f; margin-bottom:8px;">${club}</h3>
+          <table style="width:100%; border-collapse:collapse; font-size:14px;">
+            <thead>
+              <tr style="background:#f8fafc;">
+                <th style="border:1px solid #e2e8f0; padding:8px; width:40px;">STT</th>
+                <th style="border:1px solid #e2e8f0; padding:8px; text-align:left;">VĐV / Đội</th>
+                <th style="border:1px solid #e2e8f0; padding:8px; text-align:left;">Hạng mục</th>
+                <th style="border:1px solid #e2e8f0; padding:8px; width:100px;">Huy chương</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${clubMap[club]
+                .map(
+                  (res, idx) => `
+                <tr>
+                  <td style="border:1px solid #e2e8f0; padding:8px; text-align:center;">${
+                    idx + 1
+                  }</td>
+                  <td style="border:1px solid #e2e8f0; padding:8px; font-weight:bold;">
+                    ${res.athleteName}
+                    ${
+                      res.memberNames
+                        ? `<br/><small style="color:#1e40af;font-style:italic;font-weight:normal;">(${res.memberNames})</small>`
+                        : ""
+                    }
+                  </td>
+                  <td style="border:1px solid #e2e8f0; padding:8px;">${
+                    res.categoryName
+                  }</td>
+                  <td style="border:1px solid #e2e8f0; padding:8px; text-align:center; font-weight:bold;">${
+                    res.medal
+                  }</td>
+                </tr>
+              `
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+      });
+
+    const styleStr = `
+      @page { size: portrait; margin: 10mm; }
+      body { font-family: 'Times New Roman', Times, serif; color: #000; }
+      .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 0 10px; }
+      .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
+      .app-icon { height: 60px; width: 60px; object-fit: contain; }
+      .sponsor-logos { display: flex; align-items: center; gap: 10px; }
+      .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
+    `;
+
+    printIframeWithLoading(
+      `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}</body></html>`
+    );
+  };
+
+  // ===== IMPORT RESULTS FROM EXCEL =====
   // Hỗ trợ import nhiều file cùng lúc từ nhiều thư ký
   // Merge dữ liệu thay vì ghi đè, cảnh báo trùng lặp
 
@@ -1167,7 +1482,9 @@ export default function StatisticsPage() {
       rows.forEach((row) => {
         const catName = (row["Hạng mục"] || "").toString().trim();
         const matchId = (row["Match ID"] || "").toString().trim();
-        const winnerName = (row["Người thắng"] || row["winnerName"] || "").toString().trim();
+        const winnerName = (row["Người thắng"] || row["winnerName"] || "")
+          .toString()
+          .trim();
         if (!catName || !winnerName) return;
 
         matchDetails.push({
@@ -1411,14 +1728,17 @@ export default function StatisticsPage() {
         details.forEach((md) => {
           // Tìm match bằng matchId (UUID) hoặc bằng tên VĐV
           let match = updatedBracket.matches.find((m) => m.id === md.matchId);
-          
+
           // Fallback: tìm bằng tên VĐV nếu matchId không khớp
           if (!match && md.athlete1Name && md.athlete2Name) {
             match = updatedBracket.matches.find(
               (m) =>
-                m.athlete1 && m.athlete2 &&
-                ((m.athlete1.name === md.athlete1Name && m.athlete2.name === md.athlete2Name) ||
-                 (m.athlete1.name === md.athlete2Name && m.athlete2.name === md.athlete1Name))
+                m.athlete1 &&
+                m.athlete2 &&
+                ((m.athlete1.name === md.athlete1Name &&
+                  m.athlete2.name === md.athlete2Name) ||
+                  (m.athlete1.name === md.athlete2Name &&
+                    m.athlete2.name === md.athlete1Name))
             );
           }
 
@@ -1569,13 +1889,8 @@ export default function StatisticsPage() {
     );
     toast.success("Đã xuất bảng tổng sắp Excel!");
   };
-
   // ===== EXPORT PDF =====
   const handleExportPDF = (type) => {
-    const printFrame = document.createElement("iframe");
-    printFrame.style.display = "none";
-    document.body.appendChild(printFrame);
-
     let htmlContent = "";
     const filterLabel =
       filterType !== "all" || filterGender !== "all" || filterSession !== "all"
@@ -1611,7 +1926,7 @@ export default function StatisticsPage() {
     // Right: sponsor logos if available
     if (sponsors.length > 0) {
       logoHeaderHTML += `<div class="sponsor-logos">`;
-      sponsors.forEach(logo => {
+      sponsors.forEach((logo) => {
         logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`;
       });
       logoHeaderHTML += `</div>`;
@@ -1710,11 +2025,9 @@ export default function StatisticsPage() {
                 0
               )}</td>
             </tr>
-          </tfoot>
-        </table>`;
+          </tfoot>        </table>`;
     }
-
-    printFrame.contentDocument.write(`<!DOCTYPE html><html><head>
+    printIframeWithLoading(`<!DOCTYPE html><html><head>
       <meta charset="utf-8"/>
       <title>${type === "results" ? "Kết quả thi đấu" : "Bảng tổng sắp"} - ${
       tournament.name
@@ -1729,18 +2042,13 @@ export default function StatisticsPage() {
         td { padding: 6px; border: 1px solid #000; }
         small { font-size: 11px; }
         tfoot td { border: 1px solid #000; font-weight: bold; }
-        .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 0 10px; }
+        .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 0 10px; }
         .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
         .app-icon { height: 60px; width: 60px; object-fit: contain; }
         .sponsor-logos { display: flex; align-items: center; gap: 10px; }
         .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
       </style>
     </head><body>${htmlContent}</body></html>`);
-    printFrame.contentDocument.close();
-    setTimeout(() => {
-      printFrame.contentWindow.print();
-      setTimeout(() => document.body.removeChild(printFrame), 1000);
-    }, 300);
   };
 
   const medals = getEstimatedMedals();
@@ -1755,7 +2063,7 @@ export default function StatisticsPage() {
   const clubRegistrations = tournament.clubRegistrations || {};
 
   const getClubRegistration = (clubName) => {
-    return clubRegistrations[clubName] || { coaches: [], teamLeader: '' };
+    return clubRegistrations[clubName] || { coaches: [], teamLeader: "" };
   };
 
   const saveClubRegistration = (clubName, regData) => {
@@ -1774,8 +2082,8 @@ export default function StatisticsPage() {
   const handleEditClubReg = (club) => {
     const reg = getClubRegistration(club);
     setClubRegForm({
-      coaches: reg.coaches.length > 0 ? [...reg.coaches] : [''],
-      teamLeader: reg.teamLeader || '',
+      coaches: reg.coaches.length > 0 ? [...reg.coaches] : [""],
+      teamLeader: reg.teamLeader || "",
     });
     setEditingClubReg(club);
   };
@@ -1792,21 +2100,28 @@ export default function StatisticsPage() {
 
   const handleDeleteClubReg = () => {
     if (!editingClubReg) return;
-    if (!window.confirm(`Bạn có chắc muốn xóa tất cả VĐV và thông tin của đoàn ${editingClubReg}?`)) return;
+    if (
+      !window.confirm(
+        `Bạn có chắc muốn xóa tất cả VĐV và thông tin của đoàn ${editingClubReg}?`
+      )
+    )
+      return;
 
     // Delete all athletes belonging to this club across all categories
-    tournament.categories.forEach(cat => {
+    tournament.categories.forEach((cat) => {
       if (cat.athletes) {
-        cat.athletes.filter(a => a.club?.trim() === editingClubReg).forEach(a => {
-          dispatch({ type: ACTIONS.DELETE_ATHLETE, payload: a.id });
-        });
+        cat.athletes
+          .filter((a) => a.club?.trim() === editingClubReg)
+          .forEach((a) => {
+            dispatch({ type: ACTIONS.DELETE_ATHLETE, payload: a.id });
+          });
       }
     });
 
     // Remove club registration info
     const newClubRegistrations = { ...clubRegistrations };
     delete newClubRegistrations[editingClubReg];
-    
+
     dispatch({
       type: ACTIONS.UPDATE_CLUB_REGISTRATIONS,
       payload: {
@@ -1827,25 +2142,39 @@ export default function StatisticsPage() {
     }));
   };
 
-  // Get complete club delegation summary
   const getClubDelegationSummary = () => {
     const allAthletes = getAllAthletes();
     const summary = clubs.map((club) => {
       const regInfo = getClubRegistration(club);
       const refAthletes = allAthletes.filter((a) => a.club?.trim() === club);
+
+      const uniqueAthletes = new Set();
+      const uniqueMale = new Set();
+      const uniqueFemale = new Set();
+
+      refAthletes.forEach((a) => {
+        const key = `${(a.name || "").trim().toLowerCase()}_${
+          a.birthDate || a.birthYear || ""
+        }_${a.gender || ""}`;
+        uniqueAthletes.add(key);
+        if (a.gender === "male") uniqueMale.add(key);
+        if (a.gender === "female") uniqueFemale.add(key);
+      });
+
       return {
         club,
-        teamLeader: regInfo.teamLeader || '',
+        teamLeader: regInfo.teamLeader || "",
         coaches: regInfo.coaches || [],
         teamLeaderCount: regInfo.teamLeader ? 1 : 0,
         coachCount: (regInfo.coaches || []).filter(Boolean).length,
-        maleCount: refAthletes.filter((a) => a.gender === 'male').length || 0,
-        femaleCount: refAthletes.filter((a) => a.gender === 'female').length || 0,
-        athleteCount: refAthletes.length || 0,
+        maleCount: uniqueMale.size,
+        femaleCount: uniqueFemale.size,
+        athleteCount: uniqueAthletes.size,
+        totalEntries: refAthletes.length,
       };
     });
 
-    return summary.sort((a, b) => a.club.localeCompare(b.club, 'vi'));
+    return summary.sort((a, b) => a.club.localeCompare(b.club, "vi"));
   };
 
   // Export delegation stats to Excel (official format)
@@ -1854,31 +2183,38 @@ export default function StatisticsPage() {
     const wb = XLSX.utils.book_new();
 
     // ===== Sheet 1: Thống kê (official format) =====
-    const titleRows = [
-      ['THỐNG KÊ'],
-      [tournament.name],
-      [],
-    ];
+    const titleRows = [["THỐNG KÊ"], [tournament.name], []];
     // Header row 1 (merged)
-    const headerRow1 = ['TT', 'ĐƠN VỊ', 'CÁN BỘ', '', 'VĐV', ''];
+    const headerRow1 = ["TT", "ĐƠN VỊ", "CÁN BỘ", "", "VĐV", ""];
     // Header row 2
-    const headerRow2 = ['', '', 'TĐ', 'HLV', 'Nam', 'Nữ'];
-    
+    const headerRow2 = ["", "", "TĐ", "HLV", "Nam", "Nữ"];
+
     const dataRows = delegations.map((d, i) => [
-      i + 1, d.club, d.teamLeaderCount, d.coachCount, d.maleCount, d.femaleCount
+      i + 1,
+      d.club,
+      d.teamLeaderCount,
+      d.coachCount,
+      d.maleCount,
+      d.femaleCount,
     ]);
     // Totals
     dataRows.push([
-      '', 'TỔNG CỘNG',
+      "",
+      "TỔNG CỘNG",
       delegations.reduce((s, d) => s + d.teamLeaderCount, 0),
       delegations.reduce((s, d) => s + d.coachCount, 0),
       delegations.reduce((s, d) => s + d.maleCount, 0),
       delegations.reduce((s, d) => s + d.femaleCount, 0),
     ]);
 
-    const ws1 = XLSX.utils.aoa_to_sheet([...titleRows, headerRow1, headerRow2, ...dataRows]);
+    const ws1 = XLSX.utils.aoa_to_sheet([
+      ...titleRows,
+      headerRow1,
+      headerRow2,
+      ...dataRows,
+    ]);
     // Merge cells for headers
-    ws1['!merges'] = [
+    ws1["!merges"] = [
       { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, // Title
       { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }, // Tournament name
       { s: { r: 3, c: 2 }, e: { r: 3, c: 3 } }, // CÁN BỘ
@@ -1886,34 +2222,50 @@ export default function StatisticsPage() {
       { s: { r: 3, c: 0 }, e: { r: 4, c: 0 } }, // TT
       { s: { r: 3, c: 1 }, e: { r: 4, c: 1 } }, // ĐƠN VỊ
     ];
-    ws1['!cols'] = [
-      { wch: 5 }, { wch: 30 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 },
+    ws1["!cols"] = [
+      { wch: 5 },
+      { wch: 30 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 8 },
     ];
-    XLSX.utils.book_append_sheet(wb, ws1, 'Thống kê');
+    XLSX.utils.book_append_sheet(wb, ws1, "Thống kê");
 
     // ===== Sheet 2: Chi tiết đoàn =====
     const detailData = delegations.map((d, i) => ({
-      'STT': i + 1,
-      'CLB/Đơn vị': d.club,
-      'Trưởng đoàn': d.teamLeader,
-      'HLV': d.coaches.join(', '),
-      'Số TĐ': d.teamLeaderCount,
-      'Số HLV': d.coachCount,
-      'VĐV Nam': d.maleCount,
-      'VĐV Nữ': d.femaleCount,
-      'Tổng VĐV': d.athleteCount,
+      STT: i + 1,
+      "CLB/Đơn vị": d.club,
+      "Trưởng đoàn": d.teamLeader,
+      HLV: d.coaches.join(", "),
+      "Số TĐ": d.teamLeaderCount,
+      "Số HLV": d.coachCount,
+      "VĐV Nam": d.maleCount,
+      "VĐV Nữ": d.femaleCount,
+      "Tổng VĐV": d.athleteCount,
     }));
     const ws2 = XLSX.utils.json_to_sheet(detailData);
-    ws2['!cols'] = [
-      { wch: 5 }, { wch: 30 }, { wch: 20 }, { wch: 40 }, { wch: 8 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+    ws2["!cols"] = [
+      { wch: 5 },
+      { wch: 30 },
+      { wch: 20 },
+      { wch: 40 },
+      { wch: 8 },
+      { wch: 8 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
     ];
-    XLSX.utils.book_append_sheet(wb, ws2, 'Chi tiết đoàn');
+    XLSX.utils.book_append_sheet(wb, ws2, "Chi tiết đoàn");
 
     XLSX.writeFile(
       wb,
-      `ThongKe_${tournament.name.replace(/[^a-zA-Z0-9\u00C0-\u1EF9]/g, '_')}.xlsx`
+      `ThongKe_${tournament.name.replace(
+        /[^a-zA-Z0-9\u00C0-\u1EF9]/g,
+        "_"
+      )}.xlsx`
     );
-    toast.success('Đã xuất Excel thống kê đoàn!');
+    toast.success("Đã xuất Excel thống kê đoàn!");
   };
 
   // ----- VĐV THEO HẠNG MỤC EXPORT -----
@@ -1929,22 +2281,34 @@ export default function StatisticsPage() {
       .forEach((cat) => {
         (cat.athletes || []).forEach((a, i) => {
           catData.push({
-            'Hạng mục': cat.name,
-            'Loại': cat.type === 'kumite' ? 'Kumite' : 'Kata',
-            'STT': i + 1,
-            'Họ tên VĐV': a.name,
-            'Giới tính': a.gender === 'male' ? 'Nam' : 'Nữ',
-            'CLB': a.club || '',
-            'Cân nặng': a.weight || '',
+            "Hạng mục": cat.name,
+            Loại: cat.type === "kumite" ? "Kumite" : "Kata",
+            STT: i + 1,
+            "Họ tên VĐV": a.name,
+            "Giới tính": a.gender === "male" ? "Nam" : "Nữ",
+            CLB: a.club || "",
+            "Cân nặng": a.weight || "",
           });
         });
       });
     const ws = XLSX.utils.json_to_sheet(catData);
-    ws['!cols'] = [
-      { wch: 30 }, { wch: 10 }, { wch: 5 }, { wch: 25 }, { wch: 10 }, { wch: 25 }, { wch: 10 },
+    ws["!cols"] = [
+      { wch: 30 },
+      { wch: 10 },
+      { wch: 5 },
+      { wch: 25 },
+      { wch: 10 },
+      { wch: 25 },
+      { wch: 10 },
     ];
-    XLSX.utils.book_append_sheet(wb, ws, 'VĐV theo hạng mục');
-    XLSX.writeFile(wb, `VDV_HangMuc_${tournament.name.replace(/[^a-zA-Z0-9\u00C0-\u1EF9]/g, '_')}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "VĐV theo hạng mục");
+    XLSX.writeFile(
+      wb,
+      `VDV_HangMuc_${tournament.name.replace(
+        /[^a-zA-Z0-9\u00C0-\u1EF9]/g,
+        "_"
+      )}.xlsx`
+    );
   };
 
   const handleExportAthsByCatPDF = () => {
@@ -1952,10 +2316,12 @@ export default function StatisticsPage() {
       toast.error("Vui lòng chọn ít nhất một hạng mục để xuất!");
       return;
     }
-    const selectedCats = tournament.categories.filter((c) => selectedDelegationCategories.has(c.id));
-    
-    const printFrame = document.createElement('iframe');
-    printFrame.style.display = 'none';
+    const selectedCats = tournament.categories.filter((c) =>
+      selectedDelegationCategories.has(c.id)
+    );
+
+    const printFrame = document.createElement("iframe");
+    printFrame.style.display = "none";
     document.body.appendChild(printFrame);
 
     // Logos
@@ -1972,7 +2338,9 @@ export default function StatisticsPage() {
     logoHeaderHTML += `<img src="${appIconUrl}" class="app-icon" />`;
     if (sponsors.length > 0) {
       logoHeaderHTML += `<div class="sponsor-logos">`;
-      sponsors.forEach(logo => { logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`; });
+      sponsors.forEach((logo) => {
+        logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`;
+      });
       logoHeaderHTML += `</div>`;
     } else {
       logoHeaderHTML += `<div></div>`;
@@ -1985,13 +2353,15 @@ export default function StatisticsPage() {
       <h2 style="text-align:center;font-size:16px;color:#000;margin-bottom:20px;font-weight:bold;font-style:italic;">${tournament.name}</h2>
     `;
 
-    selectedCats.forEach(cat => {
+    selectedCats.forEach((cat) => {
       const athletes = cat.athletes || [];
       if (athletes.length === 0) return;
       htmlContent += `
         <div style="margin-bottom:20px;">
           <h3 style="margin:0 0 10px 0;font-size:16px;page-break-after:avoid;">
-            ${cat.name} <span style="font-weight:normal;font-size:14px;">(${athletes.length} VĐV)</span>
+            ${cat.name} <span style="font-weight:normal;font-size:14px;">(${
+        athletes.length
+      } VĐV)</span>
           </h3>
           <table style="width:100%;border-collapse:collapse;font-size:14px;">
             <thead>
@@ -2000,25 +2370,46 @@ export default function StatisticsPage() {
                 <th style="border:1px solid #000;padding:6px;text-align:left;">Họ tên</th>
                 <th style="border:1px solid #000;padding:6px;width:80px;">Giới tính</th>
                 <th style="border:1px solid #000;padding:6px;text-align:left;">Đơn vị/CLB</th>
-                ${cat.type === 'kumite' ? '<th style="border:1px solid #000;padding:6px;width:80px;">Cân nặng</th>' : ''}
+                ${
+                  cat.type === "kumite"
+                    ? '<th style="border:1px solid #000;padding:6px;width:80px;">Cân nặng</th>'
+                    : ""
+                }
               </tr>
             </thead>
             <tbody>
-              ${athletes.map((a, i) => `
+              ${athletes
+                .map(
+                  (a, i) => `
                 <tr style="page-break-inside:avoid;">
-                  <td style="border:1px solid #000;padding:6px;text-align:center;">${i + 1}</td>
-                  <td style="border:1px solid #000;padding:6px;font-weight:bold;">${a.name}</td>
-                  <td style="border:1px solid #000;padding:6px;text-align:center;">${a.gender === 'male' ? 'Nam' : 'Nữ'}</td>
-                  <td style="border:1px solid #000;padding:6px;">${a.club || ''}</td>
-                  ${cat.type === 'kumite' ? `<td style="border:1px solid #000;padding:6px;text-align:center;">${a.weight ? a.weight + 'kg' : ''}</td>` : ''}
+                  <td style="border:1px solid #000;padding:6px;text-align:center;">${
+                    i + 1
+                  }</td>
+                  <td style="border:1px solid #000;padding:6px;font-weight:bold;">${
+                    a.name
+                  }</td>
+                  <td style="border:1px solid #000;padding:6px;text-align:center;">${
+                    a.gender === "male" ? "Nam" : "Nữ"
+                  }</td>
+                  <td style="border:1px solid #000;padding:6px;">${
+                    a.club || ""
+                  }</td>
+                  ${
+                    cat.type === "kumite"
+                      ? `<td style="border:1px solid #000;padding:6px;text-align:center;">${
+                          a.weight ? a.weight + "kg" : ""
+                        }</td>`
+                      : ""
+                  }
                 </tr>
-              `).join('')}
+              `
+                )
+                .join("")}
             </tbody>
           </table>
         </div>
       `;
     });
-
     const styleStr = `
       @page { size: portrait; margin: 10mm; }
       body { font-family: 'Times New Roman', Times, serif; color: #000; }
@@ -2029,12 +2420,9 @@ export default function StatisticsPage() {
       .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
     `;
 
-    printFrame.contentDocument.write(`<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}</body></html>`);
-    printFrame.contentDocument.close();
-    setTimeout(() => {
-      printFrame.contentWindow.print();
-      setTimeout(() => document.body.removeChild(printFrame), 1000);
-    }, 300);
+    printIframeWithLoading(
+      `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}</body></html>`
+    );
   };
 
   // ----- VĐV THEO CLB EXPORT -----
@@ -2043,28 +2431,41 @@ export default function StatisticsPage() {
       toast.error("Vui lòng chọn ít nhất một CLB để xuất!");
       return;
     }
-    const delegations = getClubDelegationSummary().filter(d => selectedDelegationClubs.has(d.club));
+    const delegations = getClubDelegationSummary().filter((d) =>
+      selectedDelegationClubs.has(d.club)
+    );
     const wb = XLSX.utils.book_new();
     const clubAthleteData = [];
     delegations.forEach((d) => {
       const allAth = getAllAthletes().filter((a) => a.club?.trim() === d.club);
       allAth.forEach((a, i) => {
         clubAthleteData.push({
-          'CLB': d.club,
-          'STT': i + 1,
-          'Họ tên VĐV': a.name,
-          'Giới tính': a.gender === 'male' ? 'Nam' : 'Nữ',
-          'Hạng mục': a.categoryName,
-          'Cân nặng': a.weight || '',
+          CLB: d.club,
+          STT: i + 1,
+          "Họ tên VĐV": a.name,
+          "Giới tính": a.gender === "male" ? "Nam" : "Nữ",
+          "Hạng mục": a.categoryName,
+          "Cân nặng": a.weight || "",
         });
       });
     });
     const ws = XLSX.utils.json_to_sheet(clubAthleteData);
-    ws['!cols'] = [
-      { wch: 25 }, { wch: 5 }, { wch: 25 }, { wch: 10 }, { wch: 30 }, { wch: 10 },
+    ws["!cols"] = [
+      { wch: 25 },
+      { wch: 5 },
+      { wch: 25 },
+      { wch: 10 },
+      { wch: 30 },
+      { wch: 10 },
     ];
-    XLSX.utils.book_append_sheet(wb, ws, 'VĐV theo CLB');
-    XLSX.writeFile(wb, `VDV_CLB_${tournament.name.replace(/[^a-zA-Z0-9\u00C0-\u1EF9]/g, '_')}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "VĐV theo CLB");
+    XLSX.writeFile(
+      wb,
+      `VDV_CLB_${tournament.name.replace(
+        /[^a-zA-Z0-9\u00C0-\u1EF9]/g,
+        "_"
+      )}.xlsx`
+    );
   };
 
   const handleExportAthsByClubPDF = () => {
@@ -2072,9 +2473,11 @@ export default function StatisticsPage() {
       toast.error("Vui lòng chọn ít nhất một CLB để xuất!");
       return;
     }
-    const delegations = getClubDelegationSummary().filter(d => selectedDelegationClubs.has(d.club));
-    const printFrame = document.createElement('iframe');
-    printFrame.style.display = 'none';
+    const delegations = getClubDelegationSummary().filter((d) =>
+      selectedDelegationClubs.has(d.club)
+    );
+    const printFrame = document.createElement("iframe");
+    printFrame.style.display = "none";
     document.body.appendChild(printFrame);
 
     // Logos
@@ -2091,7 +2494,9 @@ export default function StatisticsPage() {
     logoHeaderHTML += `<img src="${appIconUrl}" class="app-icon" />`;
     if (sponsors.length > 0) {
       logoHeaderHTML += `<div class="sponsor-logos">`;
-      sponsors.forEach(logo => { logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`; });
+      sponsors.forEach((logo) => {
+        logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`;
+      });
       logoHeaderHTML += `</div>`;
     } else {
       logoHeaderHTML += `<div></div>`;
@@ -2111,7 +2516,9 @@ export default function StatisticsPage() {
         <div style="margin-bottom:20px;">
           <h3 style="margin:0 0 10px 0;font-size:16px;display:flex;justify-content:space-between;page-break-after:avoid;">
             <span>${d.club}</span>
-            <span style="font-weight:normal;font-size:14px;">(${allAth.length} VĐV)</span>
+            <span style="font-weight:normal;font-size:14px;">(${
+              allAth.length
+            } VĐV)</span>
           </h3>
           <table style="width:100%;border-collapse:collapse;font-size:14px;">
             <thead>
@@ -2124,15 +2531,29 @@ export default function StatisticsPage() {
               </tr>
             </thead>
             <tbody>
-              ${allAth.map((a, i) => `
+              ${allAth
+                .map(
+                  (a, i) => `
                 <tr style="page-break-inside:avoid;">
-                  <td style="border:1px solid #000;padding:6px;text-align:center;">${i + 1}</td>
-                  <td style="border:1px solid #000;padding:6px;font-weight:bold;">${a.name}</td>
-                  <td style="border:1px solid #000;padding:6px;text-align:center;">${a.gender === 'male' ? 'Nam' : 'Nữ'}</td>
-                  <td style="border:1px solid #000;padding:6px;">${a.categoryName}</td>
-                  <td style="border:1px solid #000;padding:6px;text-align:center;">${a.weight ? a.weight + 'kg' : ''}</td>
+                  <td style="border:1px solid #000;padding:6px;text-align:center;">${
+                    i + 1
+                  }</td>
+                  <td style="border:1px solid #000;padding:6px;font-weight:bold;">${
+                    a.name
+                  }</td>
+                  <td style="border:1px solid #000;padding:6px;text-align:center;">${
+                    a.gender === "male" ? "Nam" : "Nữ"
+                  }</td>
+                  <td style="border:1px solid #000;padding:6px;">${
+                    a.categoryName
+                  }</td>
+                  <td style="border:1px solid #000;padding:6px;text-align:center;">${
+                    a.weight ? a.weight + "kg" : ""
+                  }</td>
                 </tr>
-              `).join('')}
+              `
+                )
+                .join("")}
             </tbody>
           </table>
         </div>
@@ -2142,26 +2563,22 @@ export default function StatisticsPage() {
     const styleStr = `
       @page { size: portrait; margin: 10mm; }
       body { font-family: 'Times New Roman', Times, serif; color: #000; }
-      .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 0 10px; }
-      .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
+      .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 0 10px; }      .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
       .app-icon { height: 60px; width: 60px; object-fit: contain; }
       .sponsor-logos { display: flex; align-items: center; gap: 10px; }
       .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
     `;
 
-    printFrame.contentDocument.write(`<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}</body></html>`);
-    printFrame.contentDocument.close();
-    setTimeout(() => {
-      printFrame.contentWindow.print();
-      setTimeout(() => document.body.removeChild(printFrame), 1000);
-    }, 300);
+    printIframeWithLoading(
+      `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}</body></html>`
+    );
   };
 
   // ----- FEES EXPORT -----
   const handleExportFeesExcel = () => {
     const summary = getClubFeeSummary();
     const data = summary.map((d, i) => ({
-      "STT": i + 1,
+      STT: i + 1,
       "CLB/Đơn vị": d.club,
       "Số VĐV Cá nhân": d.individualCount,
       "Thành tiền (Cá nhân)": d.individualFeeTotal,
@@ -2170,39 +2587,48 @@ export default function StatisticsPage() {
       "Nội dung thi thêm": d.extraEventsForSurcharge,
       "Thành tiền (Phụ thu)": d.surchargeTotal,
       "Tổng lệ phí": d.totalFee,
-      "Tình trạng": feePayments[d.club] ? "Đã đóng" : "Chưa đóng"
+      "Tình trạng": feePayments[d.club] ? "Đã đóng" : "Chưa đóng",
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Thong Ke Le Phi");
-    XLSX.writeFile(wb, `LePhi_${tournament.name.replace(/\s+/g, '_')}.xlsx`);
+    XLSX.writeFile(wb, `LePhi_${tournament.name.replace(/\s+/g, "_")}.xlsx`);
     toast.success("Đã xuất file Excel Thống kê Lệ phí");
   };
 
   const handleExportFeesPDF = () => {
     const summary = getClubFeeSummary();
-    const totalInd = summary.reduce((s,d) => s + d.individualFeeTotal, 0);
-    const totalTeam = summary.reduce((s,d) => s + d.teamFeeTotal, 0);
-    const totalSur = summary.reduce((s,d) => s + d.surchargeTotal, 0);
-    const totalAll = summary.reduce((s,d) => s + d.totalFee, 0);
+    const totalInd = summary.reduce((s, d) => s + d.individualFeeTotal, 0);
+    const totalTeam = summary.reduce((s, d) => s + d.teamFeeTotal, 0);
+    const totalSur = summary.reduce((s, d) => s + d.surchargeTotal, 0);
+    const totalAll = summary.reduce((s, d) => s + d.totalFee, 0);
 
-    const printFrame = document.createElement('iframe');
-    printFrame.style.display = 'none';
+    const printFrame = document.createElement("iframe");
+    printFrame.style.display = "none";
     document.body.appendChild(printFrame);
 
     // Logos HTML using the same method
-    const logoUrl = getAppBaseUrl() + "/icon.png";
+    const logoUrl = getAppBaseUrl() + "icon.png";
     const appLogoHTML = `<img src="${logoUrl}" class="app-icon" alt="App Logo" />`;
     const getSystemLogoHTML = () => {
-      const savedLogo = tournament.sponsorLogos?.systemLogo || tournament.customLogoBase64 || localStorage.getItem('karate_system_logo');
-      if (savedLogo) return `<img src="${savedLogo}" class="system-logo" alt="System Logo" />`;
-      return '';
+      const savedLogo =
+        tournament.sponsorLogos?.systemLogo ||
+        tournament.customLogoBase64 ||
+        null;
+      if (savedLogo)
+        return `<img src="${savedLogo}" class="system-logo" alt="System Logo" />`;
+      return "";
     };
     const getSponsorLogosHTML = () => {
       const sponsors = tournament.sponsorLogos?.sponsors || [];
-      if (sponsors.length === 0) return '';
-      return sponsors.map(logo => `<img src="${logo}" class="sponsor-logo" alt="Sponsor Logo" />`).join('');
+      if (sponsors.length === 0) return "";
+      return sponsors
+        .map(
+          (logo) =>
+            `<img src="${logo}" class="sponsor-logo" alt="Sponsor Logo" />`
+        )
+        .join("");
     };
 
     const logoHeaderHTML = `
@@ -2236,21 +2662,35 @@ export default function StatisticsPage() {
           </tr>
         </thead>
         <tbody>
-          ${summary.map((d, i) => `
+          ${summary
+            .map(
+              (d, i) => `
             <tr style="page-break-inside:avoid;">
-              <td style="border:1px solid #000;padding:6px;text-align:center;">${i + 1}</td>
-              <td style="border:1px solid #000;padding:6px;font-weight:bold;">${d.club}</td>
-              <td style="border:1px solid #000;padding:6px;text-align:right;">${formatCurrency(d.totalFee)}</td>
-              <td style="border:1px solid #000;padding:6px;text-align:center;color:${feePayments[d.club] ? '#059669' : '#dc2626'}">
-                 ${feePayments[d.club] ? 'Đã đóng' : 'Chưa đóng'}
+              <td style="border:1px solid #000;padding:6px;text-align:center;">${
+                i + 1
+              }</td>
+              <td style="border:1px solid #000;padding:6px;font-weight:bold;">${
+                d.club
+              }</td>
+              <td style="border:1px solid #000;padding:6px;text-align:right;">${formatCurrency(
+                d.totalFee
+              )}</td>
+              <td style="border:1px solid #000;padding:6px;text-align:center;color:${
+                feePayments[d.club] ? "#059669" : "#dc2626"
+              }">
+                 ${feePayments[d.club] ? "Đã đóng" : "Chưa đóng"}
               </td>
             </tr>
-          `).join('')}
+          `
+            )
+            .join("")}
         </tbody>
         <tfoot>
           <tr style="font-weight:bold;background:#f8fafc;">
             <td colspan="2" style="border:1px solid #000;padding:6px;text-align:center;">TỔNG CỘNG</td>
-            <td style="border:1px solid #000;padding:6px;text-align:right;">${formatCurrency(totalAll)}</td>
+            <td style="border:1px solid #000;padding:6px;text-align:right;">${formatCurrency(
+              totalAll
+            )}</td>
             <td style="border:1px solid #000;padding:6px;"></td>
           </tr>
         </tfoot>
@@ -2262,26 +2702,18 @@ export default function StatisticsPage() {
       body { font-family: 'Times New Roman', Times, serif; color: #000; }
       .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 0 10px; }
       .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
-      .app-icon { height: 60px; width: 60px; object-fit: contain; }
-      .sponsor-logos { display: flex; align-items: center; gap: 10px; justify-content: flex-end;}
+      .app-icon { height: 60px; width: 60px; object-fit: contain; }      .sponsor-logos { display: flex; align-items: center; gap: 10px; justify-content: flex-end;}
       .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
     `;
 
-    printFrame.contentDocument.write(`<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}</body></html>`);
-    printFrame.contentDocument.close();
-    setTimeout(() => {
-      printFrame.contentWindow.print();
-      setTimeout(() => document.body.removeChild(printFrame), 1000);
-    }, 300);
+    printIframeWithLoading(
+      `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}</body></html>`
+    );
   };
-
 
   // Export delegation stats to PDF (print via iframe)
   const handleExportDelegationPDF = () => {
     const delegations = getClubDelegationSummary();
-    const printFrame = document.createElement('iframe');
-    printFrame.style.display = 'none';
-    document.body.appendChild(printFrame);
 
     // Logos
     const appIconUrl = `${getAppBaseUrl()}icon.png`;
@@ -2297,7 +2729,9 @@ export default function StatisticsPage() {
     logoHeaderHTML += `<img src="${appIconUrl}" class="app-icon" />`;
     if (sponsors.length > 0) {
       logoHeaderHTML += `<div class="sponsor-logos">`;
-      sponsors.forEach(logo => { logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`; });
+      sponsors.forEach((logo) => {
+        logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`;
+      });
       logoHeaderHTML += `</div>`;
     } else {
       logoHeaderHTML += `<div></div>`;
@@ -2329,7 +2763,9 @@ export default function StatisticsPage() {
           </tr>
         </thead>
         <tbody>
-          ${delegations.map((d, i) => `
+          ${delegations
+            .map(
+              (d, i) => `
             <tr>
               <td style="text-align:center">${i + 1}</td>
               <td>${d.club}</td>
@@ -2338,7 +2774,9 @@ export default function StatisticsPage() {
               <td style="text-align:center">${d.maleCount}</td>
               <td style="text-align:center">${d.femaleCount}</td>
             </tr>
-          `).join('')}
+          `
+            )
+            .join("")}
         </tbody>
         <tfoot>
           <tr>
@@ -2351,8 +2789,7 @@ export default function StatisticsPage() {
         </tfoot>
       </table>
     `;
-
-    printFrame.contentDocument.write(`<!DOCTYPE html><html><head>
+    printIframeWithLoading(`<!DOCTYPE html><html><head>
       <meta charset="utf-8"/>
       <title>Thống kê - ${tournament.name}</title>
       <style>
@@ -2371,15 +2808,69 @@ export default function StatisticsPage() {
         .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
       </style>
     </head><body>${htmlContent}</body></html>`);
-    printFrame.contentDocument.close();
-    setTimeout(() => {
-      printFrame.contentWindow.print();
-      setTimeout(() => document.body.removeChild(printFrame), 1000);
-    }, 300);
   };
-
   return (
     <div className="page statistics-page">
+      {/* PDF Loading Overlay */}
+      {isPdfLoading && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(3px)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "20px",
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              padding: "36px 48px",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "16px",
+              minWidth: "280px",
+            }}
+          >
+            {/* Spinner */}
+            <div
+              style={{
+                width: "52px",
+                height: "52px",
+                border: "5px solid #e2e8f0",
+                borderTopColor: "#3b82f6",
+                borderRadius: "50%",
+                animation: "pdf-spin 0.8s linear infinite",
+              }}
+            />
+            <div style={{ textAlign: "center" }}>
+              <div
+                style={{
+                  fontSize: "17px",
+                  fontWeight: 700,
+                  color: "#0f172a",
+                  marginBottom: "6px",
+                }}
+              >
+                📄 Đang chuẩn bị file PDF...
+              </div>
+              <div style={{ fontSize: "13px", color: "#64748b" }}>
+                Vui lòng chờ, đừng đóng cửa sổ
+              </div>
+            </div>
+          </div>
+          <style>{`@keyframes pdf-spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      )}
+
       <div className="container">
         <nav className="breadcrumb">
           <Link to={`/tournament/${tournament.id}`} className="back-link">
@@ -2395,7 +2886,10 @@ export default function StatisticsPage() {
 
         <header className="page-header">
           <div>
-            <h1 className="page-title">📊 Thống kê & Bảng tổng sắp</h1>
+            <h1 className="page-title">
+              <img src={appIcon} alt="" className="page-title-logo" />
+              Thống kê & Bảng tổng sắp
+            </h1>
             <p className="page-subtitle">{tournament.name}</p>
           </div>
         </header>
@@ -2409,7 +2903,9 @@ export default function StatisticsPage() {
             📋 Tổng quan
           </button>
           <button
-            className={`stats-tab ${activeTab === "delegation" ? "active" : ""}`}
+            className={`stats-tab ${
+              activeTab === "delegation" ? "active" : ""
+            }`}
             onClick={() => setActiveTab("delegation")}
           >
             🏢 Thống kê đoàn
@@ -2450,7 +2946,14 @@ export default function StatisticsPage() {
                 <div className="overview-card-value">
                   {getAllAthletes().length}
                 </div>
-                <div className="overview-card-label">Tổng VĐV</div>
+                <div className="overview-card-label">Tổng VĐV (Lượt)</div>
+              </div>
+              <div className="overview-card">
+                <div className="overview-card-icon">👤</div>
+                <div className="overview-card-value">
+                  {getUniqueAthletesCount()}
+                </div>
+                <div className="overview-card-label">VĐV Thực Tế (Unique)</div>
               </div>
               <div className="overview-card">
                 <div className="overview-card-icon">🏢</div>
@@ -2462,14 +2965,14 @@ export default function StatisticsPage() {
                 <div className="overview-card-value">
                   {getGenderCount("male")}
                 </div>
-                <div className="overview-card-label">VĐV Nam</div>
+                <div className="overview-card-label">Lượt VĐV Nam</div>
               </div>
               <div className="overview-card female">
                 <div className="overview-card-icon">♀️</div>
                 <div className="overview-card-value">
                   {getGenderCount("female")}
                 </div>
-                <div className="overview-card-label">VĐV Nữ</div>
+                <div className="overview-card-label">Lượt VĐV Nữ</div>
               </div>
               <div className="overview-card">
                 <div className="overview-card-icon">✅</div>
@@ -2488,22 +2991,42 @@ export default function StatisticsPage() {
                     const athletesInClub = getAllAthletes().filter(
                       (a) => a.club?.trim() === club
                     );
-                    const maleCount = athletesInClub.filter(
-                      (a) => a.gender === "male"
-                    ).length;
-                    const femaleCount = athletesInClub.filter(
-                      (a) => a.gender === "female"
-                    ).length;
+                    const uniqueAthletes = new Set();
+                    const uniqueMale = new Set();
+                    const uniqueFemale = new Set();
+
+                    athletesInClub.forEach((a) => {
+                      const key = `${(a.name || "").trim().toLowerCase()}_${
+                        a.birthDate || a.birthYear || ""
+                      }_${a.gender || ""}_${(a.club || "")
+                        .trim()
+                        .toLowerCase()}`;
+                      uniqueAthletes.add(key);
+                      if (a.gender === "male") uniqueMale.add(key);
+                      if (a.gender === "female") uniqueFemale.add(key);
+                    });
+
                     return (
                       <div key={club} className="club-item">
                         <span className="club-name">{club}</span>
-                        <div className="club-stats">
+                        <div
+                          className="club-stats"
+                          title={`Lượt: ${athletesInClub.length} | Nam: ${
+                            athletesInClub.filter((a) => a.gender === "male")
+                              .length
+                          } | Nữ: ${
+                            athletesInClub.filter((a) => a.gender === "female")
+                              .length
+                          }`}
+                        >
                           <span className="club-stat">
-                            {athletesInClub.length} VĐV
+                            {uniqueAthletes.size} VĐV
                           </span>
-                          <span className="club-stat male">♂ {maleCount}</span>
+                          <span className="club-stat male">
+                            ♂ {uniqueMale.size}
+                          </span>
                           <span className="club-stat female">
-                            ♀ {femaleCount}
+                            ♀ {uniqueFemale.size}
                           </span>
                         </div>
                       </div>
@@ -2544,63 +3067,178 @@ export default function StatisticsPage() {
         {/* ===== TAB: DELEGATION STATISTICS ===== */}
         {activeTab === "delegation" && (
           <div className="stats-content">
-            <div className="results-actions" style={{ marginBottom: '16px' }}>
-              <button className="btn btn-secondary" onClick={handleExportDelegation}>
+            <div className="results-actions" style={{ marginBottom: "16px" }}>
+              <button
+                className="btn btn-secondary"
+                onClick={handleExportDelegation}
+              >
                 📤 Xuất Excel
               </button>
-              <button className="btn btn-primary" onClick={handleExportDelegationPDF}>
+              <button
+                className="btn btn-primary"
+                onClick={handleExportDelegationPDF}
+              >
                 📄 Xuất PDF
               </button>
             </div>
 
             {/* Official Statistics Table */}
             <div className="section-card">
-              <h3 style={{ textAlign: 'center', fontSize: '18px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '2px' }}>THỐNG KÊ</h3>
-              <p style={{ textAlign: 'center', fontSize: '14px', fontWeight: 600, fontStyle: 'italic', color: '#334155', marginBottom: '16px' }}>
+              <h3
+                style={{
+                  textAlign: "center",
+                  fontSize: "18px",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  marginBottom: "2px",
+                }}
+              >
+                THỐNG KÊ
+              </h3>
+              <p
+                style={{
+                  textAlign: "center",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  fontStyle: "italic",
+                  color: "#334155",
+                  marginBottom: "16px",
+                }}
+              >
                 {tournament.name}
               </p>
               <div className="table-responsive">
                 <table className="stats-table delegation-table">
                   <thead>
                     <tr>
-                      <th rowSpan={2} style={{ textAlign: 'center', verticalAlign: 'middle', width: '40px' }}>TT</th>
-                      <th rowSpan={2} style={{ verticalAlign: 'middle' }}>ĐƠN VỊ</th>
-                      <th colSpan={2} style={{ textAlign: 'center', background: '#f59e0b', color: '#000', borderBottom: '1px solid #d97706' }}>CÁN BỘ</th>
-                      <th colSpan={2} style={{ textAlign: 'center', background: '#22c55e', color: '#fff', borderBottom: '1px solid #16a34a' }}>VĐV</th>
+                      <th
+                        rowSpan={2}
+                        style={{
+                          textAlign: "center",
+                          verticalAlign: "middle",
+                          width: "40px",
+                        }}
+                      >
+                        TT
+                      </th>
+                      <th rowSpan={2} style={{ verticalAlign: "middle" }}>
+                        ĐƠN VỊ
+                      </th>
+                      <th
+                        colSpan={2}
+                        style={{
+                          textAlign: "center",
+                          background: "#f59e0b",
+                          color: "#000",
+                          borderBottom: "1px solid #d97706",
+                        }}
+                      >
+                        CÁN BỘ
+                      </th>
+                      <th
+                        colSpan={2}
+                        style={{
+                          textAlign: "center",
+                          background: "#22c55e",
+                          color: "#fff",
+                          borderBottom: "1px solid #16a34a",
+                        }}
+                      >
+                        VĐV
+                      </th>
                     </tr>
                     <tr>
-                      <th style={{ textAlign: 'center', background: '#fbbf24', color: '#000', width: '55px' }}>TĐ</th>
-                      <th style={{ textAlign: 'center', background: '#fbbf24', color: '#000', width: '55px' }}>HLV</th>
-                      <th style={{ textAlign: 'center', background: '#4ade80', color: '#000', width: '60px' }}>Nam</th>
-                      <th style={{ textAlign: 'center', background: '#4ade80', color: '#000', width: '60px' }}>Nữ</th>
+                      <th
+                        style={{
+                          textAlign: "center",
+                          background: "#fbbf24",
+                          color: "#000",
+                          width: "55px",
+                        }}
+                      >
+                        TĐ
+                      </th>
+                      <th
+                        style={{
+                          textAlign: "center",
+                          background: "#fbbf24",
+                          color: "#000",
+                          width: "55px",
+                        }}
+                      >
+                        HLV
+                      </th>
+                      <th
+                        style={{
+                          textAlign: "center",
+                          background: "#4ade80",
+                          color: "#000",
+                          width: "60px",
+                        }}
+                      >
+                        Nam
+                      </th>
+                      <th
+                        style={{
+                          textAlign: "center",
+                          background: "#4ade80",
+                          color: "#000",
+                          width: "60px",
+                        }}
+                      >
+                        Nữ
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {getClubDelegationSummary().map((d, i) => (
                       <tr key={d.club}>
-                        <td style={{ textAlign: 'center' }}>{i + 1}</td>
+                        <td style={{ textAlign: "center" }}>{i + 1}</td>
                         <td style={{ fontWeight: 500 }}>{d.club}</td>
-                        <td style={{ textAlign: 'center' }}>{d.teamLeaderCount}</td>
-                        <td style={{ textAlign: 'center' }}>{d.coachCount}</td>
-                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{d.maleCount}</td>
-                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{d.femaleCount}</td>
+                        <td style={{ textAlign: "center" }}>
+                          {d.teamLeaderCount}
+                        </td>
+                        <td style={{ textAlign: "center" }}>{d.coachCount}</td>
+                        <td style={{ textAlign: "center", fontWeight: 600 }}>
+                          {d.maleCount}
+                        </td>
+                        <td style={{ textAlign: "center", fontWeight: 600 }}>
+                          {d.femaleCount}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr style={{ fontWeight: 700, background: '#fef9c3' }}>
-                      <td colSpan={2} style={{ textAlign: 'center', fontWeight: 800 }}>TỔNG CỘNG</td>
-                      <td style={{ textAlign: 'center' }}>
-                        {getClubDelegationSummary().reduce((s, d) => s + d.teamLeaderCount, 0)}
+                    <tr style={{ fontWeight: 700, background: "#fef9c3" }}>
+                      <td
+                        colSpan={2}
+                        style={{ textAlign: "center", fontWeight: 800 }}
+                      >
+                        TỔNG CỘNG
                       </td>
-                      <td style={{ textAlign: 'center' }}>
-                        {getClubDelegationSummary().reduce((s, d) => s + d.coachCount, 0)}
+                      <td style={{ textAlign: "center" }}>
+                        {getClubDelegationSummary().reduce(
+                          (s, d) => s + d.teamLeaderCount,
+                          0
+                        )}
                       </td>
-                      <td style={{ textAlign: 'center' }}>
-                        {getClubDelegationSummary().reduce((s, d) => s + d.maleCount, 0)}
+                      <td style={{ textAlign: "center" }}>
+                        {getClubDelegationSummary().reduce(
+                          (s, d) => s + d.coachCount,
+                          0
+                        )}
                       </td>
-                      <td style={{ textAlign: 'center' }}>
-                        {getClubDelegationSummary().reduce((s, d) => s + d.femaleCount, 0)}
+                      <td style={{ textAlign: "center" }}>
+                        {getClubDelegationSummary().reduce(
+                          (s, d) => s + d.maleCount,
+                          0
+                        )}
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        {getClubDelegationSummary().reduce(
+                          (s, d) => s + d.femaleCount,
+                          0
+                        )}
                       </td>
                     </tr>
                   </tfoot>
@@ -2609,155 +3247,293 @@ export default function StatisticsPage() {
             </div>
 
             {/* Detailed Club Registration Info (editable) */}
-            <div className="section-card" style={{ marginTop: '20px' }}>
+            <div className="section-card" style={{ marginTop: "20px" }}>
               <h3>📝 Chi tiết thông tin đoàn ({clubs.length} CLB)</h3>
-              <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '12px' }}>
+              <p
+                style={{
+                  color: "#64748b",
+                  fontSize: "13px",
+                  marginBottom: "12px",
+                }}
+              >
                 Nhấn "✏️" để chỉnh sửa tên Trưởng đoàn & HLV cho từng CLB.
               </p>
               <div className="table-responsive">
                 <table className="stats-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '40px' }}>STT</th>
+                      <th style={{ width: "40px" }}>STT</th>
                       <th>CLB/Đơn vị</th>
                       <th>Trưởng đoàn</th>
                       <th>HLV</th>
-                      <th style={{ textAlign: 'center' }}>VĐV Nam</th>
-                      <th style={{ textAlign: 'center' }}>VĐV Nữ</th>
-                      <th style={{ textAlign: 'center' }}>Tổng VĐV</th>
-                      <th style={{ width: '60px' }}></th>
+                      <th style={{ textAlign: "center" }}>VĐV Nam</th>
+                      <th style={{ textAlign: "center" }}>VĐV Nữ</th>
+                      <th style={{ textAlign: "center" }}>Tổng VĐV</th>
+                      <th style={{ width: "60px" }}></th>
                     </tr>
                   </thead>
                   <tbody>
                     {getClubDelegationSummary().map((d, i) => (
                       <tr key={d.club}>
-                        <td style={{ textAlign: 'center' }}>{i + 1}</td>
+                        <td style={{ textAlign: "center" }}>{i + 1}</td>
                         <td style={{ fontWeight: 600 }}>{d.club}</td>
                         <td>
                           {editingClubReg === d.club ? (
                             <input
                               type="text"
                               value={clubRegForm.teamLeader}
-                              onChange={(e) => setClubRegForm({ ...clubRegForm, teamLeader: e.target.value })}
+                              onChange={(e) =>
+                                setClubRegForm({
+                                  ...clubRegForm,
+                                  teamLeader: e.target.value,
+                                })
+                              }
                               placeholder="Tên trưởng đoàn"
-                              style={{ width: '100%', fontSize: '13px', padding: '4px 6px' }}
+                              style={{
+                                width: "100%",
+                                fontSize: "13px",
+                                padding: "4px 6px",
+                              }}
                             />
                           ) : (
-                            d.teamLeader || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Chưa có</span>
+                            d.teamLeader || (
+                              <span
+                                style={{
+                                  color: "#94a3b8",
+                                  fontStyle: "italic",
+                                }}
+                              >
+                                Chưa có
+                              </span>
+                            )
                           )}
                         </td>
                         <td>
                           {editingClubReg === d.club ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "4px",
+                              }}
+                            >
                               {clubRegForm.coaches.map((c, ci) => (
-                                <div key={ci} style={{ display: 'flex', gap: '4px' }}>
+                                <div
+                                  key={ci}
+                                  style={{ display: "flex", gap: "4px" }}
+                                >
                                   <input
                                     type="text"
                                     value={c}
                                     onChange={(e) => {
                                       const updated = [...clubRegForm.coaches];
                                       updated[ci] = e.target.value;
-                                      setClubRegForm({ ...clubRegForm, coaches: updated });
+                                      setClubRegForm({
+                                        ...clubRegForm,
+                                        coaches: updated,
+                                      });
                                     }}
                                     placeholder={`HLV ${ci + 1}`}
-                                    style={{ flex: 1, fontSize: '13px', padding: '4px 6px' }}
+                                    style={{
+                                      flex: 1,
+                                      fontSize: "13px",
+                                      padding: "4px 6px",
+                                    }}
                                   />
                                   {clubRegForm.coaches.length > 1 && (
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        const updated = clubRegForm.coaches.filter((_, j) => j !== ci);
-                                        setClubRegForm({ ...clubRegForm, coaches: updated });
+                                        const updated =
+                                          clubRegForm.coaches.filter(
+                                            (_, j) => j !== ci
+                                          );
+                                        setClubRegForm({
+                                          ...clubRegForm,
+                                          coaches: updated,
+                                        });
                                       }}
-                                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '14px' }}
-                                    >✕</button>
+                                      style={{
+                                        border: "none",
+                                        background: "none",
+                                        cursor: "pointer",
+                                        color: "#ef4444",
+                                        fontSize: "14px",
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
                                   )}
                                 </div>
                               ))}
                               {clubRegForm.coaches.length < 3 && (
                                 <button
                                   type="button"
-                                  onClick={() => setClubRegForm({ ...clubRegForm, coaches: [...clubRegForm.coaches, ''] })}
-                                  style={{ fontSize: '11px', padding: '2px 6px', border: '1px dashed #94a3b8', background: 'none', borderRadius: '4px', cursor: 'pointer', color: '#64748b' }}
-                                >+ Thêm HLV</button>
+                                  onClick={() =>
+                                    setClubRegForm({
+                                      ...clubRegForm,
+                                      coaches: [...clubRegForm.coaches, ""],
+                                    })
+                                  }
+                                  style={{
+                                    fontSize: "11px",
+                                    padding: "2px 6px",
+                                    border: "1px dashed #94a3b8",
+                                    background: "none",
+                                    borderRadius: "4px",
+                                    cursor: "pointer",
+                                    color: "#64748b",
+                                  }}
+                                >
+                                  + Thêm HLV
+                                </button>
                               )}
                             </div>
+                          ) : d.coaches.length > 0 ? (
+                            d.coaches.join(", ")
                           ) : (
-                            d.coaches.length > 0
-                              ? d.coaches.join(', ')
-                              : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Chưa có</span>
+                            <span
+                              style={{ color: "#94a3b8", fontStyle: "italic" }}
+                            >
+                              Chưa có
+                            </span>
                           )}
                         </td>
-                        <td style={{ textAlign: 'center', color: '#3b82f6' }}>{d.maleCount}</td>
-                        <td style={{ textAlign: 'center', color: '#ec4899' }}>{d.femaleCount}</td>
-                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{d.athleteCount}</td>
+                        <td style={{ textAlign: "center", color: "#3b82f6" }}>
+                          {d.maleCount}
+                        </td>
+                        <td style={{ textAlign: "center", color: "#ec4899" }}>
+                          {d.femaleCount}
+                        </td>
+                        <td style={{ textAlign: "center", fontWeight: 600 }}>
+                          {d.athleteCount}
+                        </td>
                         <td>
                           {editingClubReg === d.club ? (
-                            <div style={{ display: 'flex', gap: '4px' }}>
+                            <div style={{ display: "flex", gap: "4px" }}>
                               <button
-                                className="btn btn-sm" 
-                                style={{ background: '#22c55e', color: '#fff', border: 'none', padding: '4px 8px', fontSize: '12px', borderRadius: '4px', cursor: 'pointer' }}
+                                className="btn btn-sm"
+                                style={{
+                                  background: "#22c55e",
+                                  color: "#fff",
+                                  border: "none",
+                                  padding: "4px 8px",
+                                  fontSize: "12px",
+                                  borderRadius: "4px",
+                                  cursor: "pointer",
+                                }}
                                 onClick={handleSaveClubReg}
                                 title="Lưu lại"
-                              >✔</button>
+                              >
+                                ✔
+                              </button>
                               <button
                                 className="btn btn-sm"
-                                style={{ background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', padding: '4px 8px', fontSize: '12px', borderRadius: '4px', cursor: 'pointer' }}
+                                style={{
+                                  background: "#f1f5f9",
+                                  color: "#64748b",
+                                  border: "1px solid #e2e8f0",
+                                  padding: "4px 8px",
+                                  fontSize: "12px",
+                                  borderRadius: "4px",
+                                  cursor: "pointer",
+                                }}
                                 onClick={() => setEditingClubReg(null)}
                                 title="Hủy bỏ"
-                              >✕</button>
-                               <button
-                                className="btn btn-sm"
-                                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '4px 8px', fontSize: '12px', borderRadius: '4px', cursor: 'pointer' }}
-                                onClick={handleDeleteClubReg}
-                                title="Xóa toàn bộ đoàn bộ này"
-                              >🗑</button>
-                            </div>
-                          ) : (
+                              >
+                                ✕
+                              </button>
                               <button
                                 className="btn btn-sm"
-                                style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '4px 8px', fontSize: '12px', borderRadius: '4px', cursor: 'pointer' }}
-                                onClick={() => handleEditClubReg(d.club)}
-                                title="Chỉnh sửa Ban huấn luyện"
+                                style={{
+                                  background: "#ef4444",
+                                  color: "#fff",
+                                  border: "none",
+                                  padding: "4px 8px",
+                                  fontSize: "12px",
+                                  borderRadius: "4px",
+                                  cursor: "pointer",
+                                }}
+                                onClick={handleDeleteClubReg}
+                                title="Xóa toàn bộ đoàn bộ này"
                               >
-                                ✏️
+                                🗑
                               </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                            </div>
+                          ) : (
+                            <button
+                              className="btn btn-sm"
+                              style={{
+                                background: "#3b82f6",
+                                color: "#fff",
+                                border: "none",
+                                padding: "4px 8px",
+                                fontSize: "12px",
+                                borderRadius: "4px",
+                                cursor: "pointer",
+                              }}
+                              onClick={() => handleEditClubReg(d.club)}
+                              title="Chỉnh sửa Ban huấn luyện"
+                            >
+                              ✏️
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-
+            </div>
 
             {/* Athletes by Category */}
-            <div className="section-card" style={{ marginTop: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3>📋 Danh sách VĐV theo hạng mục ({tournament.categories.length})</h3>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="btn btn-sm btn-secondary" onClick={handleExportAthsByCatExcel}>
+            <div className="section-card" style={{ marginTop: "20px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "16px",
+                }}
+              >
+                <h3>
+                  📋 Danh sách VĐV theo hạng mục ({tournament.categories.length}
+                  )
+                </h3>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    onClick={handleExportAthsByCatExcel}
+                  >
                     📤 Xuất Excel ({selectedDelegationCategories.size})
                   </button>
-                  <button className="btn btn-sm btn-primary" onClick={handleExportAthsByCatPDF}>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={handleExportAthsByCatPDF}
+                  >
                     📄 Xuất PDF ({selectedDelegationCategories.size})
                   </button>
                 </div>
               </div>
-              
-              <div style={{ marginBottom: '12px', display: 'flex', gap: '8px' }}>
-                <button 
-                  className="btn btn-sm" 
-                  onClick={() => setSelectedDelegationCategories(new Set(tournament.categories.map(c => c.id)))}
-                  style={{ background: '#f1f5f9', border: '1px solid #cbd5e1' }}
+
+              <div
+                style={{ marginBottom: "12px", display: "flex", gap: "8px" }}
+              >
+                <button
+                  className="btn btn-sm"
+                  onClick={() =>
+                    setSelectedDelegationCategories(
+                      new Set(tournament.categories.map((c) => c.id))
+                    )
+                  }
+                  style={{ background: "#f1f5f9", border: "1px solid #cbd5e1" }}
                 >
                   Chọn tất cả
                 </button>
-                <button 
-                  className="btn btn-sm" 
+                <button
+                  className="btn btn-sm"
                   onClick={() => setSelectedDelegationCategories(new Set())}
-                  style={{ background: '#f1f5f9', border: '1px solid #cbd5e1' }}
+                  style={{ background: "#f1f5f9", border: "1px solid #cbd5e1" }}
                 >
                   Bỏ chọn tất cả
                 </button>
@@ -2767,15 +3543,30 @@ export default function StatisticsPage() {
                 const athletes = cat.athletes || [];
                 if (athletes.length === 0) return null;
                 const isSelected = selectedDelegationCategories.has(cat.id);
-                
+
                 return (
-                  <div key={cat.id} style={{ marginBottom: '16px', opacity: isSelected ? 1 : 0.6, transition: 'opacity 0.2s' }}>
-                    <h4 
-                      style={{ 
-                        fontSize: '14px', color: '#1e293b', marginBottom: '8px', padding: '6px 10px', 
-                        background: isSelected ? '#eff6ff' : '#f8fafc', 
-                        borderRadius: '6px', borderLeft: `3px solid ${isSelected ? '#3b82f6' : '#cbd5e1'}`,
-                        display: 'flex', alignItems: 'center', cursor: 'pointer'
+                  <div
+                    key={cat.id}
+                    style={{
+                      marginBottom: "16px",
+                      opacity: isSelected ? 1 : 0.6,
+                      transition: "opacity 0.2s",
+                    }}
+                  >
+                    <h4
+                      style={{
+                        fontSize: "14px",
+                        color: "#1e293b",
+                        marginBottom: "8px",
+                        padding: "6px 10px",
+                        background: isSelected ? "#eff6ff" : "#f8fafc",
+                        borderRadius: "6px",
+                        borderLeft: `3px solid ${
+                          isSelected ? "#3b82f6" : "#cbd5e1"
+                        }`,
+                        display: "flex",
+                        alignItems: "center",
+                        cursor: "pointer",
                       }}
                       onClick={() => {
                         const newSet = new Set(selectedDelegationCategories);
@@ -2784,27 +3575,48 @@ export default function StatisticsPage() {
                         setSelectedDelegationCategories(newSet);
                       }}
                     >
-                      <input 
-                        type="checkbox" 
-                        checked={isSelected} 
-                        readOnly 
-                        style={{ marginRight: '10px', width: '16px', height: '16px', cursor: 'pointer' }} 
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        readOnly
+                        style={{
+                          marginRight: "10px",
+                          width: "16px",
+                          height: "16px",
+                          cursor: "pointer",
+                        }}
                       />
                       {cat.name}
-                      <span style={{ color: '#64748b', fontWeight: 400, marginLeft: '8px' }}>
-                        ({athletes.length} VĐV - {cat.type === 'kumite' ? 'Kumite' : 'Kata'} - {cat.gender === 'male' ? 'Nam' : cat.gender === 'female' ? 'Nữ' : 'Hỗn hợp'})
+                      <span
+                        style={{
+                          color: "#64748b",
+                          fontWeight: 400,
+                          marginLeft: "8px",
+                        }}
+                      >
+                        ({athletes.length} VĐV -{" "}
+                        {cat.type === "kumite" ? "Kumite" : "Kata"} -{" "}
+                        {cat.gender === "male"
+                          ? "Nam"
+                          : cat.gender === "female"
+                          ? "Nữ"
+                          : "Hỗn hợp"}
+                        )
                       </span>
                     </h4>
                     {isSelected && (
                       <div className="table-responsive">
-                        <table className="stats-table" style={{ fontSize: '13px' }}>
+                        <table
+                          className="stats-table"
+                          style={{ fontSize: "13px" }}
+                        >
                           <thead>
                             <tr>
-                              <th style={{ width: '40px' }}>STT</th>
+                              <th style={{ width: "40px" }}>STT</th>
                               <th>Họ tên</th>
                               <th>Giới tính</th>
                               <th>CLB</th>
-                              {cat.type === 'kumite' && <th>Cân nặng</th>}
+                              {cat.type === "kumite" && <th>Cân nặng</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -2812,9 +3624,11 @@ export default function StatisticsPage() {
                               <tr key={a.id || idx}>
                                 <td>{idx + 1}</td>
                                 <td style={{ fontWeight: 500 }}>{a.name}</td>
-                                <td>{a.gender === 'male' ? 'Nam' : 'Nữ'}</td>
-                                <td>{a.club || '-'}</td>
-                                {cat.type === 'kumite' && <td>{a.weight ? `${a.weight}kg` : '-'}</td>}
+                                <td>{a.gender === "male" ? "Nam" : "Nữ"}</td>
+                                <td>{a.club || "-"}</td>
+                                {cat.type === "kumite" && (
+                                  <td>{a.weight ? `${a.weight}kg` : "-"}</td>
+                                )}
                               </tr>
                             ))}
                           </tbody>
@@ -2827,49 +3641,81 @@ export default function StatisticsPage() {
             </div>
 
             {/* Athletes by Club */}
-            <div className="section-card" style={{ marginTop: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div className="section-card" style={{ marginTop: "20px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "16px",
+                }}
+              >
                 <h3>🏢 Danh sách VĐV theo Đơn vị / CLB ({clubs.length})</h3>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="btn btn-sm btn-secondary" onClick={handleExportAthsByClubExcel}>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    onClick={handleExportAthsByClubExcel}
+                  >
                     📤 Xuất Excel ({selectedDelegationClubs.size})
                   </button>
-                  <button className="btn btn-sm btn-primary" onClick={handleExportAthsByClubPDF}>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={handleExportAthsByClubPDF}
+                  >
                     📄 Xuất PDF ({selectedDelegationClubs.size})
                   </button>
                 </div>
               </div>
-              
-              <div style={{ marginBottom: '12px', display: 'flex', gap: '8px' }}>
-                <button 
-                  className="btn btn-sm" 
+
+              <div
+                style={{ marginBottom: "12px", display: "flex", gap: "8px" }}
+              >
+                <button
+                  className="btn btn-sm"
                   onClick={() => setSelectedDelegationClubs(new Set(clubs))}
-                  style={{ background: '#f1f5f9', border: '1px solid #cbd5e1' }}
+                  style={{ background: "#f1f5f9", border: "1px solid #cbd5e1" }}
                 >
                   Chọn tất cả
                 </button>
-                <button 
-                  className="btn btn-sm" 
+                <button
+                  className="btn btn-sm"
                   onClick={() => setSelectedDelegationClubs(new Set())}
-                  style={{ background: '#f1f5f9', border: '1px solid #cbd5e1' }}
+                  style={{ background: "#f1f5f9", border: "1px solid #cbd5e1" }}
                 >
                   Bỏ chọn tất cả
                 </button>
               </div>
 
               {clubs.map((club) => {
-                const allAth = getAllAthletes().filter((a) => a.club?.trim() === club);
+                const allAth = getAllAthletes().filter(
+                  (a) => a.club?.trim() === club
+                );
                 if (allAth.length === 0) return null;
                 const isSelected = selectedDelegationClubs.has(club);
-                
+
                 return (
-                  <div key={club} style={{ marginBottom: '16px', opacity: isSelected ? 1 : 0.6, transition: 'opacity 0.2s' }}>
-                    <h4 
-                      style={{ 
-                        fontSize: '14px', color: '#1e293b', marginBottom: '8px', padding: '6px 10px', 
-                        background: isSelected ? '#fefce8' : '#f8fafc', 
-                        borderRadius: '6px', borderLeft: `3px solid ${isSelected ? '#eab308' : '#cbd5e1'}`,
-                        display: 'flex', alignItems: 'center', cursor: 'pointer'
+                  <div
+                    key={club}
+                    style={{
+                      marginBottom: "16px",
+                      opacity: isSelected ? 1 : 0.6,
+                      transition: "opacity 0.2s",
+                    }}
+                  >
+                    <h4
+                      style={{
+                        fontSize: "14px",
+                        color: "#1e293b",
+                        marginBottom: "8px",
+                        padding: "6px 10px",
+                        background: isSelected ? "#fefce8" : "#f8fafc",
+                        borderRadius: "6px",
+                        borderLeft: `3px solid ${
+                          isSelected ? "#eab308" : "#cbd5e1"
+                        }`,
+                        display: "flex",
+                        alignItems: "center",
+                        cursor: "pointer",
                       }}
                       onClick={() => {
                         const newSet = new Set(selectedDelegationClubs);
@@ -2878,23 +3724,37 @@ export default function StatisticsPage() {
                         setSelectedDelegationClubs(newSet);
                       }}
                     >
-                      <input 
-                        type="checkbox" 
-                        checked={isSelected} 
-                        readOnly 
-                        style={{ marginRight: '10px', width: '16px', height: '16px', cursor: 'pointer' }} 
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        readOnly
+                        style={{
+                          marginRight: "10px",
+                          width: "16px",
+                          height: "16px",
+                          cursor: "pointer",
+                        }}
                       />
                       {club}
-                      <span style={{ color: '#64748b', fontWeight: 400, marginLeft: '8px' }}>
+                      <span
+                        style={{
+                          color: "#64748b",
+                          fontWeight: 400,
+                          marginLeft: "8px",
+                        }}
+                      >
                         ({allAth.length} VĐV)
                       </span>
                     </h4>
                     {isSelected && (
                       <div className="table-responsive">
-                        <table className="stats-table" style={{ fontSize: '13px' }}>
+                        <table
+                          className="stats-table"
+                          style={{ fontSize: "13px" }}
+                        >
                           <thead>
                             <tr>
-                              <th style={{ width: '40px' }}>STT</th>
+                              <th style={{ width: "40px" }}>STT</th>
                               <th>Họ tên</th>
                               <th>Giới tính</th>
                               <th>Hạng mục</th>
@@ -2906,9 +3766,9 @@ export default function StatisticsPage() {
                               <tr key={a.id || idx}>
                                 <td>{idx + 1}</td>
                                 <td style={{ fontWeight: 500 }}>{a.name}</td>
-                                <td>{a.gender === 'male' ? 'Nam' : 'Nữ'}</td>
+                                <td>{a.gender === "male" ? "Nam" : "Nữ"}</td>
                                 <td>{a.categoryName}</td>
-                                <td>{a.weight ? `${a.weight}kg` : '-'}</td>
+                                <td>{a.weight ? `${a.weight}kg` : "-"}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -2925,37 +3785,81 @@ export default function StatisticsPage() {
         {/* ===== TAB: LỆ PHÍ ===== */}
         {activeTab === "fees" && (
           <div className="stats-content">
-            <div className="section-card" style={{ marginBottom: '20px' }}>
+            <div className="section-card" style={{ marginBottom: "20px" }}>
               <h3>⚙️ Cài đặt Mức lệ phí</h3>
-              <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '16px' }}>
-                <div className="form-group" style={{ flex: 1, minWidth: '200px' }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "20px",
+                  flexWrap: "wrap",
+                  marginTop: "16px",
+                }}
+              >
+                <div
+                  className="form-group"
+                  style={{ flex: 1, minWidth: "200px" }}
+                >
                   <label>Lệ phí cá nhân (VNĐ/người)</label>
                   <input
                     type="number"
                     min="0"
                     step="10000"
                     value={feeSettings.individualFee}
-                    onChange={(e) => handleFeeSettingsChange("individualFee", parseInt(e.target.value) || 0)}
+                    onChange={(e) =>
+                      handleFeeSettingsChange(
+                        "individualFee",
+                        parseInt(e.target.value) || 0
+                      )
+                    }
                     className="form-input"
                   />
                 </div>
-                <div className="form-group" style={{ flex: 1, minWidth: '200px' }}>
+                <div
+                  className="form-group"
+                  style={{ flex: 1, minWidth: "200px" }}
+                >
                   <label>Lệ phí đồng đội/hỗn hợp (VNĐ/đội)</label>
                   <input
                     type="number"
                     min="0"
                     step="10000"
                     value={feeSettings.teamFee}
-                    onChange={(e) => handleFeeSettingsChange("teamFee", parseInt(e.target.value) || 0)}
+                    onChange={(e) =>
+                      handleFeeSettingsChange(
+                        "teamFee",
+                        parseInt(e.target.value) || 0
+                      )
+                    }
                     className="form-input"
                   />
                 </div>
-                <div className="form-group" style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                <div
+                  className="form-group"
+                  style={{
+                    flex: 1,
+                    minWidth: "200px",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      cursor: "pointer",
+                      fontWeight: "bold",
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={feeSettings.enableSurcharge}
-                      onChange={(e) => handleFeeSettingsChange("enableSurcharge", e.target.checked)}
+                      onChange={(e) =>
+                        handleFeeSettingsChange(
+                          "enableSurcharge",
+                          e.target.checked
+                        )
+                      }
                     />
                     Phụ thu VĐV thi &ge; 2 nội dung
                   </label>
@@ -2964,23 +3868,43 @@ export default function StatisticsPage() {
                     min="0"
                     step="10000"
                     value={feeSettings.surchargeFee}
-                    onChange={(e) => handleFeeSettingsChange("surchargeFee", parseInt(e.target.value) || 0)}
+                    onChange={(e) =>
+                      handleFeeSettingsChange(
+                        "surchargeFee",
+                        parseInt(e.target.value) || 0
+                      )
+                    }
                     className="form-input"
                     disabled={!feeSettings.enableSurcharge}
                   />
-                  <small style={{ color: '#64748b', marginTop: '4px' }}>Mức cộng thêm cho mỗi nội dung thứ 2 trở lên.</small>
+                  <small style={{ color: "#64748b", marginTop: "4px" }}>
+                    Mức cộng thêm cho mỗi nội dung thứ 2 trở lên.
+                  </small>
                 </div>
               </div>
             </div>
 
             <div className="section-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "16px",
+                }}
+              >
                 <h3>💰 Bảng kê lệ phí theo CLB/Đoàn</h3>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="btn btn-sm btn-secondary" onClick={handleExportFeesExcel}>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    onClick={handleExportFeesExcel}
+                  >
                     📤 Xuất Excel
                   </button>
-                  <button className="btn btn-sm btn-primary" onClick={handleExportFeesPDF}>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={handleExportFeesPDF}
+                  >
                     📄 Xuất PDF
                   </button>
                 </div>
@@ -2989,69 +3913,182 @@ export default function StatisticsPage() {
                 <table className="stats-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '40px' }}>STT</th>
+                      <th style={{ width: "40px" }}>STT</th>
                       <th>CLB/Đơn vị</th>
-                      <th style={{ textAlign: 'center' }}>Số VĐV Cá nhân</th>
-                      <th style={{ textAlign: 'center' }}>Số Đội tham gia</th>
-                      <th style={{ textAlign: 'center' }}>Nội dung cá nhân thi thêm</th>
-                      <th style={{ textAlign: 'right' }}>Tổng lệ phí đóng</th>
-                      <th style={{ textAlign: 'center' }}>Tình trạng đóng</th>
+                      <th style={{ textAlign: "center" }}>Số VĐV Cá nhân</th>
+                      <th style={{ textAlign: "center" }}>Số Đội tham gia</th>
+                      <th style={{ textAlign: "center" }}>
+                        Nội dung cá nhân thi thêm
+                      </th>
+                      <th style={{ textAlign: "right" }}>Tổng lệ phí đóng</th>
+                      <th style={{ textAlign: "center" }}>Tình trạng đóng</th>
                     </tr>
                   </thead>
                   <tbody>
                     {getClubFeeSummary().map((d, i) => (
                       <tr key={d.club}>
-                        <td style={{ textAlign: 'center' }}>{i + 1}</td>
+                        <td style={{ textAlign: "center" }}>{i + 1}</td>
                         <td style={{ fontWeight: 600 }}>{d.club}</td>
-                        <td style={{ textAlign: 'center' }}>{d.individualCount} <br/><small style={{color: '#94a3b8'}}>{formatCurrency(d.individualFeeTotal)}</small></td>
-                        <td style={{ textAlign: 'center' }}>{d.teamEntries} <br/><small style={{color: '#94a3b8'}}>{formatCurrency(d.teamFeeTotal)}</small></td>
-                        <td style={{ textAlign: 'center' }}>{d.extraEventsForSurcharge} <br/><small style={{color: '#94a3b8'}}>{formatCurrency(d.surchargeTotal)}</small></td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#b91c1c' }}>{formatCurrency(d.totalFee)}</td>
-                        <td style={{ textAlign: 'center' }}>
+                        <td style={{ textAlign: "center" }}>
+                          {d.individualCount} <br />
+                          <small style={{ color: "#94a3b8" }}>
+                            {formatCurrency(d.individualFeeTotal)}
+                          </small>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          {d.teamEntries} <br />
+                          <small style={{ color: "#94a3b8" }}>
+                            {formatCurrency(d.teamFeeTotal)}
+                          </small>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          {d.extraEventsForSurcharge} <br />
+                          <small style={{ color: "#94a3b8" }}>
+                            {formatCurrency(d.surchargeTotal)}
+                          </small>
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            fontWeight: "bold",
+                            color: "#b91c1c",
+                          }}
+                        >
+                          {formatCurrency(d.totalFee)}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
                           <button
                             className="btn btn-sm"
                             onClick={() => handleTogglePayment(d.club)}
                             style={{
-                                background: feePayments[d.club] ? '#ecfdf5' : '#fef2f2',
-                                color: feePayments[d.club] ? '#059669' : '#dc2626',
-                                border: `1px solid ${feePayments[d.club] ? '#34d399' : '#f87171'}`,
-                                fontWeight: 600,
-                                padding: '4px 8px',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                minWidth: '85px'
+                              background: feePayments[d.club]
+                                ? "#ecfdf5"
+                                : "#fef2f2",
+                              color: feePayments[d.club]
+                                ? "#059669"
+                                : "#dc2626",
+                              border: `1px solid ${
+                                feePayments[d.club] ? "#34d399" : "#f87171"
+                              }`,
+                              fontWeight: 600,
+                              padding: "4px 8px",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              minWidth: "85px",
                             }}
                           >
-                            {feePayments[d.club] ? 'Đã đóng' : 'Chưa đóng'}
+                            {feePayments[d.club] ? "Đã đóng" : "Chưa đóng"}
                           </button>
                         </td>
                       </tr>
                     ))}
                     {/* Total row */}
                     {(() => {
-                        const summary = getClubFeeSummary();
-                        const totalInd = summary.reduce((s,d) => s + d.individualFeeTotal, 0);
-                        const totalTeam = summary.reduce((s,d) => s + d.teamFeeTotal, 0);
-                        const totalSur = summary.reduce((s,d) => s + d.surchargeTotal, 0);
-                        const totalAll = summary.reduce((s,d) => s + d.totalFee, 0);
-                        
-                        return (
-                            <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1' }}>
-                                <td colSpan={2} style={{ textAlign: 'center', fontWeight: 'bold' }}>TỔNG CỘNG</td>
-                                <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{summary.reduce((s,d) => s + d.individualCount, 0)} <br/><span style={{color: '#94a3b8', fontSize: '12px'}}>{formatCurrency(totalInd)}</span></td>
-                                <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{summary.reduce((s,d) => s + d.teamEntries, 0)} <br/><span style={{color: '#94a3b8', fontSize: '12px'}}>{formatCurrency(totalTeam)}</span></td>
-                                <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{summary.reduce((s,d) => s + d.extraEventsForSurcharge, 0)} <br/><span style={{color: '#94a3b8', fontSize: '12px'}}>{formatCurrency(totalSur)}</span></td>
-                                <td style={{ textAlign: 'right', color: '#b91c1c', fontSize: '16px', fontWeight: 'bold' }}>{formatCurrency(totalAll)}</td>
-                                <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
-                                    <span style={{ color: '#059669' }}>
-                                        {formatCurrency(summary.reduce((s,d) => s + (feePayments[d.club] ? d.totalFee : 0), 0))}
-                                    </span><br/>
-                                    <span style={{ color: '#dc2626', fontSize: '12px' }}>
-                                        Còn nợ: {formatCurrency(summary.reduce((s,d) => s + (!feePayments[d.club] ? d.totalFee : 0), 0))}
-                                    </span>
-                                </td>
-                            </tr>
-                        );
+                      const summary = getClubFeeSummary();
+                      const totalInd = summary.reduce(
+                        (s, d) => s + d.individualFeeTotal,
+                        0
+                      );
+                      const totalTeam = summary.reduce(
+                        (s, d) => s + d.teamFeeTotal,
+                        0
+                      );
+                      const totalSur = summary.reduce(
+                        (s, d) => s + d.surchargeTotal,
+                        0
+                      );
+                      const totalAll = summary.reduce(
+                        (s, d) => s + d.totalFee,
+                        0
+                      );
+
+                      return (
+                        <tr
+                          style={{
+                            background: "#f8fafc",
+                            borderTop: "2px solid #cbd5e1",
+                          }}
+                        >
+                          <td
+                            colSpan={2}
+                            style={{ textAlign: "center", fontWeight: "bold" }}
+                          >
+                            TỔNG CỘNG
+                          </td>
+                          <td
+                            style={{ textAlign: "center", fontWeight: "bold" }}
+                          >
+                            {summary.reduce((s, d) => s + d.individualCount, 0)}{" "}
+                            <br />
+                            <span
+                              style={{ color: "#94a3b8", fontSize: "12px" }}
+                            >
+                              {formatCurrency(totalInd)}
+                            </span>
+                          </td>
+                          <td
+                            style={{ textAlign: "center", fontWeight: "bold" }}
+                          >
+                            {summary.reduce((s, d) => s + d.teamEntries, 0)}{" "}
+                            <br />
+                            <span
+                              style={{ color: "#94a3b8", fontSize: "12px" }}
+                            >
+                              {formatCurrency(totalTeam)}
+                            </span>
+                          </td>
+                          <td
+                            style={{ textAlign: "center", fontWeight: "bold" }}
+                          >
+                            {summary.reduce(
+                              (s, d) => s + d.extraEventsForSurcharge,
+                              0
+                            )}{" "}
+                            <br />
+                            <span
+                              style={{ color: "#94a3b8", fontSize: "12px" }}
+                            >
+                              {formatCurrency(totalSur)}
+                            </span>
+                          </td>
+                          <td
+                            style={{
+                              textAlign: "right",
+                              color: "#b91c1c",
+                              fontSize: "16px",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            {formatCurrency(totalAll)}
+                          </td>
+                          <td
+                            style={{ textAlign: "center", fontWeight: "bold" }}
+                          >
+                            <span style={{ color: "#059669" }}>
+                              {formatCurrency(
+                                summary.reduce(
+                                  (s, d) =>
+                                    s + (feePayments[d.club] ? d.totalFee : 0),
+                                  0
+                                )
+                              )}
+                            </span>
+                            <br />
+                            <span
+                              style={{ color: "#dc2626", fontSize: "12px" }}
+                            >
+                              Còn nợ:{" "}
+                              {formatCurrency(
+                                summary.reduce(
+                                  (s, d) =>
+                                    s + (!feePayments[d.club] ? d.totalFee : 0),
+                                  0
+                                )
+                              )}
+                            </span>
+                          </td>
+                        </tr>
+                      );
                     })()}
                   </tbody>
                 </table>
@@ -3103,6 +4140,21 @@ export default function StatisticsPage() {
                   ))}
                 </select>
               </div>
+              <div className="filter-group">
+                <label>Đơn vị/CLB:</label>
+                <select
+                  value={filterClub}
+                  onChange={(e) => setFilterClub(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="all">Tất cả</option>
+                  {getClubs().map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="search-filter">
                 <input
                   type="text"
@@ -3114,6 +4166,7 @@ export default function StatisticsPage() {
               {(filterType !== "all" ||
                 filterGender !== "all" ||
                 filterSession !== "all" ||
+                filterClub !== "all" ||
                 searchQuery !== "") && (
                 <button
                   className="btn btn-sm btn-secondary"
@@ -3121,6 +4174,7 @@ export default function StatisticsPage() {
                     setFilterType("all");
                     setFilterGender("all");
                     setFilterSession("all");
+                    setFilterClub("all");
                     setSearchQuery("");
                   }}
                 >
@@ -3145,6 +4199,20 @@ export default function StatisticsPage() {
                 onClick={handleExportBySession}
               >
                 📤 Xuất theo bộ lọc ({filteredCategories.length})
+              </button>
+              <button
+                className="btn btn-secondary"
+                style={{ background: "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd" }}
+                onClick={() => handleExportResultsByClubExcel(filterClub !== "all" ? [filterClub] : null)}
+              >
+                🏢 Kết quả CLB (Excel)
+              </button>
+              <button
+                className="btn btn-secondary"
+                style={{ background: "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd" }}
+                onClick={() => handleExportResultsByClubPDF(filterClub !== "all" ? [filterClub] : null)}
+              >
+                🏢 Kết quả CLB (PDF)
               </button>
               {selectedForExport.size > 0 && (
                 <div style={{ position: "relative", display: "inline-block" }}>
@@ -3286,9 +4354,6 @@ export default function StatisticsPage() {
                           const cats = tournament.categories.filter((c) =>
                             selectedForExport.has(c.id)
                           );
-                          const printFrame = document.createElement("iframe");
-                          printFrame.style.display = "none";
-                          document.body.appendChild(printFrame);
                           let rows = "";
                           cats.forEach((cat, idx) => {
                             const r = getCategoryResults(cat.id);
@@ -3317,8 +4382,7 @@ export default function StatisticsPage() {
                               )}</td>
                             </tr>`;
                           });
-                          printFrame.contentDocument
-                            .write(`<!DOCTYPE html><html><head>
+                          printIframeWithLoading(`<!DOCTYPE html><html><head>
                             <meta charset="utf-8"/><title>Kết quả đã chọn</title>
                             <style>
                               @page { size: portrait; margin: 10mm; }
@@ -3339,14 +4403,6 @@ export default function StatisticsPage() {
                               <th>🥇 HCV</th><th>🥈 HCB</th><th>🥉 HCĐ (1)</th><th>🥉 HCĐ (2)</th>
                             </tr></thead><tbody>${rows}</tbody></table>
                           </body></html>`);
-                          printFrame.contentDocument.close();
-                          setTimeout(() => {
-                            printFrame.contentWindow.print();
-                            setTimeout(
-                              () => document.body.removeChild(printFrame),
-                              1000
-                            );
-                          }, 300);
                           setShowExportMenu(false);
                         }}
                       >
@@ -3595,6 +4651,25 @@ export default function StatisticsPage() {
               >
                 📄 Xuất PDF
               </button>
+
+              {selectedTallyClubs.size > 0 && (
+                <>
+                  <button
+                    className="btn btn-primary"
+                    style={{ background: "#f0fdf4", color: "#16a34a", fontWeight: "bold" }}
+                    onClick={() => handleExportResultsByClubExcel(Array.from(selectedTallyClubs))}
+                  >
+                    🏢 Xuất Excel {selectedTallyClubs.size} CLB đã chọn
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    style={{ background: "#f0fdf4", color: "#16a34a", fontWeight: "bold" }}
+                    onClick={() => handleExportResultsByClubPDF(Array.from(selectedTallyClubs))}
+                  >
+                    🏢 Xuất PDF {selectedTallyClubs.size} CLB đã chọn
+                  </button>
+                </>
+              )}
             </div>
 
             {medalTally.length === 0 ? (
@@ -3608,12 +4683,31 @@ export default function StatisticsPage() {
                 <table className="medal-tally-table">
                   <thead>
                     <tr>
+                      <th style={{ width: "30px" }}>
+                        <input
+                          type="checkbox"
+                          checked={
+                            medalTally.length > 0 &&
+                            medalTally.every((c) => selectedTallyClubs.has(c.name))
+                          }
+                          onChange={(e) => {
+                            const newSet = new Set(selectedTallyClubs);
+                            medalTally.forEach((c) =>
+                              e.target.checked
+                                ? newSet.add(c.name)
+                                : newSet.delete(c.name)
+                            );
+                            setSelectedTallyClubs(newSet);
+                          }}
+                        />
+                      </th>
                       <th className="rank-col">Hạng</th>
                       <th className="club-col">Đơn vị / CLB</th>
                       <th className="medal-col gold-col">🥇 HCV</th>
                       <th className="medal-col silver-col">🥈 HCB</th>
                       <th className="medal-col bronze-col">🥉 HCĐ</th>
                       <th className="medal-col total-col">Tổng</th>
+                      <th style={{ width: "100px" }}>Thao tác</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3622,6 +4716,19 @@ export default function StatisticsPage() {
                         key={club.name}
                         className={idx < 3 ? `top-${idx + 1}` : ""}
                       >
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedTallyClubs.has(club.name)}
+                            onChange={(e) => {
+                              const newSet = new Set(selectedTallyClubs);
+                              e.target.checked
+                                ? newSet.add(club.name)
+                                : newSet.delete(club.name);
+                              setSelectedTallyClubs(newSet);
+                            }}
+                          />
+                        </td>
                         <td className="rank-cell">
                           {idx === 0
                             ? "🥇"
@@ -3636,12 +4743,32 @@ export default function StatisticsPage() {
                         <td className="silver-cell">{club.silver || "-"}</td>
                         <td className="bronze-cell">{club.bronze || "-"}</td>
                         <td className="total-cell">{club.total}</td>
+                        <td>
+                          <div style={{ display: "flex", gap: "4px" }}>
+                            <button
+                              className="btn btn-sm"
+                              style={{ padding: "4px 8px", fontSize: "11px" }}
+                              onClick={() => handleExportResultsByClubExcel([club.name])}
+                              title="Xuất kết quả CLB này (Excel)"
+                            >
+                              📤
+                            </button>
+                            <button
+                              className="btn btn-sm"
+                              style={{ padding: "4px 8px", fontSize: "11px" }}
+                              onClick={() => handleExportResultsByClubPDF([club.name])}
+                              title="Xuất kết quả CLB này (PDF)"
+                            >
+                              📄
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td colSpan="2">
+                      <td colSpan="3">
                         <strong>Tổng cộng</strong>
                       </td>
                       <td className="gold-cell">
@@ -3664,6 +4791,7 @@ export default function StatisticsPage() {
                           {medalTally.reduce((s, c) => s + c.total, 0)}
                         </strong>
                       </td>
+                      <td></td>
                     </tr>
                   </tfoot>
                 </table>
@@ -4322,7 +5450,7 @@ export default function StatisticsPage() {
                 </div>
                 {/* Match details from secretary */}
                 {importPreview.matchDetails?.length > 0 && (
-                  <div style={{ marginTop: '8px', fontSize: '12px' }}>
+                  <div style={{ marginTop: "8px", fontSize: "12px" }}>
                     <span
                       style={{
                         padding: "4px 8px",
@@ -4332,7 +5460,8 @@ export default function StatisticsPage() {
                         fontWeight: 600,
                       }}
                     >
-                      🎯 Chi tiết trận đấu: {importPreview.matchDetails.length} trận (sẽ cập nhật vào bracket)
+                      🎯 Chi tiết trận đấu: {importPreview.matchDetails.length}{" "}
+                      trận (sẽ cập nhật vào bracket)
                     </span>
                   </div>
                 )}

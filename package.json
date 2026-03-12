@@ -17,13 +17,16 @@
     "electron:build:all": "npm run build && electron-builder -mwl",
     "electron:build:dir": "npm run build && electron-builder --win --x64 --dir",
     "deploy-server": "scp license-server/server.js root@103.82.194.186:/root/karate-license-server/ && ssh root@103.82.194.186 \"pm2 restart all\"",
-    "version": "node scripts/update-version-date.js && git add package.json"
+    "version": "node scripts/update-version-date.js && git add package.json",
+    "rebuild-sqlite": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
+    "better-sqlite3": "^12.6.2",
     "dom-to-image-more": "^3.7.2",
     "electron-updater": "^6.8.3",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.0.0",
+    "jspdf-autotable": "^5.0.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.0",
@@ -38,6 +41,7 @@
     "concurrently": "^8.2.2",
     "electron": "^28.1.0",
     "electron-builder": "^24.9.1",
+    "electron-rebuild": "^3.2.9",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
@@ -62,9 +66,11 @@
       "dist/**/*",
       "electron.cjs",
       "preload.cjs",
+      "database.cjs",
       "public/**/*",
       "kata-scoreboard/**/*",
-      "kumite-scoreboard/**/*"
+      "kumite-scoreboard/**/*",
+      "node_modules/better-sqlite3/**/*"
     ],
     "win": {
       "target": [

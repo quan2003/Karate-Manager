@@ -1,6 +1,7 @@
 import { createContext, useContext, useReducer, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { createAutoBackup } from "../services/backupService";
+import { dbGetTournaments, dbSaveTournaments, runMigrationIfNeeded } from "../services/dbService";
 
 // Auto-backup counter to avoid backing up too frequently
 let autoBackupCounter = 0;
@@ -9,7 +10,7 @@ const AUTO_BACKUP_INTERVAL = 5; // Backup every N important changes
 const TournamentContext = createContext(null);
 const TournamentDispatchContext = createContext(null);
 
-const STORAGE_KEY = "karate_tournament_data";
+// Không còn dùng localStorage key trực tiếp - SQLite quản lý
 
 // Initial state
 const initialState = {
@@ -40,6 +41,7 @@ const ACTIONS = {
   UPDATE_CUSTOM_EVENTS: "UPDATE_CUSTOM_EVENTS",
   UPDATE_SPONSOR_LOGOS: "UPDATE_SPONSOR_LOGOS",
   UPDATE_CLUB_REGISTRATIONS: "UPDATE_CLUB_REGISTRATIONS",
+  MOVE_ATHLETE: "MOVE_ATHLETE",
 };
 
 function tournamentReducer(state, action) {
@@ -312,6 +314,46 @@ function tournamentReducer(state, action) {
       }
       break;
 
+    case ACTIONS.MOVE_ATHLETE: {
+      const { athleteId, newCategoryId } = action.payload;
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) => {
+          let athleteToMove = null;
+          t.categories.forEach((c) => {
+            const found = c.athletes.find((a) => a.id === athleteId);
+            if (found) athleteToMove = found;
+          });
+          if (!athleteToMove) return t;
+
+          return {
+            ...t,
+            categories: t.categories.map((c) => {
+              if (c.id === newCategoryId) {
+                if (c.athletes.some((a) => a.id === athleteId)) return c;
+                return { ...c, athletes: [...c.athletes, athleteToMove] };
+              }
+              return {
+                ...c,
+                athletes: c.athletes.filter((a) => a.id !== athleteId),
+              };
+            }),
+          };
+        }),
+      };
+      if (state.currentTournament) {
+        newState.currentTournament = newState.tournaments.find(
+          (t) => t.id === state.currentTournament.id
+        );
+      }
+      if (state.currentCategory) {
+        newState.currentCategory = newState.currentTournament?.categories.find(
+          (c) => c.id === state.currentCategory.id
+        );
+      }
+      break;
+    }
+
     case ACTIONS.IMPORT_ATHLETES:
       newState = {
         ...state,
@@ -484,15 +526,12 @@ function tournamentReducer(state, action) {
 }
 
 let saveTimeout = null;
-function saveToStorage(state, actionType) {
-  // Debounce localStorage save to avoid blocking UI
+async function saveToStorage(state, actionType) {
+  // Debounce save to avoid blocking UI
   if (saveTimeout) clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => {
+  saveTimeout = setTimeout(async () => {
     try {
-      const dataToSave = {
-        tournaments: state.tournaments,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+      await dbSaveTournaments(state.tournaments);
 
       // Auto-backup for important changes
       const importantActions = [
@@ -511,19 +550,19 @@ function saveToStorage(state, actionType) {
         }
       }
     } catch (error) {
-      console.error("Failed to save to localStorage:", error);
+      console.error("Failed to save to database:", error);
     }
   }, 100);
 }
 
-function loadFromStorage() {
+async function loadFromStorage() {
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (data) {
-      return JSON.parse(data);
+    const tournaments = await dbGetTournaments();
+    if (tournaments && tournaments.length > 0) {
+      return { tournaments };
     }
   } catch (error) {
-    console.error("Failed to load from localStorage:", error);
+    console.error("Failed to load from database:", error);
   }
   return null;
 }
@@ -531,12 +570,18 @@ function loadFromStorage() {
 export function TournamentProvider({ children }) {
   const [state, dispatch] = useReducer(tournamentReducer, initialState);
 
-  // Load data from localStorage on mount
+  // Load data from SQLite on mount (run migration first if needed)
   useEffect(() => {
-    const savedData = loadFromStorage();
-    if (savedData) {
-      dispatch({ type: ACTIONS.LOAD_DATA, payload: savedData });
-    }
+    const initialize = async () => {
+      // 1. Migrate localStorage -> SQLite (chỉ chạy 1 lần)
+      await runMigrationIfNeeded();
+      // 2. Load data từ SQLite
+      const savedData = await loadFromStorage();
+      if (savedData) {
+        dispatch({ type: ACTIONS.LOAD_DATA, payload: savedData });
+      }
+    };
+    initialize();
   }, []);
 
   return (
