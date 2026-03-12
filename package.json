@@ -1,7 +1,7 @@
 {
   "name": "karate-tournament-manager",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "type": "module",
   "main": "electron.cjs",
   "author": "Karate Tournament",
@@ -99,5 +99,5 @@
       "target": "AppImage"
     }
   },
-  "buildDate": "09/03/2026"
+  "buildDate": "12/03/2026"
 }
