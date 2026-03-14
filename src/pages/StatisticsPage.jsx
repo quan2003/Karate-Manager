@@ -669,8 +669,13 @@ export default function StatisticsPage() {
       <style>
         @page { size: portrait; margin: 15mm; }
         body { font-family: Arial, sans-serif; color: #1e293b; padding: 20px; }
-        .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 0; }
+        .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 0; }
+        .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; }
+        .header-left { justify-content: flex-start; }
+        .header-center { justify-content: center; }
+        .header-right { justify-content: flex-end; }
         .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
+        .app-icon { height: 60px; width: 60px; object-fit: contain; }
         .sponsor-logos { display: flex; align-items: center; gap: 10px; }
         .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
         .header { text-align: center; margin-bottom: 24px; }
@@ -685,17 +690,22 @@ export default function StatisticsPage() {
         .athlete-name { font-size: 15px; font-weight: bold; color: #0f172a; }
         .club-name { font-size: 12px; color: #64748b; margin-top: 2px; }
         .member-list { font-size: 11px; color: #1e40af; margin-top: 6px; font-style: italic; line-height: 1.6; }
+        .signature-section { margin-top: 40px; display: flex; flex-direction: column; align-items: flex-end; padding-right: 40px; }
+        .signature-label { font-size: 14px; font-weight: bold; margin-bottom: 5px; text-align: center; width: 150px; }
+        .signature-img { height: 70px; max-width: 180px; object-fit: contain; }
       </style>
+
     </head><body>
       ${(() => {
+        const appIconUrl = `${getAppBaseUrl()}icon.png`;
         const sl = tournament.sponsorLogos || {};
         const sysLogo = sl.systemLogo || null;
         const spons = sl.sponsors || [];
-        if (!sysLogo && spons.length === 0) return "";
+        
         let h = '<div class="logo-header">';
-        h += sysLogo
-          ? `<img src="${sysLogo}" class="system-logo" />`
-          : "<div></div>";
+        h += `<div class="header-left">${sysLogo ? `<img src="${sysLogo}" class="system-logo" />` : ""}</div>`;
+        h += `<div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>`;
+        h += `<div class="header-right">`;
         if (spons.length > 0) {
           h += '<div class="sponsor-logos">';
           spons.forEach((l) => {
@@ -703,14 +713,14 @@ export default function StatisticsPage() {
           });
           h += "</div>";
         }
-        h += "</div>";
+        h += "</div></div>";
         return h;
       })()}
-      <div class="header">
-        <h1>KẾT QUẢ THI ĐẤU</h1>
-        <h2>${tournament.name}</h2>
-        <h3>${cat.name}</h3>
-      </div>
+    <div class="header">
+      <h1>KẾT QUẢ THI ĐẤU</h1>
+      <h2>${tournament.name}</h2>
+      <h3>${cat.name}</h3>
+    </div>
       <table>
         <thead>
           <tr>
@@ -791,7 +801,14 @@ export default function StatisticsPage() {
           </tr>
         </tbody>
       </table>
+      ${tournament.sponsorLogos?.signature ? `
+        <div class="signature-section">
+          <div class="signature-label">BAN TỔ CHỨC</div>
+          <img src="${tournament.sponsorLogos.signature}" class="signature-img" />
+        </div>
+      ` : ""}
     </body></html>`);
+
     printWindow.contentDocument.close();
     setTimeout(() => {
       printWindow.contentWindow.print();
@@ -990,23 +1007,16 @@ export default function StatisticsPage() {
     const systemLogo = sponsorLogos.systemLogo || null;
     const sponsors = sponsorLogos.sponsors || [];
 
-    let logoHeaderHTML = `<div class="logo-header">`;
-    if (systemLogo) {
-      logoHeaderHTML += `<img src="${systemLogo}" class="system-logo" />`;
-    } else {
-      logoHeaderHTML += `<div></div>`;
-    }
-    logoHeaderHTML += `<img src="${appIconUrl}" class="app-icon" />`;
-    if (sponsors.length > 0) {
-      logoHeaderHTML += `<div class="sponsor-logos">`;
-      sponsors.forEach((logo) => {
-        logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`;
-      });
-      logoHeaderHTML += `</div>`;
-    } else {
-      logoHeaderHTML += `<div></div>`;
-    }
-    logoHeaderHTML += `</div>`;
+    let logoHeaderHTML = `
+      <div class="logo-header">
+        <div class="header-left">${systemLogo ? `<img src="${systemLogo}" class="system-logo" />` : ""}</div>
+        <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
+        <div class="header-right">
+          ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
+        </div>
+      </div>
+    `;
+
 
     let htmlContent = `
       ${logoHeaderHTML}
@@ -1064,15 +1074,30 @@ export default function StatisticsPage() {
     const styleStr = `
       @page { size: portrait; margin: 10mm; }
       body { font-family: 'Times New Roman', Times, serif; color: #000; }
-      .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 0 10px; }
+      .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+      .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; }
+      .header-left { justify-content: flex-start; }
+      .header-center { justify-content: center; }
+      .header-right { justify-content: flex-end; }
       .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
       .app-icon { height: 60px; width: 60px; object-fit: contain; }
       .sponsor-logos { display: flex; align-items: center; gap: 10px; }
       .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
+
+      .signature-section { margin-top: 40px; display: flex; flex-direction: column; align-items: flex-end; padding-right: 40px; }
+      .signature-label { font-size: 14px; font-weight: bold; margin-bottom: 5px; text-align: center; width: 150px; }
+      .signature-img { height: 70px; max-width: 180px; object-fit: contain; }
     `;
 
+    const signatureHTML = sponsorLogos.signature ? `
+      <div class="signature-section">
+        <div class="signature-label">BAN TỔ CHỨC</div>
+        <img src="${sponsorLogos.signature}" class="signature-img" />
+      </div>
+    ` : "";
+
     printIframeWithLoading(
-      `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}</body></html>`
+      `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}${signatureHTML}</body></html>`
     );
   };
 
@@ -1794,10 +1819,7 @@ export default function StatisticsPage() {
       const result = getCategoryResults(cat.id);
       if (!result) return;
 
-      const isTeamCategory =
-        cat.isTeam || (cat.athletes || []).some((a) => a.isTeam);
-
-      const addMedal = (clubName, type, count = 1) => {
+      const addMedal = (clubName, type) => {
         if (!clubName) return;
         const club = clubName.trim();
         if (!clubMap[club]) {
@@ -1809,43 +1831,14 @@ export default function StatisticsPage() {
             total: 0,
           };
         }
-        clubMap[club][type] += count;
-        clubMap[club].total += count;
+        clubMap[club][type] += 1;
+        clubMap[club].total += 1;
       };
 
-      if (isTeamCategory) {
-        const teamAthleteCount = (catName, clubName) => {
-          if (!clubName) return 1;
-          return (
-            (cat.athletes || []).filter(
-              (a) =>
-                a.club?.trim().toLowerCase() === clubName.trim().toLowerCase()
-            ).length || 1
-          );
-        };
-
-        if (result.first && result.club1) {
-          const count = teamAthleteCount(cat.name, result.club1);
-          addMedal(result.club1, "gold", count);
-        }
-        if (result.second && result.club2) {
-          const count = teamAthleteCount(cat.name, result.club2);
-          addMedal(result.club2, "silver", count);
-        }
-        if (result.third1 && result.club3a) {
-          const count = teamAthleteCount(cat.name, result.club3a);
-          addMedal(result.club3a, "bronze", count);
-        }
-        if (result.third2 && result.club3b) {
-          const count = teamAthleteCount(cat.name, result.club3b);
-          addMedal(result.club3b, "bronze", count);
-        }
-      } else {
-        if (result.club1) addMedal(result.club1, "gold");
-        if (result.club2) addMedal(result.club2, "silver");
-        if (result.club3a) addMedal(result.club3a, "bronze");
-        if (result.club3b) addMedal(result.club3b, "bronze");
-      }
+      if (result.club1) addMedal(result.club1, "gold");
+      if (result.club2) addMedal(result.club2, "silver");
+      if (result.club3a) addMedal(result.club3a, "bronze");
+      if (result.club3b) addMedal(result.club3b, "bronze");
     });
 
     return Object.values(clubMap).sort((a, b) => {
@@ -1912,28 +1905,16 @@ export default function StatisticsPage() {
     const sponsorLogos = tournament.sponsorLogos || {};
     const systemLogo = sponsorLogos.systemLogo || null;
     const sponsors = sponsorLogos.sponsors || [];
-    let logoHeaderHTML = "";
-    // Always show logo header with app icon
-    logoHeaderHTML += `<div class="logo-header">`;
-    // Left: systemLogo (tournament logo) if available
-    if (systemLogo) {
-      logoHeaderHTML += `<img src="${systemLogo}" class="system-logo" />`;
-    } else {
-      logoHeaderHTML += `<div></div>`;
-    }
-    // Center: app icon (always shown)
-    logoHeaderHTML += `<img src="${appIconUrl}" class="app-icon" />`;
-    // Right: sponsor logos if available
-    if (sponsors.length > 0) {
-      logoHeaderHTML += `<div class="sponsor-logos">`;
-      sponsors.forEach((logo) => {
-        logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`;
-      });
-      logoHeaderHTML += `</div>`;
-    } else {
-      logoHeaderHTML += `<div></div>`;
-    }
-    logoHeaderHTML += `</div>`;
+    let logoHeaderHTML = `
+      <div class="logo-header">
+        <div class="header-left">${systemLogo ? `<img src="${systemLogo}" class="system-logo" />` : ""}</div>
+        <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
+        <div class="header-right">
+          ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
+        </div>
+      </div>
+    `;
+
 
     if (type === "results") {
       const cats = getFilteredCategories();
@@ -2042,13 +2023,30 @@ export default function StatisticsPage() {
         td { padding: 6px; border: 1px solid #000; }
         small { font-size: 11px; }
         tfoot td { border: 1px solid #000; font-weight: bold; }
-        .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 0 10px; }
+        .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; }
+        .header-left { justify-content: flex-start; }
+        .header-center { justify-content: center; }
+        .header-right { justify-content: flex-end; }
         .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
         .app-icon { height: 60px; width: 60px; object-fit: contain; }
         .sponsor-logos { display: flex; align-items: center; gap: 10px; }
         .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
+
+        .signature-section { margin-top: 40px; display: flex; flex-direction: column; align-items: flex-end; padding-right: 40px; }
+        .signature-label { font-size: 14px; font-weight: bold; margin-bottom: 5px; text-align: center; width: 150px; }
+        .signature-img { height: 70px; max-width: 180px; object-fit: contain; }
       </style>
-    </head><body>${htmlContent}</body></html>`);
+    </head><body>
+      ${htmlContent}
+      ${sponsorLogos.signature ? `
+        <div class="signature-section">
+          <div class="signature-label">BAN TỔ CHỨC</div>
+          <img src="${sponsorLogos.signature}" class="signature-img" />
+        </div>
+      ` : ""}
+    </body></html>`);
+
   };
 
   const medals = getEstimatedMedals();
@@ -2329,23 +2327,16 @@ export default function StatisticsPage() {
     const sponsorLogos = tournament.sponsorLogos || {};
     const systemLogo = sponsorLogos.systemLogo || null;
     const sponsors = sponsorLogos.sponsors || [];
-    let logoHeaderHTML = `<div class="logo-header">`;
-    if (systemLogo) {
-      logoHeaderHTML += `<img src="${systemLogo}" class="system-logo" />`;
-    } else {
-      logoHeaderHTML += `<div></div>`;
-    }
-    logoHeaderHTML += `<img src="${appIconUrl}" class="app-icon" />`;
-    if (sponsors.length > 0) {
-      logoHeaderHTML += `<div class="sponsor-logos">`;
-      sponsors.forEach((logo) => {
-        logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`;
-      });
-      logoHeaderHTML += `</div>`;
-    } else {
-      logoHeaderHTML += `<div></div>`;
-    }
-    logoHeaderHTML += `</div>`;
+    let logoHeaderHTML = `
+      <div class="logo-header">
+        <div class="header-left">${systemLogo ? `<img src="${systemLogo}" class="system-logo" />` : ""}</div>
+        <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
+        <div class="header-right">
+          ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
+        </div>
+      </div>
+    `;
+
 
     let htmlContent = `
       ${logoHeaderHTML}
@@ -2413,15 +2404,30 @@ export default function StatisticsPage() {
     const styleStr = `
       @page { size: portrait; margin: 10mm; }
       body { font-family: 'Times New Roman', Times, serif; color: #000; }
-      .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 0 10px; }
+      .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+      .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; }
+      .header-left { justify-content: flex-start; }
+      .header-center { justify-content: center; }
+      .header-right { justify-content: flex-end; }
       .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
       .app-icon { height: 60px; width: 60px; object-fit: contain; }
       .sponsor-logos { display: flex; align-items: center; gap: 10px; }
       .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
+
+      .signature-section { margin-top: 40px; display: flex; flex-direction: column; align-items: flex-end; padding-right: 40px; }
+      .signature-label { font-size: 14px; font-weight: bold; margin-bottom: 5px; text-align: center; width: 150px; }
+      .signature-img { height: 70px; max-width: 180px; object-fit: contain; }
     `;
 
     printIframeWithLoading(
-      `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}</body></html>`
+      `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}
+      ${sponsorLogos.signature ? `
+        <div class="signature-section">
+          <div class="signature-label">BAN TỔ CHỨC</div>
+          <img src="${sponsorLogos.signature}" class="signature-img" />
+        </div>
+      ` : ""}
+      </body></html>`
     );
   };
 
@@ -2485,23 +2491,16 @@ export default function StatisticsPage() {
     const sponsorLogos = tournament.sponsorLogos || {};
     const systemLogo = sponsorLogos.systemLogo || null;
     const sponsors = sponsorLogos.sponsors || [];
-    let logoHeaderHTML = `<div class="logo-header">`;
-    if (systemLogo) {
-      logoHeaderHTML += `<img src="${systemLogo}" class="system-logo" />`;
-    } else {
-      logoHeaderHTML += `<div></div>`;
-    }
-    logoHeaderHTML += `<img src="${appIconUrl}" class="app-icon" />`;
-    if (sponsors.length > 0) {
-      logoHeaderHTML += `<div class="sponsor-logos">`;
-      sponsors.forEach((logo) => {
-        logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`;
-      });
-      logoHeaderHTML += `</div>`;
-    } else {
-      logoHeaderHTML += `<div></div>`;
-    }
-    logoHeaderHTML += `</div>`;
+    let logoHeaderHTML = `
+      <div class="logo-header">
+        <div class="header-left">${systemLogo ? `<img src="${systemLogo}" class="system-logo" />` : ""}</div>
+        <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
+        <div class="header-right">
+          ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
+        </div>
+      </div>
+    `;
+
 
     let htmlContent = `
       ${logoHeaderHTML}
@@ -2563,14 +2562,29 @@ export default function StatisticsPage() {
     const styleStr = `
       @page { size: portrait; margin: 10mm; }
       body { font-family: 'Times New Roman', Times, serif; color: #000; }
-      .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 0 10px; }      .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
+      .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+      .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; }
+      .header-left { justify-content: flex-start; }
+      .header-center { justify-content: center; }
+      .header-right { justify-content: flex-end; }
+      .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
       .app-icon { height: 60px; width: 60px; object-fit: contain; }
       .sponsor-logos { display: flex; align-items: center; gap: 10px; }
       .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
+      .signature-section { margin-top: 40px; display: flex; flex-direction: column; align-items: flex-end; padding-right: 40px; }
+      .signature-label { font-size: 14px; font-weight: bold; margin-bottom: 5px; text-align: center; width: 150px; }
+      .signature-img { height: 70px; max-width: 180px; object-fit: contain; }
     `;
 
     printIframeWithLoading(
-      `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}</body></html>`
+      `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}
+      ${sponsorLogos.signature ? `
+        <div class="signature-section">
+          <div class="signature-label">BAN TỔ CHỨC</div>
+          <img src="${sponsorLogos.signature}" class="signature-img" />
+        </div>
+      ` : ""}
+      </body></html>`
     );
   };
 
@@ -2633,15 +2647,9 @@ export default function StatisticsPage() {
 
     const logoHeaderHTML = `
       <div class="logo-header">
-        <div style="flex:1;">
-           ${getSystemLogoHTML()}
-        </div>
-        <div style="flex:1;text-align:center;">
-           ${appLogoHTML}
-        </div>
-        <div style="flex:1;text-align:right;" class="sponsor-logos">
-           ${getSponsorLogosHTML()}
-        </div>
+        <div class="header-left">${getSystemLogoHTML()}</div>
+        <div class="header-center">${appLogoHTML}</div>
+        <div class="header-right"><div class="sponsor-logos">${getSponsorLogosHTML()}</div></div>
       </div>
     `;
 
@@ -2700,14 +2708,28 @@ export default function StatisticsPage() {
     const styleStr = `
       @page { size: portrait; margin: 10mm; }
       body { font-family: 'Times New Roman', Times, serif; color: #000; }
-      .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 0 10px; }
+      .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+      .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; }
+      .header-left { justify-content: flex-start; }
+      .header-center { justify-content: center; }
+      .header-right { justify-content: flex-end; }
       .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
       .app-icon { height: 60px; width: 60px; object-fit: contain; }      .sponsor-logos { display: flex; align-items: center; gap: 10px; justify-content: flex-end;}
       .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
+      .signature-section { margin-top: 40px; display: flex; flex-direction: column; align-items: flex-end; padding-right: 40px; }
+      .signature-label { font-size: 14px; font-weight: bold; margin-bottom: 5px; text-align: center; width: 150px; }
+      .signature-img { height: 70px; max-width: 180px; object-fit: contain; }
     `;
 
     printIframeWithLoading(
-      `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}</body></html>`
+      `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}
+      ${sponsorLogos.signature ? `
+        <div class="signature-section">
+          <div class="signature-label">BAN TỔ CHỨC</div>
+          <img src="${sponsorLogos.signature}" class="signature-img" />
+        </div>
+      ` : ""}
+      </body></html>`
     );
   };
 
@@ -2720,23 +2742,16 @@ export default function StatisticsPage() {
     const sponsorLogos = tournament.sponsorLogos || {};
     const systemLogo = sponsorLogos.systemLogo || null;
     const sponsors = sponsorLogos.sponsors || [];
-    let logoHeaderHTML = `<div class="logo-header">`;
-    if (systemLogo) {
-      logoHeaderHTML += `<img src="${systemLogo}" class="system-logo" />`;
-    } else {
-      logoHeaderHTML += `<div></div>`;
-    }
-    logoHeaderHTML += `<img src="${appIconUrl}" class="app-icon" />`;
-    if (sponsors.length > 0) {
-      logoHeaderHTML += `<div class="sponsor-logos">`;
-      sponsors.forEach((logo) => {
-        logoHeaderHTML += `<img src="${logo}" class="sponsor-logo" />`;
-      });
-      logoHeaderHTML += `</div>`;
-    } else {
-      logoHeaderHTML += `<div></div>`;
-    }
-    logoHeaderHTML += `</div>`;
+    let logoHeaderHTML = `
+      <div class="logo-header">
+        <div class="header-left">${systemLogo ? `<img src="${systemLogo}" class="system-logo" />` : ""}</div>
+        <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
+        <div class="header-right">
+          ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
+        </div>
+      </div>
+    `;
+
 
     const totalTD = delegations.reduce((s, d) => s + d.teamLeaderCount, 0);
     const totalHLV = delegations.reduce((s, d) => s + d.coachCount, 0);
@@ -2801,13 +2816,29 @@ export default function StatisticsPage() {
         th { color: #000; padding: 8px 6px; text-align: left; font-size: 13px; font-weight: bold; border: 1px solid #000; }
         td { padding: 7px 6px; border: 1px solid #000; }
         tfoot td { border: 1px solid #000; font-weight: bold; }
-        .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 0 10px; }
+        .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; }
+        .header-left { justify-content: flex-start; }
+        .header-center { justify-content: center; }
+        .header-right { justify-content: flex-end; }
         .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
         .app-icon { height: 60px; width: 60px; object-fit: contain; }
         .sponsor-logos { display: flex; align-items: center; gap: 10px; }
         .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
+        .signature-section { margin-top: 40px; display: flex; flex-direction: column; align-items: flex-end; padding-right: 40px; }
+        .signature-label { font-size: 14px; font-weight: bold; margin-bottom: 5px; text-align: center; width: 150px; }
+        .signature-img { height: 70px; max-width: 180px; object-fit: contain; }
       </style>
-    </head><body>${htmlContent}</body></html>`);
+    </head><body>
+      ${htmlContent}
+      ${sponsorLogos.signature ? `
+        <div class="signature-section">
+          <div class="signature-label">BAN TỔ CHỨC</div>
+          <img src="${sponsorLogos.signature}" class="signature-img" />
+        </div>
+      ` : ""}
+    </body></html>`);
+
   };
   return (
     <div className="page statistics-page">
@@ -4382,11 +4413,34 @@ export default function StatisticsPage() {
                               )}</td>
                             </tr>`;
                           });
+                          const appIconUrl = `${getAppBaseUrl()}icon.png`;
+                          const sponsorLogos = tournament.sponsorLogos || {};
+                          const systemLogo = sponsorLogos.systemLogo || null;
+                          const sponsors = sponsorLogos.sponsors || [];
+                          const logoHeaderHTML = `
+                            <div class="logo-header">
+                              <div class="header-left">${systemLogo ? `<img src="${systemLogo}" class="system-logo" />` : ""}</div>
+                              <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
+                              <div class="header-right">
+                                ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
+                              </div>
+                            </div>
+                          `;
+
                           printIframeWithLoading(`<!DOCTYPE html><html><head>
-                            <meta charset="utf-8"/><title>Kết quả đã chọn</title>
+                            <meta charset="utf-8"/><title>Kết quả thi đấu</title>
                             <style>
                               @page { size: portrait; margin: 10mm; }
                               body { font-family: Arial, sans-serif; padding: 20px; }
+                              .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+                              .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; }
+                              .header-left { justify-content: flex-start; }
+                              .header-center { justify-content: center; }
+                              .header-right { justify-content: flex-end; }
+                              .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
+                              .app-icon { height: 60px; width: 60px; object-fit: contain; }
+                              .sponsor-logos { display: flex; align-items: center; gap: 10px; }
+                              .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
                               h1 { text-align: center; font-size: 20px; margin-bottom: 4px; }
                               h2 { text-align: center; font-size: 14px; color: #64748b; font-weight: normal; margin-bottom: 16px; }
                               table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -4396,13 +4450,21 @@ export default function StatisticsPage() {
                               small { color: #64748b; font-size: 10px; }
                             </style>
                           </head><body>
+                            ${logoHeaderHTML}
                             <h1>KẾT QUẢ THI ĐẤU</h1>
                             <h2>${tournament.name} — ${selectedForExport.size} nội dung</h2>
                             <table><thead><tr>
                               <th>#</th><th>Hạng mục</th>
                               <th>🥇 HCV</th><th>🥈 HCB</th><th>🥉 HCĐ (1)</th><th>🥉 HCĐ (2)</th>
                             </tr></thead><tbody>${rows}</tbody></table>
+                            ${sponsorLogos.signature ? `
+                              <div style="margin-top: 40px; display: flex; flex-direction: column; align-items: flex-end; padding-right: 40px;">
+                                <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px; text-align: center; width: 150px;">BAN TỔ CHỨC</div>
+                                <img src="${sponsorLogos.signature}" style="height: 70px; max-width: 180px; object-fit: contain;" />
+                              </div>
+                            ` : ""}
                           </body></html>`);
+
                           setShowExportMenu(false);
                         }}
                       >

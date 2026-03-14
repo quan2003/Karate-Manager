@@ -414,11 +414,39 @@ export async function exportScoreSheetToPDF(
     // Draw table border
     pdf.rect(margin, tableTop, contentWidth, currentY - tableTop, "S");
 
+    // Add signature if available
+    const signature = sponsorLogos?.signature || null;
+    if (signature) {
+      const sigWidth = 40;
+      const sigHeight = 20;
+      const sigX = pageWidth - margin - sigWidth;
+      const sigY = currentY + 10;
+      
+      // Check if signature fits on current page
+      if (sigY + sigHeight > pageHeight - margin) {
+        pdf.addPage();
+        pdf.setFontSize(10);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("BAN TO CHUC", sigX + sigWidth / 2, margin + 5, { align: "center" });
+        try {
+          pdf.addImage(signature, 'PNG', sigX, margin + 8, sigWidth, sigHeight);
+        } catch(e) { console.error("Error adding signature to PDF", e); }
+      } else {
+        pdf.setFontSize(10);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("BAN TO CHUC", sigX + sigWidth / 2, sigY - 2, { align: "center" });
+        try {
+          pdf.addImage(signature, 'PNG', sigX, sigY, sigWidth, sigHeight);
+        } catch(e) { console.error("Error adding signature to PDF", e); }
+      }
+    }
+
     if (isTrialLicense()) {
       addTrialWatermark(pdf, pageWidth, pageHeight);
     }
 
     pdf.save(filename);
+
   } catch (error) {
     console.error("Lỗi xuất bảng điểm PDF:", error);
     alert("Lỗi xuất bảng điểm: " + error.message);
@@ -699,6 +727,7 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
       
       /* Footer */
       .pdf-footer { position: absolute; bottom: 5px; left: 0; width: 100%; text-align: center; font-size: 10px; color: #000; font-family: 'Courier New', monospace; }
+
     </style>
   `;
 
@@ -865,6 +894,7 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
 
   // Footer
   html += `<div class="pdf-footer">${footerText}</div>`;
+
 
   html += `</div>`; // end pdf-bracket
   return html;

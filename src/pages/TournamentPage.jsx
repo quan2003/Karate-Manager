@@ -1093,7 +1093,70 @@ export default function TournamentPage() {
               </span>
             )}
           </div>
+          {/* Signature Image */}
+          <div style={{ marginTop: '16px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '8px' }}>
+              Chữ ký Ban tổ chức (hiển thị cuối PDF)
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              {tournament.sponsorLogos?.signature && (
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <img 
+                    src={tournament.sponsorLogos.signature} 
+                    alt="Chữ ký" 
+                    style={{ height: '60px', maxWidth: '180px', objectFit: 'contain', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', padding: '4px' }} 
+                  />
+                  <button
+                    onClick={() => {
+                      const updated = { ...(tournament.sponsorLogos || {}) };
+                      delete updated.signature;
+                      dispatch({
+                        type: ACTIONS.UPDATE_SPONSOR_LOGOS,
+                        payload: { tournamentId: tournament.id, sponsorLogos: updated }
+                      });
+                      toast.success("Đã xóa chữ ký");
+                    }}
+                    style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '20px', height: '20px', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                    title="Xóa chữ ký"
+                  >×</button>
+                </div>
+              )}
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#f0fdf4', color: '#16a34a', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, border: '1px dashed #86efac', transition: 'all 0.2s' }}>
+                ✍️ {tournament.sponsorLogos?.signature ? 'Đổi chữ ký' : 'Tải lên chữ ký (PNG/JPG)'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    if (file.size > 1 * 1024 * 1024) {
+                      toast.error("File quá lớn! Tối đa 1MB.");
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                      dispatch({
+                        type: ACTIONS.UPDATE_SPONSOR_LOGOS,
+                        payload: {
+                          tournamentId: tournament.id,
+                          sponsorLogos: {
+                            ...(tournament.sponsorLogos || {}),
+                            signature: evt.target.result,
+                          }
+                        }
+                      });
+                      toast.success("Đã cập nhật chữ ký!");
+                    };
+                    reader.readAsDataURL(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+          </div>
         </div>
+
         {tournament.categories.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">📋</div>
