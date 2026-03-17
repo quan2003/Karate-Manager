@@ -12,6 +12,7 @@ import SecretaryPage from "./pages/SecretaryPage";
 import StatisticsPage from "./pages/StatisticsPage";
 import SchedulePage from "./pages/SchedulePage";
 import AthletesPage from "./pages/AthletesPage";
+import CertificatePage from "./pages/CertificatePage";
 
 import {
   initializeTrialIfNeeded,
@@ -100,6 +101,14 @@ function App() {
                     element={
                       <LicenseGuard>
                         <AthletesPage />
+                      </LicenseGuard>
+                    }
+                  />
+                  <Route
+                    path="/certificate/:id"
+                    element={
+                      <LicenseGuard>
+                        <CertificatePage />
                       </LicenseGuard>
                     }
                   />

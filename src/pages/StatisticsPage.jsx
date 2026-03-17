@@ -350,15 +350,18 @@ export default function StatisticsPage() {
     let gold = 0,
       silver = 0,
       bronze = 0;
+    const teamKataSize = tournament.teamMedalsSettings?.kata || 3;
+    const teamKumiteSize = tournament.teamMedalsSettings?.kumite || 5;
+
     tournament.categories.forEach((cat) => {
-      const athleteCount = cat.athletes?.length || 0;
-      if (athleteCount === 0) return;
+      const isTeamName = cat.name?.toLowerCase().includes('đồng đội') || cat.name?.toLowerCase().includes('hỗn hợp');
       const isTeamCategory =
-        cat.isTeam || (cat.athletes || []).some((a) => a.isTeam);
+        cat.isTeam || (cat.athletes || []).some((a) => a.isTeam) || isTeamName;
       if (isTeamCategory) {
-        gold += athleteCount;
-        silver += athleteCount;
-        bronze += athleteCount * 2;
+        const teamSize = cat.type === 'kata' ? teamKataSize : teamKumiteSize;
+        gold += teamSize;
+        silver += teamSize;
+        bronze += teamSize * 2;
       } else {
         gold += 1;
         silver += 1;
@@ -3068,7 +3071,53 @@ export default function StatisticsPage() {
             )}
 
             <div className="section-card">
-              <h3>🏅 Dự tính huy chương</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+                <h3 style={{ margin: 0 }}>🏅 Dự tính huy chương</h3>
+                <div style={{ display: 'flex', gap: '15px', fontSize: '13px', color: '#475569', background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    Số HC Kata ĐĐ/đội:
+                    <input
+                      type="number"
+                      min="1"
+                      value={tournament.teamMedalsSettings?.kata || 3}
+                      onChange={(e) => {
+                        dispatch({
+                          type: ACTIONS.UPDATE_TOURNAMENT,
+                          payload: {
+                            id: tournament.id,
+                            teamMedalsSettings: {
+                              ...(tournament.teamMedalsSettings || {}),
+                              kata: parseInt(e.target.value) || 3
+                            }
+                          }
+                        });
+                      }}
+                      style={{ width: '45px', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center' }}
+                    />
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    Số HC Kumite ĐĐ/đội:
+                    <input
+                      type="number"
+                      min="1"
+                      value={tournament.teamMedalsSettings?.kumite || 5}
+                      onChange={(e) => {
+                        dispatch({
+                          type: ACTIONS.UPDATE_TOURNAMENT,
+                          payload: {
+                            id: tournament.id,
+                            teamMedalsSettings: {
+                              ...(tournament.teamMedalsSettings || {}),
+                              kumite: parseInt(e.target.value) || 5
+                            }
+                          }
+                        });
+                      }}
+                      style={{ width: '45px', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center' }}
+                    />
+                  </label>
+                </div>
+              </div>
               <div className="medal-items">
                 <div className="medal-item gold">
                   <span className="medal-icon">🥇</span>

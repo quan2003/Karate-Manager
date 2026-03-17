@@ -217,16 +217,19 @@ export default function TournamentPage() {
 
   const getEstimatedMedals = () => {
     let gold = 0, silver = 0, bronze = 0;
+    const teamKataSize = tournament.teamMedalsSettings?.kata || 3;
+    const teamKumiteSize = tournament.teamMedalsSettings?.kumite || 5;
+
     tournament.categories.forEach((cat) => {
-      const athleteCount = cat.athletes?.length || 0;
-      if (athleteCount === 0) return;
       // Check if this is a team category
-      const isTeamCategory = cat.isTeam || (cat.athletes || []).some(a => a.isTeam);
+      const isTeamName = cat.name?.toLowerCase().includes('đồng đội') || cat.name?.toLowerCase().includes('hỗn hợp');
+      const isTeamCategory = cat.isTeam || (cat.athletes || []).some(a => a.isTeam) || isTeamName;
       if (isTeamCategory) {
-        // Team: medals per participant
-        gold += athleteCount;
-        silver += athleteCount;
-        bronze += athleteCount * 2;
+        // Team: medals per participant depending on type
+        const teamSize = cat.type === 'kata' ? teamKataSize : teamKumiteSize;
+        gold += teamSize;
+        silver += teamSize;
+        bronze += teamSize * 2;
       } else {
         // Individual: 1 gold, 1 silver, 2 bronze per category
         gold += 1;
@@ -803,6 +806,15 @@ export default function TournamentPage() {
             <span className="action-label">Quản lý<br/>VĐV</span>
           </Link>
 
+          <Link
+            to={`/certificate/${tournament.id}`}
+            className="tournament-action-btn action-schedule"
+            title="In giấy chứng nhận huy chương"
+          >
+            <span className="action-icon">🏅</span>
+            <span className="action-label">In<br/>GCN</span>
+          </Link>
+
           <button
             className="tournament-action-btn action-add"
             onClick={handleOpenModal}
@@ -851,9 +863,55 @@ export default function TournamentPage() {
         </div>
 
         {/* Medal estimation */}
-        {getTotalAthletes() > 0 && (
+        {tournament.categories.length > 0 && (
           <div className="medal-estimation-bar">
-            <h3 className="medal-estimation-title">🏅 Dự tính huy chương</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <h3 className="medal-estimation-title" style={{ margin: 0 }}>🏅 Dự tính huy chương</h3>
+              <div style={{ display: 'flex', gap: '15px', fontSize: '13px', color: '#475569', background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  Số HC Kata ĐĐ/đội:
+                  <input
+                    type="number"
+                    min="1"
+                    value={tournament.teamMedalsSettings?.kata || 3}
+                    onChange={(e) => {
+                      dispatch({
+                        type: ACTIONS.UPDATE_TOURNAMENT,
+                        payload: {
+                          id: tournament.id,
+                          teamMedalsSettings: {
+                            ...(tournament.teamMedalsSettings || {}),
+                            kata: parseInt(e.target.value) || 3
+                          }
+                        }
+                      });
+                    }}
+                    style={{ width: '45px', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center' }}
+                  />
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  Số HC Kumite ĐĐ/đội:
+                  <input
+                    type="number"
+                    min="1"
+                    value={tournament.teamMedalsSettings?.kumite || 5}
+                    onChange={(e) => {
+                      dispatch({
+                        type: ACTIONS.UPDATE_TOURNAMENT,
+                        payload: {
+                          id: tournament.id,
+                          teamMedalsSettings: {
+                            ...(tournament.teamMedalsSettings || {}),
+                            kumite: parseInt(e.target.value) || 5
+                          }
+                        }
+                      });
+                    }}
+                    style={{ width: '45px', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center' }}
+                  />
+                </label>
+              </div>
+            </div>
             <div className="medal-items">
               <div className="medal-item gold">
                 <span className="medal-icon">🥇</span>
