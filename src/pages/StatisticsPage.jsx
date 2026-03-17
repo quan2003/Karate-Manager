@@ -385,7 +385,7 @@ export default function StatisticsPage() {
     if (cat?.bracket?.matches) {
       const bracket = cat.bracket;
       const finalMatch = bracket.matches.find(
-        (m) => m.round === bracket.numRounds
+        (m) => m.nextMatchId === null && m.round > 0
       );
 
       if (finalMatch?.winner) {
@@ -2056,9 +2056,10 @@ export default function StatisticsPage() {
   const clubs = getClubs();
   const medalTally = getMedalTally();
   const filteredCategories = getFilteredCategories();
-  const categoriesWithResults = tournament.categories.filter((c) =>
-    getCategoryResults(c.id)
-  );
+  const categoriesWithResults = tournament.categories.filter((c) => {
+    const r = getCategoryResults(c.id);
+    return r && r.first && r.first.trim() !== "";
+  });
 
   // ===== CLUB REGISTRATION HELPERS =====
   const clubRegistrations = tournament.clubRegistrations || {};

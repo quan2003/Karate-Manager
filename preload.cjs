@@ -108,6 +108,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   // =============================================
+  // LAN Server Operations (Dual Combat)
+  // =============================================
+  lan: {
+    startServer: () => ipcRenderer.invoke('lan:startServer'),
+    stopServer: () => ipcRenderer.invoke('lan:stopServer'),
+    getServerStatus: () => ipcRenderer.invoke('lan:getServerStatus'),
+  },
+
+  // =============================================
   // IPC communication (legacy)
   // =============================================
   send: (channel, data) => {
@@ -118,9 +127,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   receive: (channel, func) => {
-    const validChannels = ["app:update-available"];
+    const validChannels = ["app:update-available", "lan:receive-result"];
     if (validChannels.includes(channel)) {
-      ipcRenderer.on(channel, (event, ...args) => func(...args));
+      const subscription = (event, ...args) => func(...args);
+      ipcRenderer.on(channel, subscription);
+      return () => ipcRenderer.removeListener(channel, subscription);
     }
   },
 });

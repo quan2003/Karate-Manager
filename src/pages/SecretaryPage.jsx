@@ -14,6 +14,8 @@ import {
   updateMatchResult as updateBracketWithResult,
   disqualifyAthlete,
 } from "../utils/drawEngine";
+import { sendMatchResult, getMyIp, checkAdminAvailability } from "../services/lanService";
+import Modal from "../components/common/Modal";
 import Bracket from "../components/Bracket/Bracket";
 import appIcon from "../assets/icon.png";
 import "./SecretaryPage.css";
@@ -40,6 +42,9 @@ function SecretaryPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState("");
+  const [finishedMatch, setFinishedMatch] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [adminIp, setAdminIp] = useState(localStorage.getItem("adminIp") || "");
 
   // Sidebar search/filter
   const [sidebarSearch, setSidebarSearch] = useState("");
@@ -94,6 +99,25 @@ function SecretaryPage() {
 
       if (updateStatus.success) {
         setNotification(`✅ Đã cập nhật kết quả trận đấu!`);
+        
+        // Show Match End Modal for sync/export options
+        const match = getMatchById(result.matchId);
+        if (match) {
+          const winner = result.winnerId 
+            ? (result.winnerId === match.athlete1?.id ? match.athlete1 : match.athlete2) 
+            : null;
+
+          setFinishedMatch({
+            ...result,
+            match,
+            matchCode: match.matchCode,
+            winner,
+            categoryName: selectedCategory?.name,
+            tournamentName: matchData?.tournamentName,
+            tournamentId: matchData?.tournamentId
+          });
+        }
+        
         setTimeout(() => setNotification(""), 3000);
       } else {
         setError(`Lỗi cập nhật kết quả: ${updateStatus.error}`);
@@ -133,7 +157,14 @@ function SecretaryPage() {
 
     // Apply all local results to the cloned bracket
     // This ensures winners are advanced to next rounds automatically
-    matchResults.forEach((result) => {
+    // Sort results by round to ensure proper advancement dependency
+    const sortedResults = [...matchResults].sort((a, b) => {
+      const matchA = clonedBracket.matches.find(m => m.id === a.matchId);
+      const matchB = clonedBracket.matches.find(m => m.id === b.matchId);
+      return (matchA?.round || 0) - (matchB?.round || 0);
+    });
+
+    sortedResults.forEach((result) => {
       if (result.disqualification && result.disqualifiedSlot) {
         // Apply disqualification
         disqualifyAthlete(
@@ -185,6 +216,24 @@ function SecretaryPage() {
                 opponent?.name || ""
               } thắng tự động.`
             );
+
+            // Show sync modal for manual disqualify
+            setFinishedMatch({
+              matchId: match.id,
+              matchCode: match.matchCode,
+              score1: null,
+              score2: null,
+              winnerId: opponent?.id || null,
+              disqualification: true,
+              disqualifiedSlot: athleteSlot,
+              disqualifiedReason: reason || "Loại",
+              match,
+              winner: opponent,
+              categoryName: selectedCategory?.name,
+              tournamentName: matchData?.tournamentName,
+              tournamentId: matchData?.tournamentId
+            });
+
             setTimeout(() => setNotification(""), 3000);
           },
           onCancel: () => setDialog(null),
@@ -201,6 +250,21 @@ function SecretaryPage() {
           score2: athleteSlot === 1 ? 0 : 1,
         });
         setNotification(`🏆 ${winner.name} thắng trận!`);
+
+        // Show sync modal for manual winner
+        setFinishedMatch({
+          matchId: match.id,
+          matchCode: match.matchCode,
+          score1: athleteSlot === 1 ? 1 : 0,
+          score2: athleteSlot === 1 ? 0 : 1,
+          winnerId: winner.id,
+          match,
+          winner,
+          categoryName: selectedCategory?.name,
+          tournamentName: matchData?.tournamentName,
+          tournamentId: matchData?.tournamentId
+        });
+
         setTimeout(() => setNotification(""), 3000);
         break;
       }
@@ -279,6 +343,123 @@ function SecretaryPage() {
   if (role !== ROLES.SECRETARY) return null;
   return (
     <div className="secretary-page">
+      {/* Match End Modal (Dual Combat Sync) */}
+      {finishedMatch && (
+        <Modal
+          title="🏆 TRẬN ĐẤU KẾT THÚC"
+          onClose={() => setFinishedMatch(null)}
+          maxWidth="500px"
+        >
+          <div style={{ textAlign: 'center', padding: '10px 0' }}>
+            <h3 style={{ margin: '0 0 15px 0', color: '#1e293b' }}>
+              {finishedMatch.match.athlete1?.name} vs {finishedMatch.match.athlete2?.name}
+            </h3>
+            
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', marginBottom: '20px' }}>
+              <div style={{ fontSize: '32px', fontWeight: 800, color: finishedMatch.winnerId === finishedMatch.match.athlete1?.id ? '#ef4444' : '#64748b' }}>
+                {finishedMatch.score1}
+              </div>
+              <div style={{ fontSize: '20px', color: '#94a3b8' }}>-</div>
+              <div style={{ fontSize: '32px', fontWeight: 800, color: finishedMatch.winnerId === finishedMatch.match.athlete2?.id ? '#3b82f6' : '#64748b' }}>
+                {finishedMatch.score2}
+              </div>
+            </div>
+
+            {finishedMatch.winner && (
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '12px', borderRadius: '8px', marginBottom: '20px' }}>
+                <span style={{ display: 'block', fontSize: '13px', color: '#166534', marginBottom: '4px' }}>NGƯỜI CHIẾN THẮNG:</span>
+                <span style={{ fontSize: '18px', fontWeight: 700, color: '#065f46' }}>🥇 {finishedMatch.winner.name}</span>
+              </div>
+            )}
+
+            <div style={{ marginBottom: '20px', borderTop: '1px solid #e2e8f0', paddingTop: '20px' }}>
+              <p style={{ fontSize: '14px', color: '#475569', marginBottom: '12px', fontWeight: 600 }}>📡 ĐỒNG BỘ TÁC CHIẾN KÉP (LAN)</p>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                <input 
+                  type="text"
+                  placeholder="IP máy Admin (ví dụ: 192.168.1.10)"
+                  value={adminIp}
+                  onChange={(e) => {
+                    setAdminIp(e.target.value);
+                    localStorage.setItem("adminIp", e.target.value);
+                  }}
+                  style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+              
+              <button 
+                className="btn btn-primary"
+                style={{ width: '100%', padding: '12px', fontSize: '16px', fontWeight: 700, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}
+                disabled={syncing}
+                onClick={async () => {
+                  if (!adminIp) {
+                    setError("Vui lòng nhập IP máy Admin");
+                    return;
+                  }
+                  setSyncing(true);
+                  localStorage.setItem("adminIp", adminIp);
+                  
+                  const syncData = {
+                    matchId: finishedMatch.matchId,
+                    matchCode: finishedMatch.matchCode,
+                    score1: finishedMatch.score1,
+                    score2: finishedMatch.score2,
+                    winnerId: finishedMatch.winnerId,
+                    tournamentId: finishedMatch.tournamentId || matchData?.tournamentId
+                  };
+                  
+                  const result = await sendMatchResult(adminIp, 3000, syncData);
+                  setSyncing(false);
+                  
+                  if (result.success) {
+                    setNotification("✅ Đã đồng bộ LAN thành công!");
+                    setFinishedMatch(null);
+                    setTimeout(() => setNotification(""), 3000);
+                  } else {
+                    setDialog({
+                      type: "confirm",
+                      title: "⚠️ Kết nối không ổn định",
+                      message: `Không thể đồng bộ qua LAN (Lỗi: ${result.message}). Bạn có muốn xuất file Excel để dự phòng không?`,
+                      onOk: () => {
+                        setDialog(null);
+                        handleExport("excel");
+                        setFinishedMatch(null);
+                      },
+                      onCancel: () => setDialog(null)
+                    });
+                  }
+                }}
+              >
+                {syncing ? "⏳ Đang đồng bộ..." : "🚀 Lưu & Đồng bộ LAN"}
+              </button>
+              <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                💡 Nếu Admin chưa nhận được, hãy kiểm tra Firewall trên máy Admin hoặc bấm nút "Đồng bộ lại" bên dưới.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                className="btn btn-secondary"
+                style={{ flex: 1, padding: '10px' }}
+                onClick={() => {
+                  handleExport("excel");
+                  setFinishedMatch(null);
+                }}
+              >
+                📊 Chỉ xuất Excel (Dự phòng)
+              </button>
+              <button 
+                className="btn btn-outline"
+                style={{ flex: 1, padding: '10px' }}
+                onClick={() => setFinishedMatch(null)}
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       <div className="secretary-container">
         <header className="secretary-header">
           <div className="header-left">
@@ -336,6 +517,66 @@ function SecretaryPage() {
                   {scoringEnabled
                     ? "Bấm điểm đang được bật"
                     : "Bấm điểm đang TẮT"}
+                </span>
+              </div>
+
+              {/* Permanent LAN Sync Setting Area */}
+              <div 
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '10px', 
+                  background: 'rgba(255, 255, 255, 0.9)', 
+                  padding: '4px 12px', 
+                  borderRadius: '25px',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '18px' }}>📡</span>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Cấu hình LAN:</span>
+                </div>
+                <input 
+                  type="text"
+                  placeholder="Nhập IP máy Admin"
+                  value={adminIp}
+                  onChange={(e) => {
+                    setAdminIp(e.target.value);
+                    localStorage.setItem("adminIp", e.target.value);
+                  }}
+                  style={{ 
+                    padding: '4px 10px', 
+                    borderRadius: '4px', 
+                    border: '1px solid #cbd5e1', 
+                    fontSize: '13px',
+                    width: '140px'
+                  }}
+                />
+                <button 
+                  onClick={async () => {
+                    if (!adminIp) {
+                      setError("Vui lòng nhập IP máy Admin");
+                      return;
+                    }
+                    setSyncing(true);
+                    const isAvailable = await checkAdminAvailability(adminIp, 3000);
+                    setSyncing(false);
+                    if (isAvailable) {
+                      setNotification("✅ Kết nối tới máy Admin OK!");
+                    } else {
+                      setError("❌ Không thể kết nối tới máy Admin. Hãy kiểm tra IP và Firewall.");
+                    }
+                    setTimeout(() => setNotification(""), 3000);
+                  }}
+                  className="btn btn-sm"
+                  style={{ padding: '4px 8px', fontSize: '11px' }}
+                  disabled={syncing}
+                >
+                  {syncing ? "..." : "Kiểm tra"}
+                </button>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                  (Cài đặt một lần, dùng mãi mãi)
                 </span>
               </div>
               <div className="tournament-info">
@@ -457,8 +698,10 @@ function SecretaryPage() {
                       {/* Medal Table */}
                       {bracketWithScores &&
                         (() => {
+                          // Tìm trận chung kết (trận có round cao nhất)
+                          const maxRound = Math.max(...(bracketWithScores.matches?.map(m => m.round) || [0]));
                           const finalMatch = bracketWithScores.matches?.find(
-                            (m) => m.round === bracketWithScores.numRounds
+                            (m) => m.round === maxRound && m.round > 0
                           );
                           const champion = finalMatch?.winner;
 
@@ -539,7 +782,39 @@ function SecretaryPage() {
                               <table className="secretary-medal-table">
                                 <thead>
                                   <tr>
-                                    <th>🏆 KẾT QUẢ</th>
+                                    <th style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span>🏆 KẾT QUẢ</span>
+                                      <button 
+                                        className="btn btn-primary btn-sm"
+                                        style={{ fontSize: '10px', padding: '2px 6px' }}
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          if (!adminIp) {
+                                            setError("Vui lòng nhập IP máy Admin");
+                                            return;
+                                          }
+                                          setSyncing(true);
+                                          let count = 0;
+                                          for (const result of matchResults) {
+                                            const match = getMatchById(result.matchId);
+                                            if (match) {
+                                              await sendMatchResult(adminIp, 3000, {
+                                                ...result,
+                                                matchCode: match.matchCode,
+                                                tournamentId: matchData?.tournamentId
+                                              });
+                                              count++;
+                                            }
+                                          }
+                                          setSyncing(false);
+                                          setNotification(`✅ Đã đồng bộ ${count} trận đấu sang Admin!`);
+                                          setTimeout(() => setNotification(""), 3000);
+                                        }}
+                                        disabled={syncing || matchResults.length === 0}
+                                      >
+                                        📡 Sync
+                                      </button>
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -653,6 +928,33 @@ function SecretaryPage() {
                   disabled={matchResults.length === 0}
                 >
                   📄 Xuất JSON
+                </button>
+                <button
+                  className="export-btn sync"
+                  style={{ background: '#22c55e', color: '#fff' }}
+                  onClick={async () => {
+                    if (!adminIp) {
+                      setError("Vui lòng nhập IP máy Admin để đồng bộ");
+                      return;
+                    }
+                    setSyncing(true);
+                    let successCount = 0;
+                    for (const result of matchResults) {
+                      const match = getMatchById(result.matchId);
+                      const res = await sendMatchResult(adminIp, 3000, {
+                        ...result,
+                        matchCode: match?.matchCode,
+                        tournamentId: matchData?.tournamentId
+                      });
+                      if (res.success) successCount++;
+                    }
+                    setSyncing(false);
+                    setNotification(`✅ Đã đồng bộ ${successCount}/${matchResults.length} trận thành công!`);
+                    setTimeout(() => setNotification(""), 3000);
+                  }}
+                  disabled={matchResults.length === 0 || syncing}
+                >
+                  📡 {syncing ? "Đang gửi..." : "Đồng bộ LAN"}
                 </button>
                 <button
                   className="export-btn excel"

@@ -2,6 +2,7 @@ import { createContext, useContext, useReducer, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { createAutoBackup } from "../services/backupService";
 import { dbGetTournaments, dbSaveTournaments, runMigrationIfNeeded } from "../services/dbService";
+import { updateMatchResult } from "../utils/drawEngine";
 
 // Auto-backup counter to avoid backing up too frequently
 let autoBackupCounter = 0;
@@ -42,6 +43,7 @@ const ACTIONS = {
   UPDATE_SPONSOR_LOGOS: "UPDATE_SPONSOR_LOGOS",
   UPDATE_CLUB_REGISTRATIONS: "UPDATE_CLUB_REGISTRATIONS",
   MOVE_ATHLETE: "MOVE_ATHLETE",
+  SYNC_MATCH_RESULT: "SYNC_MATCH_RESULT",
 };
 
 function tournamentReducer(state, action) {
@@ -516,6 +518,70 @@ function tournamentReducer(state, action) {
       }
       break;
 
+    case ACTIONS.SYNC_MATCH_RESULT: {
+      const { matchId, matchCode, score1, score2, winnerId, tournamentId } = action.payload;
+      
+      console.log(`[SYNC] Processing match ${matchId} (${matchCode || 'N/A'}) for tournament ${tournamentId}`);
+
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) => {
+          if (t.id !== tournamentId) return t;
+
+          let found = false;
+          const updatedCategories = t.categories.map((c) => {
+            if (!c.bracket?.matches) return c;
+            
+            // 1. Try finding by matchId (UUID)
+            let match = c.bracket.matches.find((m) => m.id === matchId);
+            
+            // 2. Fallback: Try finding by matchCode if available (e.g., "M6")
+            // This handles cases where ID might have changed but structure is same
+            if (!match && matchCode) {
+              match = c.bracket.matches.find((m) => m.matchCode === matchCode);
+              if (match) {
+                console.log(`[SYNC] Match found by matchCode: ${matchCode}`);
+              } else {
+                return c; // Not in this category
+              }
+            } else if (!match) {
+              return c; // Not in this category
+            }
+
+            found = true;
+            const targetMatchId = match.id; // Use the actual ID in the bracket
+            
+            const updatedBracket = updateMatchResult(
+              c.bracket,
+              targetMatchId,
+              score1,
+              score2,
+              winnerId
+            );
+            return { ...c, bracket: updatedBracket };
+          });
+
+          if (!found) {
+            console.warn(`[SYNC] Match ${matchId}/${matchCode} not found in tournament ${tournamentId}`);
+            return t;
+          }
+          return { ...t, categories: updatedCategories };
+        }),
+      };
+      
+      if (state.currentTournament?.id === tournamentId) {
+        newState.currentTournament = newState.tournaments.find(
+          (t) => t.id === tournamentId
+        );
+        if (state.currentCategory) {
+          newState.currentCategory = newState.currentTournament.categories.find(
+            (c) => c.id === state.currentCategory.id
+          );
+        }
+      }
+      break;
+    }
+
     default:
       return state;
   }
@@ -540,6 +606,7 @@ async function saveToStorage(state, actionType) {
         ACTIONS.IMPORT_ATHLETES,
         ACTIONS.IMPORT_CATEGORIES,
         ACTIONS.UPDATE_MATCH,
+        ACTIONS.SYNC_MATCH_RESULT,
       ];
       
       if (importantActions.includes(actionType)) {
@@ -583,6 +650,31 @@ export function TournamentProvider({ children }) {
     };
     initialize();
   }, []);
+
+  // Listen for LAN match results (Admin side)
+  useEffect(() => {
+    if (window.electronAPI && window.electronAPI.receive) {
+      const cleanup = window.electronAPI.receive("lan:receive-result", (data) => {
+        console.log("Received match result via LAN:", data);
+        
+        // Use tournamentId from payload if provided, fallback to current
+        const targetTournamentId = data.tournamentId || state.currentTournament?.id;
+        
+        if (targetTournamentId) {
+          dispatch({
+            type: ACTIONS.SYNC_MATCH_RESULT,
+            payload: {
+              ...data,
+              tournamentId: targetTournamentId,
+            },
+          });
+        } else {
+          console.warn("Received match result but no target tournament identified.");
+        }
+      });
+      return cleanup;
+    }
+  }, [state.currentTournament?.id]); // Keep dependency to allow fallback to current if payload missing id
 
   return (
     <TournamentContext.Provider value={state}>

@@ -42,6 +42,7 @@ export default function TournamentPage() {
   const [bulkDrawResults, setBulkDrawResults] = useState(null);
   const [bulkDrawing, setBulkDrawing] = useState(false);
   const fileInputRef = useRef(null);
+  const [lanStatus, setLanStatus] = useState({ running: false, ip: '', port: 3000 });
 
   const handleOpenModal = () => {
     setEditingId(null);
@@ -85,9 +86,36 @@ export default function TournamentPage() {
 
   useEffect(() => {
     dispatch({ type: ACTIONS.SET_CURRENT_TOURNAMENT, payload: id });
+
+    // Fetch initial LAN server status
+    const fetchLanStatus = async () => {
+      if (window.electronAPI && window.electronAPI.lan) {
+        const stats = await window.electronAPI.lan.getServerStatus();
+        setLanStatus(stats || { running: false, ip: '', port: 3000 });
+      }
+    };
+    fetchLanStatus();
   }, [id, dispatch]);
 
   const tournament = currentTournament || tournaments.find((t) => t.id === id);
+
+  const isCategoryFinished = (cat) => {
+    if (!cat) return false;
+    // 1. Check manually entered results
+    const saved = tournament?.categoryResults?.[cat.id];
+    if (saved && saved.first && saved.first.trim() !== "") return true;
+
+    // 2. Check bracket final match
+    if (cat.bracket?.matches) {
+      const bracket = cat.bracket;
+      const maxRound = Math.max(...bracket.matches.map(m => m.round || 0));
+      const finalMatch = bracket.matches.find(
+        (m) => m.round === maxRound && (m.round > 0 || m.isBye)
+      );
+      if (finalMatch?.winner) return true;
+    }
+    return false;
+  };
 
   // Filter Logic
   const getFilteredCategories = () => {
@@ -196,14 +224,15 @@ export default function TournamentPage() {
 
   // Statistics helpers
   const getClubs = () => {
-    const clubSet = new Set();
-    tournament.categories.forEach((cat) => {
-      (cat.athletes || []).forEach((a) => {
-        if (a.club) clubSet.add(a.club.trim());
+    const clubs = new Set();
+    tournament.categories?.forEach((c) => {
+      c.athletes?.forEach((a) => {
+        if (a.club) clubs.add(a.club.trim());
       });
     });
-    return clubSet;
+    return clubs;
   };
+
 
   const getGenderCount = (gender) => {
     let count = 0;
@@ -853,10 +882,7 @@ export default function TournamentPage() {
           </div>
           <div className="stat-item">
             <span className="stat-value" style={{color: '#059669'}}>
-              {tournament.categories.filter((c) => {
-                if (!c.bracket?.matches) return false;
-                return c.bracket.matches.some(m => !m.isBye && m.winner);
-              }).length}
+              {tournament.categories.filter(isCategoryFinished).length}
             </span>
             <span className="stat-label">Đã có kết quả</span>
           </div>
@@ -994,6 +1020,61 @@ export default function TournamentPage() {
               </span>
             </>
           )}
+        </div>
+
+        {/* Dual Combat (LAN Sync) Settings */}
+        <div style={{
+          background: lanStatus.running ? '#f0fdf4' : '#f8fafc', 
+          border: lanStatus.running ? '1px solid #bbf7d0' : '1px solid #e2e8f0', 
+          borderRadius: '12px',
+          padding: '16px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap',
+          transition: 'all 0.3s'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '24px' }}>📡</span>
+            <div>
+              <h4 style={{ margin: 0, fontSize: '15px', color: '#1e293b' }}>Chế độ Tác chiến kép (Đồng bộ LAN)</h4>
+              <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                Cho phép nhận kết quả trực tiếp từ máy Thư ký qua mạng nội bộ
+              </p>
+            </div>
+          </div>
+          
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '15px' }}>
+            {lanStatus.running && (
+              <div style={{ background: '#dcfce7', color: '#166534', padding: '4px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', background: '#22c55e', borderRadius: '50%', display: 'inline-block', boxShadow: '0 0 0 rgba(34, 197, 94, 0.4)', animation: 'pulse 2s infinite' }}></span>
+                Đang chạy: {lanStatus.ip}:{lanStatus.port}
+              </div>
+            )}
+            
+            <button 
+              onClick={async () => {
+                if (!window.electronAPI?.lan) {
+                  toast.error("Không hỗ trợ tính năng này trên trình duyệt");
+                  return;
+                }
+                
+                if (lanStatus.running) {
+                  await window.electronAPI.lan.stopServer();
+                  setLanStatus({ ...lanStatus, running: false });
+                  toast.success("Đã tắt máy chủ nhận điểm");
+                } else {
+                  const result = await window.electronAPI.lan.startServer();
+                  if (result.success) {
+                    setLanStatus({ ...lanStatus, running: true, ip: result.ip });
+                    toast.success(`Đã bật máy chủ nhận điểm tại IP: ${result.ip}`);
+                  } else {
+                    toast.error(`Lỗi bật máy chủ: ${result.error}`);
+                  }
+                }
+              }}
+              className={`btn ${lanStatus.running ? 'btn-danger' : 'btn-primary'}`}
+              style={{ padding: '8px 16px', borderRadius: '8px', fontWeight: 600 }}
+            >
+              {lanStatus.running ? '⏹ Tắt máy chủ' : '▶ Bật máy chủ nhận điểm'}
+            </button>
+          </div>
         </div>
 
         {/* Sponsor & Logo Settings */}
@@ -1329,7 +1410,7 @@ export default function TournamentPage() {
                     const completedMatches = nonByeMatches.filter(m => m.winner);
                     const total = nonByeMatches.length;
                     const completed = completedMatches.length;
-                    const isComplete = completed === total && total > 0;
+                    const isComplete = isCategoryFinished(category);
                     const hasResults = completed > 0;
                     
                     return (

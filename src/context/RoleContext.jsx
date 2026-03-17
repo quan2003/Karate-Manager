@@ -413,8 +413,14 @@ export function RoleProvider({ children }) {
           }
         });
 
-        // Bước 2: Apply kết quả từ thư ký (dùng updateBracketWithResult để advance đúng)
-        matchResults.forEach((result) => {
+        // Apply kết quả từ thư ký (Sắp xếp theo vòng đấu để đảm bảo advancement đúng thứ tự)
+        const sortedResults = [...matchResults].sort((a, b) => {
+          const matchA = clonedBracket.matches.find(m => m.id === a.matchId);
+          const matchB = clonedBracket.matches.find(m => m.id === b.matchId);
+          return (matchA?.round || 0) - (matchB?.round || 0);
+        });
+
+        sortedResults.forEach((result) => {
           const match = clonedBracket.matches.find(
             (m) => m.id === result.matchId
           );

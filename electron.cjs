@@ -2,10 +2,26 @@ const { app, BrowserWindow, shell, dialog, ipcMain } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
+const http = require("http");
+const os = require("os");
 const dbService = require("./database.cjs");
 
 // Biến giữ window chính
 let mainWindow = null;
+let lanServer = null;
+
+function getLocalIp() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
+      if (iface.family === "IPv4" && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return "127.0.0.1";
+}
 
 // =============================================
 // IPC Handlers cho file .krt
@@ -317,6 +333,77 @@ ipcMain.handle("db:markMigrationDone", () => {
 // --- Stats ---
 ipcMain.handle("db:getDataStats", () => {
   return dbService.getDataStats();
+});
+
+// --- LAN Server (Dual Combat Mode) ---
+ipcMain.handle("lan:getServerStatus", () => {
+  return {
+    running: lanServer !== null,
+    ip: getLocalIp(),
+    port: 3000,
+  };
+});
+
+ipcMain.handle("lan:startServer", (event) => {
+  if (lanServer) return { success: true, message: "Máy chủ đang chạy" };
+
+  try {
+    lanServer = http.createServer((req, res) => {
+      // Set CORS headers
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/api/match-result") {
+        let body = "";
+        req.on("data", (chunk) => { body += chunk.toString(); });
+        req.on("end", () => {
+          try {
+            const data = JSON.parse(body);
+            if (mainWindow) {
+              mainWindow.webContents.send("lan:receive-result", data);
+            }
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: true }));
+          } catch (err) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: "Dữ liệu không hợp lệ" }));
+          }
+        });
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+
+    lanServer.listen(3000, "0.0.0.0", () => {
+      console.log("LAN Score Server running on port 3000");
+    });
+
+    lanServer.on("error", (err) => {
+      console.error("LAN Server error:", err);
+      lanServer = null;
+    });
+
+    return { success: true, ip: getLocalIp() };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("lan:stopServer", () => {
+  if (lanServer) {
+    lanServer.close();
+    lanServer = null;
+    return { success: true };
+  }
+  return { success: true, message: "Máy chủ chưa chạy" };
 });
 
 // Khi Electron sẵn sàng
