@@ -10,8 +10,9 @@ import ConfirmDialog from "../components/common/ConfirmDialog";
 import AthleteForm from "../components/AthleteForm/AthleteForm";
 import SearchableSelect from "../components/common/SearchableSelect";
 import { useToast } from "../components/common/Toast";
-import * as XLSX from "xlsx";
+import { fetchSubmissions, deleteSubmissions } from "../services/supabaseService";
 import appIcon from "../assets/icon.png";
+import * as XLSX from "xlsx";
 import "./AthletesPage.css";
 
 export default function AthletesPage() {
@@ -32,8 +33,13 @@ export default function AthletesPage() {
   const [targetCategory, setTargetCategory] = useState("");
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
-    athleteId: null,
+    title: "",
+    message: "",
+    onConfirm: null,
+    type: "danger"
   });
+  const [syncing, setSyncing] = useState(false);
+  const [showCleanupMenu, setShowCleanupMenu] = useState(false);
 
   if (!tournament) {
     return (
@@ -100,16 +106,135 @@ export default function AthletesPage() {
   };
 
   const handleDeleteClick = (athleteId) => {
-    setConfirmDialog({ open: true, athleteId });
+    setConfirmDialog({
+      open: true,
+      title: "Xóa VĐV",
+      message: "Bạn có chắc chắn muốn xóa VĐV này khỏi danh sách?",
+      type: "danger",
+      onConfirm: () => {
+        dispatch({ type: ACTIONS.DELETE_ATHLETE, payload: athleteId });
+        setConfirmDialog(p => ({ ...p, open: false }));
+        toast.success("Đã xóa VĐV.");
+      }
+    });
   };
 
-  const handleConfirmDelete = () => {
-    dispatch({
-      type: ACTIONS.DELETE_ATHLETE,
-      payload: confirmDialog.athleteId,
+  const handleClearAllLocal = () => {
+    setConfirmDialog({
+      open: true,
+      title: "⚠️ XÓA TOÀN BỘ VĐV",
+      message: "Cảnh báo: Hành động này sẽ xóa SẠCH danh sách vận động viên của giải đấu này trên máy của bạn. Bạn có chắc chắn không?",
+      type: "danger",
+      onConfirm: () => {
+        dispatch({ type: ACTIONS.CLEAR_TOURNAMENT_ATHLETES, payload: tournament.id });
+        setConfirmDialog(p => ({ ...p, open: false }));
+        toast.success("Đã xóa toàn bộ VĐV địa phương.");
+      }
     });
-    setConfirmDialog({ open: false, athleteId: null });
-    toast.success("Đã xóa VĐV");
+  };
+
+  const handleClearCloudData = () => {
+    setConfirmDialog({
+      open: true,
+      title: "☁️ XÓA DỮ LIỆU ĐÁM MÂY",
+      message: "Hành động này sẽ xóa tất cả các bản đăng ký trực tuyến của giải đấu này trên Server. Sau khi xóa, các CLB phải nộp lại từ đầu. Tiếp tục?",
+      type: "danger",
+      onConfirm: async () => {
+        const result = await deleteSubmissions(tournament.id);
+        if (result.success) {
+          toast.success("Đã xóa dữ liệu trên đám mây.");
+        } else {
+          toast.error("Lỗi: " + result.message);
+        }
+        setConfirmDialog(p => ({ ...p, open: false }));
+      }
+    });
+  };
+
+  const handleSyncOnline = async () => {
+    setSyncing(true);
+    try {
+      const result = await fetchSubmissions(tournament.id);
+      if (result.success && result.data.length > 0) {
+        let totalAthletes = 0;
+        let totalClubs = result.data.length;
+
+        // Collect all data BEFORE dispatching to avoid race conditions in loops
+        let currentClubRegs = { ...(tournament.clubRegistrations || {}) };
+        const athletesToImportMap = {}; // { categoryId: [athletes] }
+
+        for (const submission of result.data) {
+          const data = submission.data;
+          const clubName = (data.clubName || data.coachName || "Chưa Rõ").trim();
+
+          // 1. Merge Club Regs
+          const existingReg = currentClubRegs[clubName] || { coaches: [], teamLeader: "" };
+          const allCoaches = [data.coachName, ...(data.additionalCoaches || [])].filter(Boolean);
+          const mergedCoaches = [...new Set([...existingReg.coaches, ...allCoaches])].filter(Boolean);
+          const teamLeader = data.teamLeaderName || existingReg.teamLeader || "";
+          const submittedAt = data.updated_at_local || (submission.submitted_at ? new Date(submission.submitted_at).toLocaleString('vi-VN') : '—');
+          
+          currentClubRegs[clubName] = { 
+            coaches: mergedCoaches, 
+            teamLeader,
+            submittedAt: submittedAt // Save the time here
+          };
+
+          // 2. Group Athletes
+          if (data.athletes && data.athletes.length > 0) {
+            data.athletes.forEach(a => {
+              if (!athletesToImportMap[a.eventId]) athletesToImportMap[a.eventId] = [];
+              // Force athlete club to match the submission club to avoid "missing info" bugs
+              athletesToImportMap[a.eventId].push({ ...a, club: clubName });
+              totalAthletes++;
+            });
+          }
+        }
+
+        // Dispatch ONCE for all club registrations
+        dispatch({
+          type: ACTIONS.UPDATE_CLUB_REGISTRATIONS,
+          payload: {
+            tournamentId: tournament.id,
+            clubRegistrations: currentClubRegs
+          }
+        });
+
+        // Dispatch per category for athletes
+        Object.keys(athletesToImportMap).forEach(categoryId => {
+          if (tournament.categories.find(c => c.id === categoryId)) {
+            dispatch({
+              type: ACTIONS.IMPORT_ATHLETES,
+              payload: { categoryId, athletes: athletesToImportMap[categoryId] }
+            });
+          }
+        });
+
+        const syncDetails = result.data.map(sub => {
+          // Robust parsing of time
+          const jsonVal = typeof sub.data === 'string' ? JSON.parse(sub.data) : sub.data;
+          let time = jsonVal?.updated_at_local;
+          
+          if (!time && sub.submitted_at) {
+            // Manual fallback if toLocaleString fails to catch TZ
+            const d = new Date(sub.submitted_at);
+            time = d.toLocaleTimeString('vi-VN', { hour12: false });
+          }
+          
+          return `${sub.club_name} (${time || '—'})`;
+        }).join(', ');
+        toast.success(`✅ Đồng bộ thành công ${totalClubs} đoàn: ${syncDetails}. Tổng ${totalAthletes} VĐV.`);
+      } else if (result.success) {
+        toast.info("☁️ Không có đăng ký mới nào trên Server.");
+      } else {
+        toast.error("Lỗi đồng bộ: " + result.message);
+      }
+    } catch (err) {
+      console.error("Sync Online Error:", err);
+      toast.error("Lỗi đồng bộ hoặc kết nối Server: " + (err.message || "Không xác định"));
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleMoveClick = (athlete) => {
@@ -267,13 +392,90 @@ export default function AthletesPage() {
             </h1>
             <p className="page-subtitle">Quản lý tất cả VĐV trong giải đấu</p>
           </div>
-          <div className="header-actions">
-            <button className="btn btn-secondary" onClick={handleExportExcel}>
+          <div className="header-actions" style={{ gap: '10px', position: 'relative' }}>
+            <button 
+              className="btn-sync-premium" 
+              onClick={handleSyncOnline} 
+              disabled={syncing}
+              style={{ 
+                background: 'linear-gradient(135deg, #0284c7, #0369a1)', 
+                color: '#fff',
+                padding: '10px 20px',
+                borderRadius: '8px',
+                border: 'none',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 6px -1px rgba(2, 132, 199, 0.3)',
+                cursor: 'pointer'
+              }}
+            >
+              <span style={{ fontSize: '18px' }}>☁️</span>
+              {syncing ? "Đang đồng bộ..." : "Đồng bộ từ Cloud"}
+            </button>
+
+            <button className="btn btn-secondary" onClick={handleExportExcel} style={{ borderRadius: '8px' }}>
               📥 Xuất Excel
             </button>
-            <button className="btn btn-secondary" onClick={handleExportPDF}>
+            
+            <button className="btn btn-secondary" onClick={handleExportPDF} style={{ borderRadius: '8px' }}>
               📄 Xuất PDF
             </button>
+
+            <div style={{ position: 'relative' }}>
+              <button 
+                className="btn btn-secondary"
+                onClick={() => setShowCleanupMenu(!showCleanupMenu)}
+                style={{ 
+                  borderRadius: '8px', 
+                  borderColor: showCleanupMenu ? '#ef4444' : '#e2e8f0',
+                  color: showCleanupMenu ? '#ef4444' : 'inherit'
+                }}
+              >
+                🛠️ Công cụ Admin {showCleanupMenu ? '▼' : '▶'}
+              </button>
+              
+              {showCleanupMenu && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '10px',
+                  background: '#fff',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                  padding: '8px',
+                  zIndex: 100,
+                  width: '220px',
+                  border: '1px solid #e2e8f0'
+                }}>
+                  <button 
+                    className="menu-item"
+                    onClick={() => { handleClearAllLocal(); setShowCleanupMenu(false); }}
+                    style={{ 
+                      width: '100%', textAlign: 'left', padding: '10px', borderRadius: '6px', 
+                      background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
+                      color: '#ef4444'
+                    }}
+                  >
+                    <span>🗑️</span> <strong>Xóa sạch dữ liệu địa phương</strong>
+                  </button>
+                  <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 0' }} />
+                  <button 
+                    className="menu-item"
+                    onClick={() => { handleClearCloudData(); setShowCleanupMenu(false); }}
+                    style={{ 
+                      width: '100%', textAlign: 'left', padding: '10px', borderRadius: '6px', 
+                      background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
+                      color: '#64748b'
+                    }}
+                  >
+                    <span>🧹</span> <strong>Xóa dữ liệu trên Cloud</strong>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -368,7 +570,7 @@ export default function AthletesPage() {
                       <button className="btn-icon text-orange" onClick={() => handleMoveClick(a)} title="Chuyển hạng cân">
                         🔄
                       </button>
-                      <button className="btn-icon text-red" onClick={() => handleDeleteClick(a.id)} title="Xóa VĐV">
+                       <button className="btn-icon text-red" onClick={() => handleDeleteClick(a.id)} title="Xóa VĐV">
                         🗑️
                       </button>
                     </td>
@@ -440,10 +642,13 @@ export default function AthletesPage() {
         {/* Modal xóa */}
         <ConfirmDialog
           isOpen={confirmDialog.open}
-          title="Xóa VĐV"
-          message="Bạn có chắc chắn muốn xóa VĐV này? VĐV sẽ bị xóa khỏi hạng mục hiện tại."
-          onConfirm={handleConfirmDelete}
-          onCancel={() => setConfirmDialog({ open: false, athleteId: null })}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(p => ({ ...p, open: false }))}
+          type={confirmDialog.type}
+          confirmText="Xác nhận"
+          cancelText="Hủy"
         />
       </div>
     </div>

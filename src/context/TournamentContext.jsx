@@ -44,14 +44,39 @@ const ACTIONS = {
   UPDATE_CLUB_REGISTRATIONS: "UPDATE_CLUB_REGISTRATIONS",
   MOVE_ATHLETE: "MOVE_ATHLETE",
   SYNC_MATCH_RESULT: "SYNC_MATCH_RESULT",
+  CLEAR_TOURNAMENT_ATHLETES: "CLEAR_TOURNAMENT_ATHLETES",
 };
 
 function tournamentReducer(state, action) {
   let newState;
 
   switch (action.type) {
+    case ACTIONS.CLEAR_TOURNAMENT_ATHLETES:
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) =>
+          t.id === action.payload
+            ? {
+                ...t,
+                categories: t.categories.map((c) => ({
+                  ...c,
+                  athletes: [],
+                  bracket: null, // Also reset brackets to be safe
+                })),
+                clubRegistrations: {}, // Also reset registrations
+              }
+            : t
+        ),
+      };
+      if (state.currentTournament?.id === action.payload) {
+        newState.currentTournament = newState.tournaments.find(
+          (t) => t.id === action.payload
+        );
+      }
+      break;
     case ACTIONS.LOAD_DATA:
       return { ...state, ...action.payload };
+
     case ACTIONS.ADD_TOURNAMENT:
       newState = {
         ...state,
@@ -367,18 +392,23 @@ function tournamentReducer(state, action) {
                   ...c,
                   athletes: [
                     ...c.athletes,
-                    ...action.payload.athletes.map((a) => ({
-                      id: uuidv4(),
-                      name: a.name,
-                      gender: a.gender || null,
-                      birthDate: a.birthDate || null,
-                      club: a.club,
-                      country: a.country || "VN",
-                      weight: a.weight || null,
-                      isTeam: a.isTeam || false,
-                      seed: a.seed || null,
-                      flagUrl: null,
-                    })),
+                    ...action.payload.athletes
+                      .filter(newA => !c.athletes.some(oldA => 
+                        oldA.name.trim().toLowerCase() === newA.name.trim().toLowerCase() && 
+                        (oldA.club || "").trim().toLowerCase() === (newA.club || "").trim().toLowerCase()
+                      ))
+                      .map((a) => ({
+                        id: uuidv4(),
+                        name: a.name,
+                        gender: a.gender || null,
+                        birthDate: a.birthDate || null,
+                        club: a.club,
+                        country: a.country || "VN",
+                        weight: a.weight || null,
+                        isTeam: a.isTeam || false,
+                        seed: a.seed || null,
+                        flagUrl: null,
+                      })),
                   ],
                 }
               : c

@@ -175,7 +175,7 @@ export default function AthleteList({
                     <td className="col-club">{athlete.club || "-"}</td>
                     {category?.type === "kumite" && (
                       <td className="col-weight">
-                        {athlete.weight ? `${athlete.weight} kg` : "-"}
+                        {athlete.weight || "-"}
                       </td>
                     )}
                     <td className="col-country">

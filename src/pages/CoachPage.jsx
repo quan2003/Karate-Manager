@@ -4,6 +4,7 @@ import { useRole, TIME_STATUS, ROLES } from "../context/RoleContext";
 import { openKrtFile, validateAthlete } from "../services/krtService";
 import { exportCoachData } from "../services/coachExportService";
 import { parseExcelFile } from "../services/excelService";
+import { submitAthletes } from "../services/supabaseService";
 import * as XLSX from "xlsx";
 import ConfirmDialog from "../components/common/ConfirmDialog";
 import DateInput from "../components/common/DateInput";
@@ -36,14 +37,17 @@ function CoachPage() {
     updateClubName,
     updateTeamLeaderName,
     updateAdditionalCoaches,
+    clearAthletes,
     getExportData,
     resetRole,
   } = useRole();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [editingAthlete, setEditingAthlete] = useState(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -54,6 +58,7 @@ function CoachPage() {
     isTeam: false,
     seed: "",
   });
+  const [lastSubmitted, setLastSubmitted] = useState(null);
   const [formErrors, setFormErrors] = useState([]);
   const [ageWarning, setAgeWarning] = useState("");
   const [confirmDialog, setConfirmDialog] = useState({
@@ -62,7 +67,7 @@ function CoachPage() {
     onConfirm: null,
   });
   const [countdown, setCountdown] = useState("");
-  const [importing, setImporting] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const excelFileInputRef = useRef(null);
 
   // Redirect nếu không phải Coach
@@ -326,26 +331,42 @@ function CoachPage() {
 
       let imported = 0;
       const importErrors = [];
-
       for (let i = startRow; i < rows.length; i++) {
         const row = rows[i];
         if (!row || !row[0]) continue;
-        const name = String(row[0] || "").trim();
+ 
+        // Detect column indices dynamically based on header
+        let nameCol = 0, genderCol = 1, birthCol = 2, clubCol = 3, eventCol = 4, weightCol = 5, seedCol = 7, teamCol = 6;
+        
+        if (startRow === 1 && rows[0]) {
+          const header = rows[0].map(h => String(h || "").toLowerCase());
+          const findCol = (terms) => header.findIndex(h => terms.some(t => h.includes(t.toLowerCase())));
+          
+          const n = findCol(["tên", "họ tên", "name"]); if (n !== -1) nameCol = n;
+          const g = findCol(["giới", "gender", "phái"]); if (g !== -1) genderCol = g;
+          const b = findCol(["sinh", "birth"]); if (b !== -1) birthCol = b;
+          const c = findCol(["clb", "đơn vị", "club"]); if (c !== -1) clubCol = c;
+          const e = findCol(["nội dung", "event", "hạng mục"]); if (e !== -1) eventCol = e;
+          const w = findCol(["cân", "weight", "kg"]); if (w !== -1) weightCol = w;
+          const s = findCol(["hạt giống", "seed"]); if (s !== -1) seedCol = s;
+          const t = findCol(["đồng đội", "đội", "team", "(Có/K)"]); if (t !== -1) teamCol = t;
+        } else {
+          // Fallback based on STT existence if no clear header matching
+          const isNum = typeof row[0] === 'number' || (!isNaN(row[0]) && String(row[0]).trim() !== "");
+          if (isNum && row[1]) {
+            nameCol = 1; birthCol = 2; genderCol = 3; clubCol = 4; eventCol = 5; weightCol = 6; seedCol = 7; teamCol = 8;
+          }
+        }
+
+        const name = String(row[nameCol] || "").trim();
         if (!name) continue;
 
-        const genderRaw = String(row[1] || "")
-          .trim()
-          .toLowerCase();
-        const gender =
-          genderRaw.includes("nữ") ||
-          genderRaw === "female" ||
-          genderRaw === "f"
-            ? "female"
-            : "male";
+        const genderRaw = String(row[genderCol] || "").trim().toLowerCase();
+        const gender = (genderRaw.includes("nữ") || genderRaw === "female" || genderRaw === "f") ? "female" : "male";
 
         // Parse birth date
         let birthDate = "";
-        const dateVal = row[2];
+        const dateVal = row[birthCol];
         if (dateVal) {
           if (typeof dateVal === "number") {
             const d = new Date(1899, 11, 30 + dateVal);
@@ -355,49 +376,28 @@ function CoachPage() {
             const sep = /[-\/.]/;
             const parts = str.split(sep);
             if (parts.length === 3) {
-              const a = parseInt(parts[0]),
-                b = parseInt(parts[1]),
-                c = parseInt(parts[2]);
-              if (c > 1900) {
-                birthDate = `${c}-${String(b).padStart(2, "0")}-${String(
-                  a
-                ).padStart(2, "0")}`;
-              } else if (a > 1900) {
-                birthDate = `${a}-${String(b).padStart(2, "0")}-${String(
-                  c
-                ).padStart(2, "0")}`;
-              }
+              const a = parseInt(parts[0]), b = parseInt(parts[1]), c = parseInt(parts[2]);
+              if (c > 1900) birthDate = `${c}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
+              else if (a > 1900) birthDate = `${a}-${String(b).padStart(2, "0")}-${String(c).padStart(2, "0")}`;
             }
           }
         }
 
-        const club = String(row[3] || clubName || "").trim();
+        const club = String(row[clubCol] || clubName || "").trim();
         let eventName, weight, isTeam, seed;
 
         if (hasEventCol) {
-          eventName = String(row[4] || "").trim();
-          weight = row[5] ? parseFloat(row[5]) : null;
-          const teamRaw = String(row[6] || "")
-            .trim()
-            .toLowerCase();
-          isTeam =
-            teamRaw === "có" ||
-            teamRaw === "co" ||
-            teamRaw === "yes" ||
-            teamRaw === "x";
-          seed = parseInt(row[7]) || null;
+          eventName = String(row[eventCol] || "").trim();
+          weight = row[weightCol] ? parseFloat(row[weightCol]) : null;
+          const teamRaw = String(row[teamCol] || "").trim().toLowerCase();
+          isTeam = teamRaw === "có" || teamRaw === "co" || teamRaw === "yes" || teamRaw === "x";
+          seed = parseInt(row[seedCol]) || null;
         } else {
           eventName = "";
-          weight = row[4] ? parseFloat(row[4]) : null;
-          const teamRaw = String(row[6] || "")
-            .trim()
-            .toLowerCase();
-          isTeam =
-            teamRaw === "có" ||
-            teamRaw === "co" ||
-            teamRaw === "yes" ||
-            teamRaw === "x";
-          seed = parseInt(row[7]) || null;
+          weight = row[weightCol - 1] ? parseFloat(row[weightCol - 1]) : null;
+          const teamRaw = String(row[teamCol - 1] || "").trim().toLowerCase();
+          isTeam = teamRaw === "có" || teamRaw === "co" || teamRaw === "yes" || teamRaw === "x";
+          seed = parseInt(row[seedCol - 1]) || null;
         }
 
         // Match event by name
@@ -466,7 +466,7 @@ function CoachPage() {
           );
         }
 
-        const result = addAthlete({
+        const result = await addAthlete({
           name,
           birthDate,
           birthYear,
@@ -506,7 +506,7 @@ function CoachPage() {
     }
   };
   // Submit form
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     const event = tournamentData.events.find(
@@ -594,13 +594,13 @@ function CoachPage() {
     };
 
     if (editingAthlete) {
-      const result = updateAthlete(editingAthlete.id, athleteData);
+      const result = await updateAthlete(editingAthlete.id, athleteData);
       if (!result.success) {
         setFormErrors([result.error]);
         return;
       }
     } else {
-      const result = addAthlete(athleteData);
+      const result = await addAthlete(athleteData);
       if (!result.success) {
         setFormErrors([result.error]);
         return;
@@ -705,7 +705,113 @@ function CoachPage() {
       toast.error("L\u1ed7i xu\u1ea5t file: " + err.message);
     }
   };
+ 
+  // Nộp danh sách trực tuyến
+  const handleOnlineSubmit = async () => {
+    if (!clubName.trim()) {
+      toast.warning("Vui lòng nhập tên Đoàn / Câu lạc bộ trước khi nộp trực tuyến");
+      return;
+    }
+ 
+    if (coachAthletes.length === 0) {
+      toast.warning("Danh sách VĐV trống. Vui lòng thêm VĐV trước khi nộp");
+      return;
+    }
+ 
+    // Validate tất cả VĐV trước khi nộp (tương tự export)
+    const warnings = [];
+    coachAthletes.forEach((a, idx) => {
+      const event = tournamentData.events.find((ev) => ev.id === a.eventId);
+      if (!event) return;
+      const evName = event.name || "";
+ 
+      // Check age
+      if (a.birthDate) {
+        const rangeMatch = evName.match(/(\d+)\s*[-\u2013]\s*(\d+)\s*tu\u1ed5i/i);
+        const plusMatch = evName.match(/(\d+)\+\s*tu\u1ed5i/i);
+        let minAge = null, maxAge = null;
+        if (rangeMatch) {
+          minAge = parseInt(rangeMatch[1]);
+          maxAge = parseInt(rangeMatch[2]);
+        } else if (plusMatch) {
+          minAge = parseInt(plusMatch[1]);
+          maxAge = 99;
+        }
+        if (minAge !== null) {
+          const birth = new Date(a.birthDate);
+          const now = new Date();
+          let age = now.getFullYear() - birth.getFullYear();
+          const m = now.getMonth() - birth.getMonth();
+          if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+          if (age < minAge || age > maxAge) {
+            warnings.push(`#${idx + 1} ${a.name}: ${age} tuổi - không phù hợp "${minAge}-${maxAge} tuổi" (${evName})`);
+          }
+        }
+      }
+ 
+      // Check weight for kumite
+      const isKumite = event.type === "kumite" || evName.toLowerCase().includes("kumite");
+      if (isKumite && !a.weight) {
+        warnings.push(`#${idx + 1} ${a.name}: Thiếu cân nặng cho Kumite (${evName})`);
+      }
+    });
+ 
+    if (warnings.length > 0) {
+      toast.error(`❌ Không thể nộp trực tuyến! Còn ${warnings.length} vấn đề cần sửa:\n\n${warnings.join("\n")}\n\nVui lòng sửa lại rồi nộp lại.`);
+      return;
+    }
+ 
+    if (!tournamentData || !tournamentData.tournamentId) {
+      toast.error("❌ Lỗi: Mã giải đấu (Tournament ID) bị thiếu. Vui lòng liên hệ BTC để lấy file .krt mới nhất.");
+      console.error("Missing tournamentId in tournamentData:", tournamentData);
+      return;
+    }
+ 
+    setSubmitting(true);
+    try {
+      const exportData = getExportData();
+      
+      // Normalize club names for all athletes to match the current clubName input
+      if (exportData.athletes && exportData.athletes.length > 0) {
+        exportData.athletes = exportData.athletes.map(a => ({
+          ...a,
+          club: clubName.trim()
+        }));
+      }
 
+      console.log("Submitting to Supabase with ID:", tournamentData.tournamentId);
+      const result = await submitAthletes(tournamentData.tournamentId, clubName.trim(), exportData);
+ 
+      if (result.success) {
+        setLastSubmitted(result.submitted_at_local);
+        toast.success(`✅ Đã nộp danh sách thành công lúc ${result.submitted_at_local}`);
+      } else {
+        toast.error(`❌ Mạng có vấn đề. Lỗi: ${result.message || "Không xác định"}. Vui lòng bấm nút [Xuất Excel] và gửi qua Zalo cho BTC`);
+      }
+    } catch (err) {
+      toast.error(`❌ Lỗi hệ thống: ${err.message}. Vui lòng bấm nút [Xuất Excel] và gửi qua Zalo cho BTC`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+ 
+  // Xóa tất cả VĐV
+  const handleDeleteAll = () => {
+    setConfirmDialog({
+      open: true,
+      message: "Bạn có chắc chắn muốn XÓA TẤT CẢ vận động viên trong danh sách hiện tại không? Thao tác này không thể hoàn tác.",
+      onConfirm: async () => {
+        const result = await clearAthletes();
+        if (result.success) {
+          toast.success("✅ Đã xóa toàn bộ danh sách vận động viên.");
+        } else {
+          toast.error("❌ Lỗi: " + result.error);
+        }
+        setConfirmDialog({ open: false, message: "", onConfirm: null });
+      }
+    });
+  };
+ 
   // Quay lại trang chọn role
   const handleBack = () => {
     resetRole();
@@ -900,12 +1006,50 @@ function CoachPage() {
                   disabled={importing || !canEdit}
                 />
               </label>
-              {canEdit && (
-                <button className="add-btn" onClick={handleAddNew}>
-                  + Thêm VĐV
-                </button>
+               {canEdit && (
+                <>
+                  <button
+                    className="btn-delete-all"
+                    onClick={handleDeleteAll}
+                    disabled={coachAthletes.length === 0}
+                    style={{ 
+                      backgroundColor: '#fee2e2', 
+                      color: '#ef4444', 
+                      border: '1px solid #fecaca',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    🗑️ Xóa tất cả
+                  </button>
+                  <button className="add-btn" onClick={handleAddNew}>
+                    + Thêm VĐV
+                  </button>
+                </>
               )}
             </div>
+          </div>
+
+          <div className="athlete-filter-bar" style={{ marginBottom: '16px', display: 'flex', gap: '10px' }}>
+             <input 
+               type="text" 
+               placeholder="🔍 Tìm kiếm tên VĐV hoặc nội dung thi đấu..." 
+               value={searchTerm}
+               onChange={(e) => setSearchTerm(e.target.value)}
+               style={{ 
+                 flex: 1, 
+                 padding: '10px 15px', 
+                 borderRadius: '8px', 
+                 border: '1px solid #e2e8f0',
+                 fontSize: '14px'
+               }}
+             />
           </div>
           {/* Add/Edit Form */}
           {showForm && (
@@ -969,7 +1113,7 @@ function CoachPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label>Cân nặng (kg)</label>
+                    <label>Cân nặng</label>
                     <input
                       type="number"
                       value={formData.weight}
@@ -1103,7 +1247,10 @@ function CoachPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {coachAthletes.map((athlete, index) => (
+                  {coachAthletes.filter(a => 
+                    (a.name || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
+                    (a.eventName || "").toLowerCase().includes(searchTerm.toLowerCase())
+                  ).map((athlete, index) => (
                     <tr key={athlete.id}>
                       <td>{index + 1}</td>
                       <td>{athlete.name}</td>
@@ -1117,7 +1264,7 @@ function CoachPage() {
                       </td>
                       <td>{athlete.gender === "male" ? "Nam" : "Nữ"}</td>
                       <td>{athlete.eventName}</td>
-                      <td>{athlete.weight ? `${athlete.weight}kg` : "-"}</td>
+                      <td>{athlete.weight || "-"}</td>
                       <td>{athlete.seed || "-"}</td>
                       <td>{athlete.isTeam ? "✅" : "-"}</td>
                       {canEdit && (
@@ -1193,8 +1340,41 @@ function CoachPage() {
               onClick={handleExport}
               disabled={coachAthletes.length === 0}
             >
-              📊 Xuất Excel
+              Xuất file Excel
             </button>
+            <button
+              className="export-btn online"
+              style={{ 
+                background: 'linear-gradient(135deg, #059669, #10b981)', 
+                color: '#fff',
+                fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+                fontWeight: '800',
+                fontSize: '15px',
+                letterSpacing: '0.3px',
+                boxShadow: '0 4px 12px -2px rgba(16, 185, 129, 0.4)',
+                border: 'none',
+                padding: '12px 24px',
+                borderRadius: '10px',
+                transition: 'all 0.2s ease'
+              }}
+              onClick={handleOnlineSubmit}
+              disabled={coachAthletes.length === 0 || submitting}
+            >
+              🚀 {submitting ? "Đang nộp..." : "Nộp danh sách trực tuyến"}
+            </button>
+            {lastSubmitted && (
+              <p className="last-submitted-info" style={{ 
+                fontSize: '13px', 
+                color: '#059669', 
+                marginTop: '8px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                ✅ Đã nộp lên Cloud lúc: {lastSubmitted}
+              </p>
+            )}
           </div>
         </div>
       </div>

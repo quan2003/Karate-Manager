@@ -3,6 +3,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
 } from "react";
 import {
   dbGetSessionData,
@@ -49,6 +50,7 @@ export function RoleProvider({ children }) {
   const [matchData, setMatchData] = useState(null);
   const [matchResults, setMatchResults] = useState([]);
   const [scoringEnabled, setScoringEnabled] = useState(false);
+  const [isRestored, setIsRestored] = useState(false);
 
   // Owner/System state - Removed
 
@@ -97,12 +99,13 @@ export function RoleProvider({ children }) {
 
       const savedAdditionalCoaches = await dbGetSessionData(data.tournamentId, 'additional_coaches');
       if (savedAdditionalCoaches) {
-        try {
-          setAdditionalCoaches(JSON.parse(savedAdditionalCoaches));
-        } catch (e) {
-          setAdditionalCoaches([]);
-        }
+        try { setAdditionalCoaches(JSON.parse(savedAdditionalCoaches)); } catch (e) { setAdditionalCoaches([]); }
       }
+
+      // Save as last active session
+      dbSetSessionData('system', 'last_role', ROLES.COACH);
+      dbSetSessionData('system', 'last_tournament_id', data.tournamentId);
+      dbSetSessionData('system', `tournament_json_${data.tournamentId}`, JSON.stringify(data));
     },
     [checkTimeStatus]
   );
@@ -128,6 +131,11 @@ export function RoleProvider({ children }) {
         const status = checkTimeStatus(data.startTime, data.endTime);
         setTimeStatus(status);
       }
+
+      // Save as last active session
+      dbSetSessionData('system', 'last_role', ROLES.SECRETARY);
+      dbSetSessionData('system', 'last_match_id', data.tournamentId);
+      dbSetSessionData('system', `match_json_${data.tournamentId}`, JSON.stringify(data));
     },
     [checkTimeStatus]
   );
@@ -236,6 +244,24 @@ export function RoleProvider({ children }) {
     },
     [timeStatus, tournamentData]
   );
+ 
+  /**
+   * Xóa tất cả VĐV (Coach)
+   */
+  const clearAthletes = useCallback(async () => {
+    if (timeStatus !== TIME_STATUS.DURING) {
+      return {
+        success: false,
+        error: "Không thể xóa VĐV ngoài thời gian cho phép",
+      };
+    }
+ 
+    setCoachAthletes([]);
+    if (tournamentData) {
+      await dbSetSessionData(tournamentData.tournamentId, 'coach_athletes', JSON.stringify([]));
+    }
+    return { success: true };
+  }, [timeStatus, tournamentData]);
 
   /**
    * Cập nhật tên HLV
@@ -812,8 +838,43 @@ export function RoleProvider({ children }) {
     setAdditionalCoaches([]);
     setMatchData(null);
     setMatchResults([]);
+    setMatchResults([]);
     setScoringEnabled(false);
+    dbSetSessionData('system', 'last_role', null);
   }, []);
+
+  // Effect to restore session
+  useEffect(() => {
+    const restore = async () => {
+      const lastRole = await dbGetSessionData('system', 'last_role');
+      if (!lastRole) {
+        setIsRestored(true);
+        return;
+      }
+
+      setRole(lastRole);
+      
+      if (lastRole === ROLES.COACH) {
+        const lastTid = await dbGetSessionData('system', 'last_tournament_id');
+        const lastTJson = await dbGetSessionData('system', `tournament_json_${lastTid}`);
+        if (lastTJson) {
+          try {
+            await loadKrtData(JSON.parse(lastTJson));
+          } catch (e) { console.error("Restore coach fail", e); }
+        }
+      } else if (lastRole === ROLES.SECRETARY) {
+        const lastMid = await dbGetSessionData('system', 'last_match_id');
+        const lastMJson = await dbGetSessionData('system', `match_json_${lastMid}`);
+        if (lastMJson) {
+          try {
+            await loadMatchData(JSON.parse(lastMJson));
+          } catch (e) { console.error("Restore secretary fail", e); }
+        }
+      }
+      setIsRestored(true);
+    };
+    restore();
+  }, [loadKrtData, loadMatchData]);
 
   /**
    * Kiểm tra xem có thể chỉnh sửa không (Coach)
@@ -855,6 +916,7 @@ export function RoleProvider({ children }) {
     updateClubName,
     updateTeamLeaderName,
     updateAdditionalCoaches,
+    clearAthletes,
     getExportData, // Secretary Actions
     updateMatchResult,
     removeMatchResult,

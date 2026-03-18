@@ -119,12 +119,22 @@ function parseExcelFile(content) {
       const dataSheet = workbook.Sheets['Data'];
       const jsonData = XLSX.utils.sheet_to_json(dataSheet, { header: 1 });
       
-      if (jsonData.length >= 2 && jsonData[0][0] === 'JSON_DATA') {
-        try {
-          const parsedData = JSON.parse(jsonData[1][0]);
-          return parseJsonFile(JSON.stringify(parsedData));
-        } catch (e) {
-          // Continue to manual parsing
+      if (jsonData.length >= 2) {
+        if (jsonData[0][0] === 'JSON_DATA') {
+          try {
+            const parsedData = JSON.parse(jsonData[1][0]);
+            return parseJsonFile(JSON.stringify(parsedData));
+          } catch (e) {
+            // Continue to manual parsing
+          }
+        } else if (jsonData[0][0] === 'JSON_DATA_CHUNKS') {
+          try {
+            // Reassemble chunks
+            const fullJson = jsonData.slice(1).map(row => row[0]).join('');
+            return parseJsonFile(fullJson);
+          } catch (e) {
+            // Continue to manual parsing
+          }
         }
       }
     }
@@ -149,7 +159,9 @@ function parseExcelFile(content) {
         gender: row[3] === 'Nam' ? 'male' : 'female',
         club: row[4] || '',
         eventName: row[5] || '',
-        weight: row[6] ? parseFloat(row[6]) : undefined
+        weight: row[6] ? parseFloat(row[6]) : undefined,
+        seed: row[7] || null,
+        isTeam: row[8] === 'Có'
       });
     }
     

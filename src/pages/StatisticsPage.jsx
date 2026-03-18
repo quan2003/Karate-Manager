@@ -2173,6 +2173,7 @@ export default function StatisticsPage() {
         femaleCount: uniqueFemale.size,
         athleteCount: uniqueAthletes.size,
         totalEntries: refAthletes.length,
+        submittedAt: regInfo.submittedAt || "" // NEW FIELD
       };
     });
 
@@ -3350,6 +3351,7 @@ export default function StatisticsPage() {
                       <th style={{ textAlign: "center" }}>VĐV Nam</th>
                       <th style={{ textAlign: "center" }}>VĐV Nữ</th>
                       <th style={{ textAlign: "center" }}>Tổng VĐV</th>
+                      <th style={{ textAlign: "center", width: "120px" }}>Thời gian nộp</th>
                       <th style={{ width: "60px" }}></th>
                     </tr>
                   </thead>
@@ -3488,6 +3490,9 @@ export default function StatisticsPage() {
                         </td>
                         <td style={{ textAlign: "center", fontWeight: 600 }}>
                           {d.athleteCount}
+                        </td>
+                        <td style={{ textAlign: "center", fontStyle: "italic", fontSize: "11px", color: "#64748b" }}>
+                          {d.submittedAt || "—"}
                         </td>
                         <td>
                           {editingClubReg === d.club ? (

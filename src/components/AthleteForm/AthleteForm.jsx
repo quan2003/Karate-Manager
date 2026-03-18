@@ -195,7 +195,7 @@ export default function AthleteForm({
       <div className="form-row">
         {isKumite && (
           <div className="input-group">
-            <label className="input-label">Cân nặng (kg) <span className="required">*</span></label>
+            <label className="input-label">Cân nặng <span className="required">*</span></label>
             <input
               type="number"
               name="weight"

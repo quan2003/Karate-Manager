@@ -13,6 +13,7 @@ import {
 } from "../services/krtService";
 import { createKmatchData, saveKmatchFile } from "../services/matchService";
 import { importCoachFile } from "../services/adminImportService";
+import { fetchSubmissions } from "../services/supabaseService";
 import Modal from "../components/common/Modal";
 import ConfirmDialog from "../components/common/ConfirmDialog";
 import DateInput from "../components/common/DateInput";
@@ -38,6 +39,7 @@ export default function HomePage() {
     onConfirm: null,
   });
   const [showBackupManager, setShowBackupManager] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     startDate: new Date().toISOString().split("T")[0],
@@ -408,7 +410,84 @@ export default function HomePage() {
     setShowImportModal(false);
     setImportResult(null);
   };
-
+ 
+  // Đồng bộ từ Supabase
+  const handleOnlineSync = async () => {
+    setSyncing(true);
+    try {
+      // Vì chúng ta có nhiều giải đấu, chúng ta sẽ lặp qua từng giải đấu để lấy submission
+      // Hoặc nếu table to, có thể viết endpoint lấy tất cả.
+      // Ở đây chúng ta lấy theo từng giải đấu hiện có để chính xác.
+      
+      let totalClubsSynced = 0;
+      let totalAthletesSynced = 0;
+ 
+      for (const tournament of tournaments) {
+        const result = await fetchSubmissions(tournament.id);
+        
+        if (result.success && result.data.length > 0) {
+          for (const submission of result.data) {
+            const data = submission.data;
+            const clubName = data.clubName || data.coachName || "Chưa Rõ";
+ 
+            // 1. Cập nhật thông tin đoàn
+            const existingRegs = tournament.clubRegistrations || {};
+            const existingReg = existingRegs[clubName] || { coaches: [], teamLeader: "" };
+            
+            const allCoaches = [data.coachName, ...(data.additionalCoaches || [])].filter(Boolean);
+            const mergedCoaches = [...new Set([...existingReg.coaches, ...allCoaches])].filter(Boolean);
+            const teamLeader = data.teamLeaderName || existingReg.teamLeader || "";
+ 
+            dispatch({
+              type: ACTIONS.UPDATE_CLUB_REGISTRATIONS,
+              payload: {
+                tournamentId: tournament.id,
+                clubRegistrations: {
+                  ...existingRegs,
+                  [clubName]: { coaches: mergedCoaches, teamLeader }
+                }
+              }
+            });
+ 
+            // 2. Thêm VĐV (với logic của import)
+            if (data.athletes && data.athletes.length > 0) {
+              const athletesByCat = {};
+              data.athletes.forEach(a => {
+                if (!athletesByCat[a.eventId]) athletesByCat[a.eventId] = [];
+                a.club = a.club || clubName;
+                athletesByCat[a.eventId].push(a);
+              });
+ 
+              Object.keys(athletesByCat).forEach(categoryId => {
+                if (tournament.categories.find(c => c.id === categoryId)) {
+                  dispatch({
+                    type: ACTIONS.IMPORT_ATHLETES,
+                    payload: {
+                      categoryId,
+                      athletes: athletesByCat[categoryId]
+                    }
+                  });
+                  totalAthletesSynced += athletesByCat[categoryId].length;
+                }
+              });
+            }
+            totalClubsSynced++;
+          }
+        }
+      }
+ 
+      if (totalClubsSynced > 0) {
+        alert(`✅ Tuyệt vời! Đã đồng bộ thành công:\n- ${totalClubsSynced} CLB mới\n- ${totalAthletesSynced} VĐV được cập nhật vào các giải đấu.`);
+      } else {
+        alert("☁️ Không có đăng ký mới nào trên Đám mây.");
+      }
+    } catch (error) {
+      alert("❌ Lỗi đồng bộ: " + error.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+ 
   // Quay lại chọn role
   const handleBackToRoleSelect = () => {
     resetRole();
@@ -466,6 +545,20 @@ export default function HomePage() {
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
               Import từ HLV
+            </button>
+            <button
+              className="btn btn-secondary btn-lg"
+              onClick={handleOnlineSync}
+              disabled={syncing}
+              style={{
+                background: "linear-gradient(135deg, #059669, #10b981)",
+                color: "#fff",
+                border: "none",
+                fontWeight: 600,
+                boxShadow: "0 4px 6px -1px rgba(16, 185, 129, 0.2)",
+              }}
+            >
+              ☁️ {syncing ? "Đang đồng bộ..." : "Đồng bộ trực tuyến"}
             </button>
             <button
               className="btn btn-secondary btn-lg"

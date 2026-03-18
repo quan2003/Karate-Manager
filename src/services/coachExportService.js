@@ -83,10 +83,20 @@ export async function exportToExcel(data) {
   XLSX.utils.book_append_sheet(wb, athleteSheet, "Danh sách VĐV");
 
   // Sheet 3: Dữ liệu JSON (để Admin import)
-  const jsonSheet = XLSX.utils.aoa_to_sheet([
-    ["JSON_DATA"],
-    [JSON.stringify(data)],
-  ]);
+  // Xử lý chia nhỏ JSON nếu quá 30,000 ký tự (giới hạn của Excel cell)
+  const jsonStr = JSON.stringify(data);
+  const CHUNK_SIZE = 30000;
+  const jsonChunks = [];
+  for (let i = 0; i < jsonStr.length; i += CHUNK_SIZE) {
+    jsonChunks.push([jsonStr.substring(i, i + CHUNK_SIZE)]);
+  }
+
+  const jsonSheetContent = [
+    ["JSON_DATA_CHUNKS"],
+    ...jsonChunks
+  ];
+
+  const jsonSheet = XLSX.utils.aoa_to_sheet(jsonSheetContent);
   XLSX.utils.book_append_sheet(wb, jsonSheet, "Data");
 
   // Xuất file
