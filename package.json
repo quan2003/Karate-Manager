@@ -78,14 +78,14 @@
         "name": "Karate Tournament File",
         "description": "File giải đấu Karate cho Huấn luyện viên",
         "role": "Editor",
-        "icon": "public/icon.ico"
+        "icon": "public/icon"
       },
       {
         "ext": "kmatch",
         "name": "Karate Match File",
         "description": "File chấm điểm Karate cho Thư ký",
         "role": "Editor",
-        "icon": "public/icon.ico"
+        "icon": "public/icon"
       }
     ],
     "win": {
