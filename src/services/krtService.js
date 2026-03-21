@@ -62,8 +62,10 @@ function decodeKrt(encodedString) {
 
 /**
  * Tạo dữ liệu file .krt mới
+ * @param {Object} tournament - Thông tin giải đấu
+ * @param {string} targetRole - Role đích: "coach" (mặc định) hoặc "admin"
  */
-export function createKrtData(tournament) {
+export function createKrtData(tournament, targetRole = 'coach') {
   const data = {
     version: KRT_VERSION,
     tournamentId: tournament.id || crypto.randomUUID(),
@@ -73,7 +75,9 @@ export function createKrtData(tournament) {
     endTime: tournament.endTime,
     timezone: tournament.timezone || 'Asia/Ho_Chi_Minh',
     appVersion: APP_VERSION,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    // Flag điều hướng thông minh - chỉ định role nào sẽ mở file này
+    targetRole: targetRole
   };
   
   return data;

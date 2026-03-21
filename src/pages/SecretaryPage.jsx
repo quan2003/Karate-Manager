@@ -692,6 +692,7 @@ function SecretaryPage() {
                           categoryType={selectedCategory.type}
                           onMatchClick={handleSelectMatch}
                           onContextAction={handleContextAction}
+                          dragEnabled={false}
                         />
                       </div>
 

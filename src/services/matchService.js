@@ -12,8 +12,9 @@ const KMATCH_VERSION = "1.0.0";
  * @param {Object} tournament - Thông tin giải đấu
  * @param {Array} categories - Danh sách hạng mục với brackets
  * @param {Object} settings - Cài đặt (cho phép bấm điểm, thời gian, v.v.)
+ * @param {string} targetRole - Role đích: "secretary" (mặc định) hoặc "admin"
  */
-export function createKmatchData(tournament, categories, settings = {}) {
+export function createKmatchData(tournament, categories, settings = {}, targetRole = 'secretary') {
   const data = {
     version: KMATCH_VERSION,
     tournamentId: tournament.id,
@@ -37,6 +38,8 @@ export function createKmatchData(tournament, categories, settings = {}) {
     })),
 
     createdAt: new Date().toISOString(),
+    // Flag điều hướng thông minh - chỉ định role nào sẽ mở file này
+    targetRole: targetRole,
   };
 
   return data;

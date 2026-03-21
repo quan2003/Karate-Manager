@@ -320,7 +320,7 @@ export function RoleProvider({ children }) {
   );
 
   /**
-   * Lấy dữ liệu để xuất file (Coach)
+   * Lấy dữ liệu để xuất file (Coach) - File xuất từ HLV gửi Admin có targetRole: "admin"
    */ const getExportData = useCallback(() => {
     return {
       tournamentId: tournamentData?.tournamentId,
@@ -331,6 +331,8 @@ export function RoleProvider({ children }) {
       additionalCoaches,
       exportTime: new Date().toISOString(),
       athletes: coachAthletes,
+      // Khi HLV xuất file gửi Admin - app phải mở giao diện Admin
+      targetRole: 'admin',
     };
   }, [tournamentData, coachName, clubName, teamLeaderName, additionalCoaches, coachAthletes]);
 

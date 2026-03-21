@@ -72,6 +72,22 @@
       "kumite-scoreboard/**/*",
       "node_modules/better-sqlite3/**/*"
     ],
+    "fileAssociations": [
+      {
+        "ext": "krt",
+        "name": "Karate Tournament File",
+        "description": "File giải đấu Karate cho Huấn luyện viên",
+        "role": "Editor",
+        "icon": "public/icon.ico"
+      },
+      {
+        "ext": "kmatch",
+        "name": "Karate Match File",
+        "description": "File chấm điểm Karate cho Thư ký",
+        "role": "Editor",
+        "icon": "public/icon.ico"
+      }
+    ],
     "win": {
       "target": [
         {
@@ -87,9 +103,12 @@
       "oneClick": false,
       "perMachine": true,
       "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Karate Tournament"
+      "shortcutName": "Karate Tournament",
+      "installerIcon": "public/icon.ico",
+      "uninstallerIcon": "public/icon.ico"
     },
     "mac": {
       "target": "dmg",

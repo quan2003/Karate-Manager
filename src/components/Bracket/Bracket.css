@@ -477,3 +477,85 @@
     width: 15px;
   }
 }
+
+/* ============================================
+   DRAG & DROP STYLES
+   ============================================ */
+
+/* Hint bar khi drag mode bật */
+.drag-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 16px;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  border: 1px dashed #93c5fd;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #1d4ed8;
+  font-weight: 500;
+  gap: 6px;
+}
+
+/* Cursor khi hover ô có thể drag */
+.athlete-slot.draggable {
+  cursor: grab;
+}
+
+.athlete-slot.draggable:active {
+  cursor: grabbing;
+}
+
+/* Drag indicator icon */
+.drag-indicator {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-left: auto;
+  padding-left: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.athlete-slot.draggable:hover .drag-indicator {
+  opacity: 1;
+}
+
+/* Ô đang được kéo */
+.athlete-slot.drag-source {
+  opacity: 0.4;
+  background: linear-gradient(to right, #fef9c3 0%, #ffffff 50%) !important;
+  border-color: #fbbf24 !important;
+  border-left-color: #f59e0b !important;
+  transform: scale(0.98);
+}
+
+/* Ô đang được hover khi drag */
+.athlete-slot.drag-target {
+  background: linear-gradient(to right, #d1fae5 0%, #f0fdf4 50%) !important;
+  border-color: #34d399 !important;
+  border-left-color: #10b981 !important;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3) !important;
+  transform: translateX(2px);
+}
+
+/* Bracket container khi đang drag */
+.bracket-container.drag-active .athlete-slot.draggable:not(.drag-source):not(.drag-target) {
+  border-style: dashed;
+  opacity: 0.75;
+}
+
+/* Context menu info item */
+.context-menu-item.info {
+  color: #2563eb;
+}
+.context-menu-item.info:hover {
+  background: #eff6ff;
+}
+
+/* Print mode: ẩn drag hints */
+.print-mode .drag-hint,
+.print-mode .drag-indicator {
+  display: none;
+}

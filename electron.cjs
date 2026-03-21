@@ -6,9 +6,76 @@ const http = require("http");
 const os = require("os");
 const dbService = require("./database.cjs");
 
+// Thiết lập ngôn ngữ mặc định của Chromium cho app để input date formating là vi-VN (dd/mm/yyyy)
+app.commandLine.appendSwitch('lang', 'vi-VN');
+
 // Biến giữ window chính
 let mainWindow = null;
 let lanServer = null;
+
+// =============================================
+// Smart File Association - Nhận diện file khi khởi động
+// =============================================
+
+// Lưu đường dẫn file được mở (qua double-click hoặc command line)
+let startupFilePath = null;
+
+/**
+ * Lấy đường dẫn file .krt hoặc .kmatch từ command line arguments
+ * Electron nhận file path như một argument khi user double-click file
+ */
+function getFilePathFromArgs(argv) {
+  // Trong production: argv = [execPath, filePath]
+  // Trong dev: argv = [node, electronPath, filePath]
+  const args = argv.slice(app.isPackaged ? 1 : 2);
+  for (const arg of args) {
+    // Bỏ qua các flag bắt đầu bằng '--'
+    if (arg.startsWith('--')) continue;
+    // Kiểm tra xem arg có phải là đường dẫn file .krt hoặc .kmatch không
+    const ext = path.extname(arg).toLowerCase();
+    if ((ext === '.krt' || ext === '.kmatch') && fs.existsSync(arg)) {
+      return arg;
+    }
+  }
+  return null;
+}
+
+// Phát hiện file ngay khi app khởi động (trước khi createWindow)
+startupFilePath = getFilePathFromArgs(process.argv);
+
+// macOS: Xử lý event 'open-file' (user drop file lên dock icon)
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.krt' || ext === '.kmatch') {
+    startupFilePath = filePath;
+    // Nếu window đã mở, gửi file path ngay
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('app:open-file', { filePath, content: fs.readFileSync(filePath, 'utf8') });
+    }
+  }
+});
+
+// Windows: Xử lý second-instance (app đã mở, user click file khác)
+app.on('second-instance', (event, argv) => {
+  const filePath = getFilePathFromArgs(argv);
+  if (filePath && mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      mainWindow.webContents.send('app:open-file', { filePath, content });
+    } catch (err) {
+      console.error('Error reading file:', err);
+    }
+  }
+});
+
+// Đảm bảo chỉ có một instance của app
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+}
 
 function getLocalIp() {
   const interfaces = os.networkInterfaces();
@@ -223,6 +290,26 @@ function createWindow() {
     mainWindow.focus();
   });
 
+  // Gửi startup file tới renderer sau khi load xong
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (startupFilePath) {
+      try {
+        const content = fs.readFileSync(startupFilePath, 'utf8');
+        // Gửi sau 500ms để đảm bảo React đã mount xong
+        setTimeout(() => {
+          if (mainWindow && mainWindow.webContents) {
+            mainWindow.webContents.send('app:open-file', {
+              filePath: startupFilePath,
+              content
+            });
+          }
+        }, 800);
+      } catch (err) {
+        console.error('Error reading startup file:', err);
+      }
+    }
+  });
+
   // Xử lý mở cửa sổ mới (popup)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     // Cho phép mở scoreboard windows bên trong Electron
@@ -250,6 +337,30 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// =============================================
+// IPC Handler: Lấy thông tin startup file
+// =============================================
+ipcMain.handle('app:getStartupFile', () => {
+  if (!startupFilePath) return { success: false };
+  try {
+    const content = fs.readFileSync(startupFilePath, 'utf8');
+    const result = { success: true, filePath: startupFilePath, content };
+    return result;
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC Handler: Đọc nội dung file từ đường dẫn
+ipcMain.handle('app:readFile', (event, filePath) => {
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    return { success: true, content, filePath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
 
 // =============================================
 // IPC Handlers cho SQLite Database

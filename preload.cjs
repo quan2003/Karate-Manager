@@ -6,6 +6,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
   isElectron: true,
 
+  // =============================================
+  // Smart File Association APIs
+  // =============================================
+
+  // Lấy file được mở khi khởi động app
+  getStartupFile: () => ipcRenderer.invoke('app:getStartupFile'),
+
+  // Đọc nội dung file từ đường dẫn
+  readFile: (filePath) => ipcRenderer.invoke('app:readFile', filePath),
+
+  // Lắng nghe khi user mở file trong khi app đang chạy
+  onOpenFile: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('app:open-file', handler);
+    return () => ipcRenderer.removeListener('app:open-file', handler);
+  },
+
   // Phiên bản
   versions: {
     node: process.versions.node,
@@ -127,7 +144,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   receive: (channel, func) => {
-    const validChannels = ["app:update-available", "lan:receive-result"];
+    const validChannels = ["app:update-available", "lan:receive-result", "app:open-file"];
     if (validChannels.includes(channel)) {
       const subscription = (event, ...args) => func(...args);
       ipcRenderer.on(channel, subscription);

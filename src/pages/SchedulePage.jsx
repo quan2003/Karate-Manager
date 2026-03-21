@@ -15,6 +15,11 @@ import {
   buildTimeline,
   sortScheduleByMatAndTime,
   findAthleteConflicts,
+  generateTimeSlotsFromRange,
+  smartAutoAssign,
+  estimateTotalScheduleTime,
+  estimateRequiredDays,
+  DEFAULT_MATCH_DURATIONS
 } from "../services/scheduleService";
 import {
   exportScheduleToPDF,
@@ -22,23 +27,6 @@ import {
 } from "../services/scheduleExportService";
 import appIcon from "../assets/icon.png";
 import "./SchedulePage.css";
-
-// Generate 30-minute time slots between start and end (HH:mm format)
-function generateTimeSlotsFromRange(start, end) {
-  const slots = [];
-  if (!start || !end) return slots;
-  const [sh, sm] = start.split(":").map(Number);
-  const [eh, em] = end.split(":").map(Number);
-  let current = sh * 60 + sm;
-  const endMin = eh * 60 + em;
-  while (current <= endMin) {
-    const h = Math.floor(current / 60);
-    const m = current % 60;
-    slots.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
-    current += 30;
-  }
-  return slots;
-}
 
 // All possible time options for dropdowns (05:00 - 21:00)
 const ALL_TIME_OPTIONS = generateTimeSlotsFromRange("05:00", "21:00");
@@ -67,6 +55,7 @@ export default function SchedulePage() {
     afternoonStart: "13:00",
     afternoonEnd: "17:30",
   });
+  const [matchDurations, setMatchDurations] = useState(DEFAULT_MATCH_DURATIONS);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [assignForm, setAssignForm] = useState({ mat: 1, time: "08:00", order: 1 });
@@ -81,7 +70,6 @@ export default function SchedulePage() {
   const [showEventModal, setShowEventModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [eventForm, setEventForm] = useState({ name: "", time: "07:00", mat: 0, icon: "🎉", date: "" });
-
   // Schedule Setup
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [setupForm, setSetupForm] = useState({
@@ -92,6 +80,7 @@ export default function SchedulePage() {
     afternoonStart: "13:00",
     afternoonEnd: "17:30",
     matCount: 4,
+    durations: DEFAULT_MATCH_DURATIONS,
   });
 
   useEffect(() => {
@@ -117,12 +106,32 @@ export default function SchedulePage() {
         afternoonStart: cfg.afternoonStart || "13:00",
         afternoonEnd: cfg.afternoonEnd || "17:30",
       });
+      if (cfg.durations) {
+        setMatchDurations(cfg.durations);
+      }
     }
   }, [tournament?.id]);
 
   const mats = useMemo(() => generateDefaultMats(matCount), [matCount]);
 
   const categories = tournament?.categories || [];
+
+  const setupEstimations = useMemo(() => {
+    if (!showSetupModal || !categories) return null;
+    const morningSlots = generateTimeSlotsFromRange(setupForm.morningStart, setupForm.morningEnd, 30);
+    const afternoonSlots = generateTimeSlotsFromRange(setupForm.afternoonStart, setupForm.afternoonEnd, 30);
+    const slotsPerDay = morningSlots.length + afternoonSlots.length;
+    const minsPerDay = slotsPerDay * 30; 
+    
+    const requiredDays = estimateRequiredDays(categories, setupForm.matCount, minsPerDay, setupForm.durations || DEFAULT_MATCH_DURATIONS);
+    const { totalMinutes, estimatedHours } = estimateTotalScheduleTime(categories, setupForm.matCount, setupForm.durations || DEFAULT_MATCH_DURATIONS);
+
+    return {
+      requiredDays,
+      totalMinutes,
+      estimatedHours
+    };
+  }, [showSetupModal, setupForm, categories]);
 
   // Generate tournament days from saved config
   const tournamentDays = useMemo(() => {
@@ -311,62 +320,25 @@ export default function SchedulePage() {
       return;
     }
 
-    const morningSlots = generateTimeSlotsFromRange(sessionConfig.morningStart, sessionConfig.morningEnd);
-    const afternoonSlots = generateTimeSlotsFromRange(sessionConfig.afternoonStart, sessionConfig.afternoonEnd);
+    const morningSlots = generateTimeSlotsFromRange(sessionConfig.morningStart, sessionConfig.morningEnd, 30);
+    const afternoonSlots = generateTimeSlotsFromRange(sessionConfig.afternoonStart, sessionConfig.afternoonEnd, 30);
     const slotsPerMat = [...morningSlots, ...afternoonSlots];
     if (slotsPerMat.length === 0) {
       toast.error("Vui lòng cấu hình thời gian buổi sáng/chiều!");
       return;
     }
 
-    const totalSlots = slotsPerMat.length * matCount * tournamentDays.length;
-    if (allUnassigned.length > totalSlots) {
-      toast.error(`Không đủ slot: ${allUnassigned.length} nội dung vs ${totalSlots} slot. Tăng số ngày hoặc số thảm!`);
-    }
-
-    const newSchedule = { ...schedule };
-    let dayIdx = 0;
-    let matCursor = 0;
-    const slotCountPerDayMat = {}; // track used slots
-
-    allUnassigned.forEach(cat => {
-      // Find next available day+mat with free slots
-      let assigned = false;
-      for (let attempt = 0; attempt < tournamentDays.length * matCount; attempt++) {
-        const day = tournamentDays[dayIdx % tournamentDays.length];
-        const mat = (matCursor % matCount) + 1;
-        const key = `${day}_${mat}`;
-        const usedSlots = slotCountPerDayMat[key] || 0;
-
-        if (usedSlots < slotsPerMat.length) {
-          newSchedule[cat.id] = {
-            mat,
-            time: slotsPerMat[usedSlots],
-            order: usedSlots + 1,
-            date: day,
-          };
-          slotCountPerDayMat[key] = usedSlots + 1;
-          assigned = true;
-          matCursor++;
-          if (matCursor % matCount === 0) dayIdx++;
-          break;
-        } else {
-          matCursor++;
-          if (matCursor % matCount === 0) dayIdx++;
-        }
-      }
-      if (!assigned) {
-        // Overflow: put on last day, last mat
-        const lastDay = tournamentDays[tournamentDays.length - 1];
-        newSchedule[cat.id] = {
-          mat: 1, time: slotsPerMat[slotsPerMat.length - 1],
-          order: 999, date: lastDay,
-        };
-      }
-    });
+    const newSchedule = smartAutoAssign(
+      categories,
+      tournamentDays,
+      matCount,
+      sessionConfig,
+      matchDurations,
+      schedule
+    );
 
     saveSchedule(newSchedule);
-    toast.success(`Đã phân bổ ${allUnassigned.length} nội dung vào ${tournamentDays.length} ngày thi đấu`);
+    toast.success(`Đã tự động phân bổ thông minh cho ${allUnassigned.length} nội dung.`);
   };
 
   // Save schedule config
@@ -378,6 +350,7 @@ export default function SchedulePage() {
       competitionDays: tournamentDays.length,
       dates: tournamentDays,
       startDate: tournamentDays[0] || tournament.startDate || tournament.date,
+      durations: matchDurations,
     };
     dispatch({
       type: ACTIONS.UPDATE_TOURNAMENT,
@@ -400,6 +373,7 @@ export default function SchedulePage() {
       afternoonStart: cfg.afternoonStart || sessionConfig.afternoonStart,
       afternoonEnd: cfg.afternoonEnd || sessionConfig.afternoonEnd,
       matCount: cfg.matCount || matCount,
+      durations: cfg.durations || matchDurations || DEFAULT_MATCH_DURATIONS,
     });
     setShowSetupModal(true);
   };
@@ -426,6 +400,7 @@ export default function SchedulePage() {
       afternoonStart: setupForm.afternoonStart,
       afternoonEnd: setupForm.afternoonEnd,
       matCount: setupForm.matCount,
+      durations: setupForm.durations,
     };
     dispatch({
       type: ACTIONS.UPDATE_TOURNAMENT,
@@ -443,6 +418,7 @@ export default function SchedulePage() {
       afternoonStart: setupForm.afternoonStart,
       afternoonEnd: setupForm.afternoonEnd,
     });
+    setMatchDurations(setupForm.durations || DEFAULT_MATCH_DURATIONS);
     setSelectedDate(dates[0]);
     setShowSetupModal(false);
     toast.success(`Đã cấu hình ${setupForm.competitionDays} ngày thi đấu!`);
@@ -1221,10 +1197,42 @@ export default function SchedulePage() {
               </div>
             </div>
 
+            <div style={{marginTop:'16px'}}>
+              <div className="input-label">⏱️ Thời lượng trận đấu dự kiến (phút)</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginTop:'8px'}}>
+                <div className="input-group">
+                  <label className="input-label" style={{fontSize:'11px'}}>Kata cá nhân</label>
+                  <input type="number" className="input" value={setupForm.durations?.kata_individual || 15}
+                    onChange={(e) => setSetupForm(prev => ({...prev, durations: {...prev.durations, kata_individual: parseInt(e.target.value) || 15}}))} />
+                </div>
+                <div className="input-group">
+                  <label className="input-label" style={{fontSize:'11px'}}>Kata đồng đội</label>
+                  <input type="number" className="input" value={setupForm.durations?.kata_team || 25}
+                    onChange={(e) => setSetupForm(prev => ({...prev, durations: {...prev.durations, kata_team: parseInt(e.target.value) || 25}}))} />
+                </div>
+                <div className="input-group">
+                  <label className="input-label" style={{fontSize:'11px'}}>Kumite cá nhân</label>
+                  <input type="number" className="input" value={setupForm.durations?.kumite_individual || 20}
+                    onChange={(e) => setSetupForm(prev => ({...prev, durations: {...prev.durations, kumite_individual: parseInt(e.target.value) || 20}}))} />
+                </div>
+                <div className="input-group">
+                  <label className="input-label" style={{fontSize:'11px'}}>Kumite đồng đội</label>
+                  <input type="number" className="input" value={setupForm.durations?.kumite_team || 35}
+                    onChange={(e) => setSetupForm(prev => ({...prev, durations: {...prev.durations, kumite_team: parseInt(e.target.value) || 35}}))} />
+                </div>
+              </div>
+            </div>
+
             {/* Preview */}
             {setupForm.startDate && (
               <div style={{marginTop:'16px',padding:'12px',background:'#f1f5f9',borderRadius:'8px'}}>
-                <div style={{fontSize:'13px',fontWeight:700,color:'#334155',marginBottom:'6px'}}>👁️ Xem trước:</div>
+                <div style={{fontSize:'13px',fontWeight:700,color:'#334155',marginBottom:'6px'}}>👁️ Xem trước & Ước tính:</div>
+                {setupEstimations && (
+                  <div style={{fontSize:'12px',marginBottom:'12px',color:'#b45309',background:'#fef3c7',padding:'8px',borderRadius:'6px'}}>
+                    💡 Với {categories.length} nội dung đăng ký, tổng cộng ước tính <strong>{setupEstimations.estimatedHours} giờ</strong> thời gian biểu diễn thi đấu cho mỗi thảm. 
+                    Khuyến nghị cấu hình <strong>Tối thiểu {setupEstimations.requiredDays} ngày thi đấu</strong>.
+                  </div>
+                )}
                 {Array.from({length: setupForm.competitionDays}).map((_, i) => {
                   const d = new Date(setupForm.startDate);
                   d.setDate(d.getDate() + i);

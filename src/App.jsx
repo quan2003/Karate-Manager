@@ -13,6 +13,7 @@ import StatisticsPage from "./pages/StatisticsPage";
 import SchedulePage from "./pages/SchedulePage";
 import AthletesPage from "./pages/AthletesPage";
 import CertificatePage from "./pages/CertificatePage";
+import SmartFileRouter from "./components/SmartFileRouter/SmartFileRouter";
 
 import {
   initializeTrialIfNeeded,
@@ -25,6 +26,7 @@ import ErrorBoundary from "./components/ErrorBoundary/ErrorBoundary";
 import { ToastProvider } from "./components/common/Toast";
 import appIcon from "./assets/icon.png";
 import "./index.css";
+
 
 function App() {
   // Tự động kích hoạt Trial khi người dùng mới tải ứng dụng
@@ -43,6 +45,8 @@ function App() {
               <div className="app">
                 <TrialWatermark />
                 <LicenseBadge />
+                {/* SmartFileRouter: Tự động điều hướng khi mở file .krt/.kmatch */}
+                <SmartFileRouter />
                 <Routes>
                   {/* Role Selection */}
                   <Route path="/" element={<RoleSelectPage />} />

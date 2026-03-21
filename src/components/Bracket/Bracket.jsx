@@ -1,11 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { getMatchesByRound } from "../../utils/drawEngine";
 import "./Bracket.css";
 
 /**
- * Bracket Component - Simple Style
- * Đường nối đơn giản: chỉ có ─ và │
- * Hỗ trợ right-click context menu cho VĐV
+ * Bracket Component - Simple Style với Drag & Drop
+ * Hỗ trợ:
+ * - Right-click context menu cho VĐV
+ * - Drag & Drop để hoán đổi vị trí VĐV
+ * - Mode chỉnh sửa sơ đồ tùy ý
  */
 
 export default function Bracket({
@@ -13,11 +15,18 @@ export default function Bracket({
   categoryType = "kumite",
   onMatchClick,
   onContextAction, // callback: (action, match, athleteSlot) => void
+  onSwapAthletes,  // callback: (fromMatchId, fromSlot, toMatchId, toSlot) => void để hoán đổi VĐV
   printMode = false,
+  dragEnabled = true, // Bật/tắt tính năng drag & drop
 }) {
   const isTeamBracket = bracket?.isTeamBracket || false;
   const [contextMenu, setContextMenu] = useState(null); // { x, y, match, athleteSlot }
   const contextMenuRef = useRef(null);
+
+  // Drag & Drop state
+  const [dragSource, setDragSource] = useState(null); // { matchId, slot, athlete }
+  const [dragTarget, setDragTarget] = useState(null); // { matchId, slot }
+  const [isDragging, setIsDragging] = useState(false);
 
   // Đóng context menu khi click bên ngoài hoặc scroll
   useEffect(() => {
@@ -52,6 +61,79 @@ export default function Bracket({
     setContextMenu(null);
   };
 
+  // ==============================
+  // DRAG & DROP HANDLERS
+  // ==============================
+
+  const handleDragStart = useCallback((e, match, slot) => {
+    if (!dragEnabled) return;
+    const athlete = slot === 1 ? match.athlete1 : match.athlete2;
+    if (!athlete) return;
+    if (match.isBye) return;
+
+    setDragSource({ matchId: match.id, slot, athlete });
+    setIsDragging(true);
+
+    // Set drag image & data
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", JSON.stringify({ matchId: match.id, slot }));
+  }, [dragEnabled]);
+
+  const handleDragOver = useCallback((e, match, slot) => {
+    if (!dragEnabled || !dragSource) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+
+    // Không cho drag vào chính mình
+    if (dragSource.matchId === match.id && dragSource.slot === slot) {
+      setDragTarget(null);
+      return;
+    }
+
+    setDragTarget({ matchId: match.id, slot });
+  }, [dragEnabled, dragSource]);
+
+  const handleDragLeave = useCallback(() => {
+    setDragTarget(null);
+  }, []);
+
+  const handleDrop = useCallback((e, match, slot) => {
+    if (!dragEnabled || !dragSource) return;
+    e.preventDefault();
+
+    const targetMatchId = match.id;
+    const targetSlot = slot;
+
+    // Không swap với chính mình
+    if (dragSource.matchId === targetMatchId && dragSource.slot === targetSlot) {
+      setDragSource(null);
+      setDragTarget(null);
+      setIsDragging(false);
+      return;
+    }
+
+    // Gọi callback để hoán đổi VĐV
+    if (onSwapAthletes) {
+      onSwapAthletes(dragSource.matchId, dragSource.slot, targetMatchId, targetSlot);
+    }
+
+    setDragSource(null);
+    setDragTarget(null);
+    setIsDragging(false);
+  }, [dragEnabled, dragSource, onSwapAthletes]);
+
+  const handleDragEnd = useCallback(() => {
+    setDragSource(null);
+    setDragTarget(null);
+    setIsDragging(false);
+  }, []);
+
+  // Kiểm tra ô có phải là target hay source đang drag không
+  const isDragSource = (matchId, slot) =>
+    dragSource?.matchId === matchId && dragSource?.slot === slot;
+  const isDragTarget = (matchId, slot) =>
+    dragTarget?.matchId === matchId && dragTarget?.slot === slot;
+
   if (!bracket || !bracket.matches) {
     return (
       <div className="bracket-empty">
@@ -72,9 +154,16 @@ export default function Bracket({
 
   return (
     <div
-      className={`bracket-container ${printMode ? "print-mode" : ""}`}
+      className={`bracket-container ${printMode ? "print-mode" : ""} ${isDragging ? "drag-active" : ""}`}
       id="bracket-export"
     >
+      {/* Indicator drag mode */}
+      {dragEnabled && !printMode && (
+        <div className="drag-hint">
+          <span>🔀 Kéo thả để hoán đổi vị trí VĐV • Chuột phải để xem thêm tùy chọn</span>
+        </div>
+      )}
+
       <div className="bracket-rounds">
         {" "}
         {rounds.map((round, roundIndex) => {
@@ -147,9 +236,20 @@ export default function Bracket({
                     <div
                       className={`athlete-slot ${
                         match.winner?.id === match.athlete1?.id ? "winner" : ""
-                      } ${match.athlete1?.disqualified ? "disqualified" : ""}`}
+                      } ${match.athlete1?.disqualified ? "disqualified" : ""} ${
+                        isDragSource(match.id, 1) ? "drag-source" : ""
+                      } ${isDragTarget(match.id, 1) ? "drag-target" : ""} ${
+                        dragEnabled && match.athlete1 && !match.isBye ? "draggable" : ""
+                      }`}
                       onClick={() => onMatchClick && onMatchClick(match)}
                       onContextMenu={(e) => handleContextMenu(e, match, 1)}
+                      // Drag & Drop
+                      draggable={dragEnabled && !!match.athlete1 && !match.isBye && !printMode}
+                      onDragStart={(e) => handleDragStart(e, match, 1)}
+                      onDragOver={(e) => handleDragOver(e, match, 1)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, match, 1)}
+                      onDragEnd={handleDragEnd}
                     >
                       <span className="belt-mark aka"></span>
                       {match.athlete1?.country && (
@@ -217,15 +317,30 @@ export default function Bracket({
                           ✕
                         </span>
                       )}
+                      {/* Drag indicator */}
+                      {dragEnabled && match.athlete1 && !match.isBye && !printMode && (
+                        <span className="drag-indicator" title="Kéo để di chuyển VĐV">⠿</span>
+                      )}
                     </div>{" "}
                     {/* VĐV 2 */}
                     <div
                       className={`athlete-slot athlete-slot-2 ${
                         match.winner?.id === match.athlete2?.id ? "winner" : ""
-                      } ${match.athlete2?.disqualified ? "disqualified" : ""}`}
+                      } ${match.athlete2?.disqualified ? "disqualified" : ""} ${
+                        isDragSource(match.id, 2) ? "drag-source" : ""
+                      } ${isDragTarget(match.id, 2) ? "drag-target" : ""} ${
+                        dragEnabled && match.athlete2 && !match.isBye ? "draggable" : ""
+                      }`}
                       style={{ marginTop: athleteGap }}
                       onClick={() => onMatchClick && onMatchClick(match)}
                       onContextMenu={(e) => handleContextMenu(e, match, 2)}
+                      // Drag & Drop
+                      draggable={dragEnabled && !!match.athlete2 && !match.isBye && !printMode}
+                      onDragStart={(e) => handleDragStart(e, match, 2)}
+                      onDragOver={(e) => handleDragOver(e, match, 2)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, match, 2)}
+                      onDragEnd={handleDragEnd}
                     >
                       <span className="belt-mark ao"></span>
                       {match.athlete2?.country && (
@@ -292,6 +407,10 @@ export default function Bracket({
                         >
                           ✕
                         </span>
+                      )}
+                      {/* Drag indicator */}
+                      {dragEnabled && match.athlete2 && !match.isBye && !printMode && (
+                        <span className="drag-indicator" title="Kéo để di chuyển VĐV">⠿</span>
                       )}
                     </div>
                     {/* Đường nối: dọc + ngang */}
@@ -423,6 +542,18 @@ export default function Bracket({
               </button>
             </>
           )}
+          {/* Swap option */}
+          <div className="context-menu-divider" />
+          <button
+            className="context-menu-item info"
+            onClick={() => {
+              handleAction("swap_initiate");
+              setContextMenu(null);
+            }}
+          >
+            <span className="context-menu-icon">🔀</span>
+            <span>Kéo để hoán đổi vị trí</span>
+          </button>
         </div>
       )}
     </div>

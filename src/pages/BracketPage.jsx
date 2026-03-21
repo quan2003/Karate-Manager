@@ -27,6 +27,8 @@ export default function BracketPage() {
   const { tournaments, currentTournament, currentCategory } = useTournament();
   const dispatch = useTournamentDispatch();
   const [exporting, setExporting] = useState(false);
+  const [dragEnabled, setDragEnabled] = useState(true); // Bật drag & drop mặc định
+  const [swapHistory, setSwapHistory] = useState([]); // Lưu lịch sử swap để undo
   // Custom dialog — replaces window.prompt / window.confirm (Electron blocks those)
   const [dialog, setDialog] = useState(null);
   const dialogInputRef = useRef(null);
@@ -278,6 +280,90 @@ export default function BracketPage() {
         return;
     }
   };
+  /**
+   * Xử lý hoán đổi VĐV giữa 2 vị trí trong sơ đồ
+   * Hoạt động cho cả cùng trận và khác trận
+   */
+  const handleSwapAthletes = (fromMatchId, fromSlot, toMatchId, toSlot) => {
+    if (!category?.bracket) return;
+    
+    const matches = [...category.bracket.matches];
+    const fromMatch = matches.find(m => m.id === fromMatchId);
+    const toMatch = matches.find(m => m.id === toMatchId);
+    
+    if (!fromMatch || !toMatch) return;
+    
+    // Lưu trạng thái trước khi swap vào history (có thể undo)
+    setSwapHistory(prev => [...prev.slice(-9), {
+      fromMatchId, fromSlot, toMatchId, toSlot,
+      fromAthlete1: fromMatch.athlete1,
+      fromAthlete2: fromMatch.athlete2,
+      toAthlete1: toMatch.athlete1,
+      toAthlete2: toMatch.athlete2,
+    }]);
+    
+    // Lấy VĐV từ cả hai vị trí
+    const fromAthlete = fromSlot === 1 ? fromMatch.athlete1 : fromMatch.athlete2;
+    const toAthlete = toSlot === 1 ? toMatch.athlete1 : toMatch.athlete2;
+    
+    // Deep clone matches để update
+    const updatedMatches = matches.map(m => {
+      if (m.id === fromMatchId && m.id === toMatchId) {
+        // Swap trong cùng trận
+        const updated = { ...m };
+        if (fromSlot === 1) updated.athlete1 = toAthlete;
+        else updated.athlete2 = toAthlete;
+        if (toSlot === 1) updated.athlete1 = fromAthlete;
+        else updated.athlete2 = fromAthlete;
+        return updated;
+      } else if (m.id === fromMatchId) {
+        const updated = { ...m };
+        if (fromSlot === 1) updated.athlete1 = toAthlete;
+        else updated.athlete2 = toAthlete;
+        // Reset winner nếu có thay đổi VĐV
+        if (m.winner) updated.winner = null;
+        return updated;
+      } else if (m.id === toMatchId) {
+        const updated = { ...m };
+        if (toSlot === 1) updated.athlete1 = fromAthlete;
+        else updated.athlete2 = fromAthlete;
+        // Reset winner nếu có thay đổi VĐV
+        if (m.winner) updated.winner = null;
+        return updated;
+      }
+      return m;
+    });
+    
+    const updatedBracket = { ...category.bracket, matches: updatedMatches };
+    dispatch({
+      type: ACTIONS.UPDATE_CATEGORY,
+      payload: { id: category.id, bracket: updatedBracket },
+    });
+  };
+
+  /**
+   * Undo thao tác swap cuối cùng
+   */
+  const handleUndoSwap = () => {
+    if (swapHistory.length === 0 || !category?.bracket) return;
+    
+    const last = swapHistory[swapHistory.length - 1];
+    const matches = category.bracket.matches.map(m => {
+      if (m.id === last.fromMatchId) {
+        return { ...m, athlete1: last.fromAthlete1, athlete2: last.fromAthlete2, winner: null };
+      }
+      if (m.id === last.toMatchId) {
+        return { ...m, athlete1: last.toAthlete1, athlete2: last.toAthlete2, winner: null };
+      }
+      return m;
+    });
+    
+    dispatch({
+      type: ACTIONS.UPDATE_CATEGORY,
+      payload: { id: category.id, bracket: { ...category.bracket, matches } },
+    });
+    setSwapHistory(prev => prev.slice(0, -1));
+  };
   // Calculate progress
   const completedMatches = category.bracket.matches.filter(
     (m) => m.winner && !m.isBye
@@ -390,6 +476,30 @@ export default function BracketPage() {
             <Link to={`/category/${category.id}`} className="btn btn-secondary">
               ← Quay lại
             </Link>
+            {/* Nút toggle Drag & Drop */}
+            <button
+              className={`btn ${dragEnabled ? 'btn-warning' : 'btn-secondary'}`}
+              onClick={() => setDragEnabled(!dragEnabled)}
+              title={dragEnabled ? 'Tắt chế độ kéo thả' : 'Bật chế độ kéo thả sửa sơ đồ'}
+              style={{
+                background: dragEnabled ? 'linear-gradient(135deg, #f59e0b, #d97706)' : undefined,
+                color: dragEnabled ? '#fff' : undefined,
+                border: dragEnabled ? 'none' : undefined,
+                fontWeight: 600,
+              }}
+            >
+              {dragEnabled ? '🔒 Tắt kéo thả' : '🔓 Bật kéo thả'}
+            </button>
+            {/* Nút Undo swap */}
+            {swapHistory.length > 0 && (
+              <button
+                className="btn btn-secondary"
+                onClick={handleUndoSwap}
+                title="Hoàn tác thao tác hoán đổi VĐV cuối cùng"
+              >
+                ↩️ Undo ({swapHistory.length})
+              </button>
+            )}
             <button
               className="btn btn-secondary"
               onClick={handleExportScoreSheet}
@@ -413,6 +523,8 @@ export default function BracketPage() {
             categoryType={category.type}
             onMatchClick={handleMatchClick}
             onContextAction={handleContextAction}
+            onSwapAthletes={handleSwapAthletes}
+            dragEnabled={dragEnabled}
           />
           {/* Medal Table - Always visible, auto-update */}
           <div className="medal-table-container">
