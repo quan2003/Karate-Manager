@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^9.6.0",
     "dom-to-image-more": "^3.7.2",
     "electron-updater": "^6.8.3",
     "html2canvas": "^1.4.1",
@@ -112,7 +112,8 @@
     },
     "mac": {
       "target": "dmg",
-      "category": "public.app-category.sports"
+      "category": "public.app-category.sports",
+      "icon": "public/icon.png"
     },
     "linux": {
       "target": "AppImage"
