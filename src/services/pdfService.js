@@ -498,7 +498,7 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
   }
 
   // Dimensions
-  const cellWidth = 220;
+  const cellWidth = 260;
   const cellHeight = 24;
   const cellGap = 50;
   const matchHeight = cellHeight + cellGap + cellHeight; 
@@ -601,13 +601,13 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
       /* Cells */
       .pdf-cell { 
         display: flex; align-items: center; gap: 4px;
-        width: 100%; height: ${cellHeight}px; 
-        padding: 0 8px 0 12px; 
+        width: 100%; min-height: ${cellHeight}px; 
+        padding: 2px 8px 2px 12px; 
         border: 1px solid #64748b;
         background: #fff;
         position: relative;
         border-right: none;
-        font-size: 12px;
+        font-size: 11px;
       }
       .pdf-cell.aka {
         background: linear-gradient(to right, #fee2e2 0%, #ffffff 50%);
@@ -635,12 +635,13 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
       }
       
       .pdf-name { 
-        flex: 1; font-size: 12px; font-weight: 600; color: #1f2937; 
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
+        flex: 1; font-size: 11px; font-weight: 600; color: #1f2937; 
+        white-space: normal; word-break: break-word; overflow: visible; 
+        line-height: 1.2;
       }
       .pdf-club { 
-        font-size: 10px; color: #64748b; font-weight: 500;
-        white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; 
+        font-size: 9px; color: #64748b; font-weight: 500;
+        white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; 
       }
 
       /* Connectors */
@@ -676,21 +677,22 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         display: flex;
         align-items: center;
         gap: 4px;
-        height: ${cellHeight}px;
-        padding: 0 8px 0 12px;
+        min-height: ${cellHeight}px;
+        padding: 2px 8px 2px 12px;
         background: linear-gradient(to right, #fef3c7 0%, #ffffff 50%);
         border: 1px solid #fcd34d;
         border-left: 4px solid #f59e0b;
         border-right: none;
-        font-size: 12px;
+        font-size: 11px;
         min-width: 150px;
-        max-width: 250px;
+        max-width: 280px;
         z-index: 100;
       }
       .pdf-champion-icon { font-size: 14px; }
       .pdf-champion-name { 
-        flex: 1; font-weight: 600; color: #1f2937;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        flex: 1; font-size: 11px; font-weight: 600; color: #1f2937;
+        white-space: normal; word-break: break-word; overflow: visible;
+        line-height: 1.2;
       }
       .pdf-champion-club {
         font-size: 10px; color: #64748b; font-weight: 500; white-space: nowrap;

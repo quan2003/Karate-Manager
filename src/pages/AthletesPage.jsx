@@ -358,12 +358,19 @@ export default function AthletesPage() {
       <meta charset="utf-8"/>
       <title>Danh sách VĐV - ${tournament.name}</title>
       <style>
-        @page { size: landscape; margin: 10mm; }
+        @page { size: portrait; margin: 10mm; }
         body { font-family: 'Times New Roman', Times, serif; color: #000; padding: 10px; }
-        h2 { text-align: center; font-size: 18px; font-weight: bold; text-transform: uppercase; margin-bottom: 16px; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { color: #000; padding: 8px 6px; text-align: center; font-size: 12px; font-weight: bold; border: 1px solid #000; background-color: #f1f5f9; }
-        td { padding: 6px; border: 1px solid #000; }
+        h2 { text-align: center; font-size: 16px; font-weight: bold; text-transform: uppercase; margin-bottom: 14px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th { color: #000; padding: 6px 4px; text-align: center; font-size: 10px; font-weight: bold; border: 1px solid #000; background-color: #f1f5f9; }
+        td { padding: 5px 4px; border: 1px solid #000; word-break: break-word; }
+        td:nth-child(1) { text-align: center; width: 6%; }
+        td:nth-child(2) { width: 18%; }
+        td:nth-child(3) { text-align: center; width: 8%; }
+        td:nth-child(4) { text-align: center; width: 10%; }
+        td:nth-child(5) { width: 20%; }
+        td:nth-child(6) { width: 30%; }
+        td:nth-child(7) { text-align: center; width: 8%; }
       </style>
       </head><body>${htmlContent}</body></html>`
     );
