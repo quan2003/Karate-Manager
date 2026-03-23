@@ -310,15 +310,48 @@ function createWindow() {
     }
   });
 
-  // Xử lý mở cửa sổ mới (popup)
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
+}
+
+// Xử lý mở cửa sổ mới (popup) cho tất cả webContents 
+app.on("web-contents-created", (event, contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
     // Cho phép mở scoreboard windows bên trong Electron
-    if (url.includes("kata-scoreboard") || url.includes("kumite-scoreboard")) {
+    if (url.includes("kata-scoreboard") || url.includes("kumite-scoreboard") || url.includes("display.html") || url.includes("medals.html")) {
+      const { screen } = require('electron');
+      const displays = screen.getAllDisplays();
+      
+      let x = undefined;
+      let y = undefined;
+      let fullscreen = false;
+      let width = 1400;
+      let height = 900;
+      
+      // CHỈ bắn luồng thẳng ra màn hình thứ 2 nếu là màn hình DISPLAY (Dành cho khán giả)
+      const isDisplayWindow = url.includes("display.html") || url.includes("display_new.html");
+      
+      if (isDisplayWindow && displays.length > 1) {
+        // Tìm màn hình phụ
+        const externalDisplay = displays.find(d => d.bounds.x !== 0 || d.bounds.y !== 0) || displays[1];
+        if (externalDisplay) {
+          x = externalDisplay.bounds.x;
+          y = externalDisplay.bounds.y;
+          width = externalDisplay.bounds.width;
+          height = externalDisplay.bounds.height;
+          fullscreen = true;
+        }
+      }
+
       return {
         action: "allow",
         overrideBrowserWindowOptions: {
-          width: 1400,
-          height: 900,
+          width: width,
+          height: height,
+          x: x,
+          y: y,
+          fullscreen: fullscreen,
           autoHideMenuBar: true,
           webPreferences: {
             nodeIntegration: false,
@@ -332,11 +365,7 @@ function createWindow() {
     shell.openExternal(url);
     return { action: "deny" };
   });
-
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-  });
-}
+});
 
 // =============================================
 // IPC Handler: Lấy thông tin startup file
