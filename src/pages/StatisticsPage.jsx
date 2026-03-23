@@ -2623,9 +2623,7 @@ export default function StatisticsPage() {
     const totalSur = summary.reduce((s, d) => s + d.surchargeTotal, 0);
     const totalAll = summary.reduce((s, d) => s + d.totalFee, 0);
 
-    const printFrame = document.createElement("iframe");
-    printFrame.style.display = "none";
-    document.body.appendChild(printFrame);
+    const sponsorLogos = tournament.sponsorLogos || {};
 
     // Logos HTML using the same method
     const logoUrl = getAppBaseUrl() + "icon.png";
