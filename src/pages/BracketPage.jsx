@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   useTournament,
   useTournamentDispatch,
@@ -19,6 +19,7 @@ import {
   listenForMatchResult,
 } from "../services/scoreboardService";
 import Bracket from "../components/Bracket/Bracket";
+import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import "./BracketPage.css";
 
@@ -29,6 +30,8 @@ export default function BracketPage() {
   const [exporting, setExporting] = useState(false);
   const [dragEnabled, setDragEnabled] = useState(true); // Bật drag & drop mặc định
   const [swapHistory, setSwapHistory] = useState([]); // Lưu lịch sử swap để undo
+  const { activeHint, clearHint } = useOnboarding();
+  const navigate = useNavigate();
   // Custom dialog — replaces window.prompt / window.confirm (Electron blocks those)
   const [dialog, setDialog] = useState(null);
   const dialogInputRef = useRef(null);
@@ -134,6 +137,7 @@ export default function BracketPage() {
   };
 
   const handleMatchClick = (match) => {
+    clearHint();
     // If only one athlete exists (other slot is empty/BYE), auto-advance that athlete
     const hasOnlyAthlete1 = match.athlete1 && !match.athlete2;
     const hasOnlyAthlete2 = !match.athlete1 && match.athlete2;
@@ -175,6 +179,7 @@ export default function BracketPage() {
   };
 
   const handleExportPDF = async () => {
+    clearHint();
     setExporting(true);
     try {
       await exportBracketToPDF(
@@ -473,8 +478,11 @@ export default function BracketPage() {
           </div>
 
           <div className="header-actions">
-            <Link to={`/category/${category.id}`} className="btn btn-secondary">
+            <button className="btn btn-secondary" onClick={() => navigate(-1)} title="Quay về trang trước">
               ← Quay lại
+            </button>
+            <Link to={`/category/${category.id}`} className="btn btn-secondary">
+              📄 Chi tiết nội dung
             </Link>
             {/* Nút toggle Drag & Drop */}
             <button
@@ -507,7 +515,7 @@ export default function BracketPage() {
               📝 Xuất bảng điểm
             </button>
             <button
-              className="btn btn-primary"
+              className={`btn btn-primary ${activeHint === "publish_bracket" ? "hint-pulse" : ""}`}
               onClick={handleExportPDF}
               disabled={exporting}
             >

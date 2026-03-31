@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useReducer, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { createAutoBackup } from "../services/backupService";
@@ -394,8 +395,8 @@ function tournamentReducer(state, action) {
                     ...c.athletes,
                     ...action.payload.athletes
                       .filter(newA => !c.athletes.some(oldA => 
-                        oldA.name.trim().toLowerCase() === newA.name.trim().toLowerCase() && 
-                        (oldA.club || "").trim().toLowerCase() === (newA.club || "").trim().toLowerCase()
+                        oldA.name.trim().normalize("NFC").toLowerCase() === newA.name.trim().normalize("NFC").toLowerCase() && 
+                        (oldA.club || "").trim().normalize("NFC").toLowerCase() === (newA.club || "").trim().normalize("NFC").toLowerCase()
                       ))
                       .map((a) => ({
                         id: uuidv4(),

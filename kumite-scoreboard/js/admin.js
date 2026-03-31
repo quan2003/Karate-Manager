@@ -1409,10 +1409,8 @@ function loadPendingMatch() {
     if (eventInput) eventInput.value = state.eventTitle;
   }
 
-  // Load sponsor logos
-  if (pendingMatchData.sponsorLogos) {
-    state.sponsorLogos = pendingMatchData.sponsorLogos;
-  }
+  // Load sponsor logos (ALWAYS update to reflect bracket settings, even if null/empty)
+  state.sponsorLogos = pendingMatchData.sponsorLogos || null;
   
   // Load existing scores if match has data (for re-editing)
   if (pendingMatchData.score1 !== undefined) {

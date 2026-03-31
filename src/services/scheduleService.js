@@ -13,10 +13,10 @@
  * Tính từ khi bắt đầu đến khi xong toàn bộ hạng mục này
  */
 export const DEFAULT_MATCH_DURATIONS = {
-  kata_individual: 15,    // Kata cá nhân: ~15 phút/hạng mục (ít VĐV, vòng loại nhanh)
-  kata_team: 25,          // Kata đồng đội: ~25 phút/hạng mục (3 người biểu diễn)
-  kumite_individual: 20,  // Kumite cá nhân: ~20 phút/hạng mục (nhiều trận)
-  kumite_team: 35,        // Kumite đồng đội: ~35 phút/hạng mục (3 trận/đội, nhiều thời gian)
+  kata_individual: 5,    // Kata cá nhân: ~5 phút/trận
+  kata_team: 5,          // Kata đồng đội: ~5 phút/trận
+  kumite_individual: 5,  // Kumite cá nhân: ~5 phút/trận
+  kumite_team: 5,        // Kumite đồng đội: ~5 phút/trận
 };
 
 /**
@@ -54,25 +54,16 @@ export function estimateCategoryDuration(category, durations = DEFAULT_MATCH_DUR
   const detailType = getCategoryDetailType(category);
   const athleteCount = category.athletes?.length || 0;
   
-  if (athleteCount === 0) return durations[detailType] || 20; // Mặc định nếu chưa có VĐV
-  
-  // Số trận trong single elimination
+  if (athleteCount === 0) return 5; // Mặc định 5 phút nếu chưa có VĐV
+
   const matchCount = estimateMatchCount(athleteCount);
   
-  // Thời lượng mỗi trận theo loại
-  const matchDuration = durations[detailType] || 20;
-  
-  if (['kata_individual', 'kata_team'].includes(detailType)) {
-    // Kata: mỗi VĐV/đội biểu diễn khoảng matchDuration phút
-    // Không phải "trận vs trận" mà là từng người lần lượt
-    // Chia theo số vòng (thường 2-3 vòng cho kata)
-    const rounds = Math.ceil(Math.log2(athleteCount)) || 1;
-    return Math.ceil(athleteCount * matchDuration / (rounds > 0 ? rounds : 1));
-  } else {
-    // Kumite: mỗi trận khoảng matchDuration phút (bao gồm cả chuẩn bị)
-    // Các trận trong 1 vòng có thể song song, nhưng tính tuần tự cho 1 thảm
-    return Math.ceil(matchCount * matchDuration);
-  }
+  let matchDuration = durations[detailType] || 5;
+
+
+  // Phương pháp chuẩn: Cứ mỗi trận tính đúng matchDuration (hiện tại mặc định 5 phút)
+  // Xóa bỏ các công thức chia cho log2 gây sai lệch và nhân dồn làm phình thời gian
+  return Math.ceil(matchCount * matchDuration);
 }
 
 /**
@@ -124,6 +115,17 @@ export function estimateRequiredDays(categories, matCount, availableMinutesPerDa
  * @param {Object} existingSchedule - lịch hiện tại
  * @returns {Object} schedule mới
  */
+export function convertTimeToMins(timeStr) {
+  if (!timeStr) return 0;
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + m;
+}
+
+export function convertMinsToTime(mins) {
+  const h = Math.floor(mins / 60) % 24;
+  return `${String(h).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+}
+
 export function smartAutoAssign(
   categories,
   tournamentDays,
@@ -132,80 +134,205 @@ export function smartAutoAssign(
   durations = DEFAULT_MATCH_DURATIONS,
   existingSchedule = {}
 ) {
-  // Sắp xếp nội dung: kata trước (thường nhanh hơn), rồi đến kumite
-  // Trong mỗi loại: đồng đội trước (nhiều thời gian), cá nhân sau
+  // Ưu tiên xếp hạng mục Kata trước để tránh chấn thương
+  // Các nội dung còn lại giữ nguyên thứ tự khai báo (thường là theo độ tuổi/hạng cân) thay vì xếp số lượng VĐV đông lên trước.
   const sortedCategories = [...categories].sort((a, b) => {
-    const typeOrder = { kata_team: 0, kata_individual: 1, kumite_team: 2, kumite_individual: 3 };
-    const aType = getCategoryDetailType(a);
-    const bType = getCategoryDetailType(b);
-    const typeDiff = (typeOrder[aType] || 0) - (typeOrder[bType] || 0);
-    if (typeDiff !== 0) return typeDiff;
-    // Cùng loại: ưu tiên ít VĐV hơn để tránh dồn thảm
-    return (a.athletes?.length || 0) - (b.athletes?.length || 0);
+    const aIsKata = getCategoryDetailType(a).startsWith('kata') ? 1 : 0;
+    const bIsKata = getCategoryDetailType(b).startsWith('kata') ? 1 : 0;
+    
+    if (aIsKata !== bIsKata) return bIsKata - aIsKata; // Kata lên trên
+    
+    // Sort logically by name if both are Kata or both are Kumite
+    return a.name.localeCompare(b.name);
   });
 
-  const morningSlots = generateTimeSlotsFromRange(sessionConfig.morningStart, sessionConfig.morningEnd, 30);
-  const afternoonSlots = generateTimeSlotsFromRange(sessionConfig.afternoonStart, sessionConfig.afternoonEnd, 30);
-  const allSlots = [...morningSlots, ...afternoonSlots];
-  if (allSlots.length === 0) return existingSchedule;
+  const morningStartMins = convertTimeToMins(sessionConfig.morningStart || "07:15");
+  const morningEndMins = convertTimeToMins(sessionConfig.morningEnd || "11:30");
+  const afternoonStartMins = convertTimeToMins(sessionConfig.afternoonStart || "13:00");
 
   const newSchedule = { ...existingSchedule };
 
-  // Tracking: số phút đã dùng trên mỗi thảm trong mỗi ngày
-  // key: "date_mat", value: phút đã dùng
-  const matTimeUsed = {};
-  const availablePerSlot = 30; // 30 phút/slot
+  // Track the exact occupation per day
+  const scheduleLog = {}; // log[day] = list of { catId, mat, startMins, endMins, athletes }
+  tournamentDays.forEach(day => { scheduleLog[day] = []; });
 
-  // Tính thời gian có thể dùng mỗi ngày (phút)
-  const minsPerDay = allSlots.length * availablePerSlot; // 30 phút/slot × số slot
+  // Init log from existing schedule
+  for (const [catId, s] of Object.entries(existingSchedule)) {
+    const startMins = convertTimeToMins(s.time);
+    const cat = categories.find(c => c.id === catId);
+    const dur = estimateCategoryDuration(cat || {}, durations);
+    
+    if (!scheduleLog[s.date]) scheduleLog[s.date] = [];
+    scheduleLog[s.date].push({
+      catId, mat: s.mat,
+      startMins: startMins, 
+      endMins: startMins + dur,
+      athletes: cat?.athletes || []
+    });
+  }
+
+  function getMatCount(day, mat) {
+    return scheduleLog[day].filter(x => x.mat === mat).length;
+  }
+  function getDayCount(day) {
+    return scheduleLog[day].length;
+  }
+  
+  // Check if a category overlaps with another on the SAME MAT
+  function isMatOccupied(day, mat, startMins, endMins) {
+    const matItems = scheduleLog[day].filter(x => x.mat === mat);
+    for (const item of matItems) {
+      if (!(endMins <= item.startMins || startMins >= item.endMins)) return true;
+    }
+    return false;
+  }
+
+  // Check if athlete conflicts across ANY MAT
+  function hasAthleteConflict(cat, day, startMins, endMins) {
+    for (const item of scheduleLog[day]) {
+      if (!(endMins <= item.startMins || startMins >= item.endMins)) {
+        const assignedCat = categories.find(c => c.id === item.catId);
+        if (assignedCat && findAthleteConflicts(cat, assignedCat).length > 0) return true;
+      }
+    }
+    return false;
+  }
+
+  function findEarliestFreeSlot(cat, day, mat, dur) {
+    let s = morningStartMins;
+    while (s < 1440) { // max 24 hours
+      // Nếu khe thời gian hiện tại rơi vào giờ nghỉ trưa, nhảy thẳng sang đầu giờ chiều
+      if (s >= morningEndMins && s < afternoonStartMins) {
+        s = afternoonStartMins;
+        continue;
+      }
+      
+      const end = s + dur;
+      if (!isMatOccupied(day, mat, s, end) && !hasAthleteConflict(cat, day, s, end)) {
+        return s;
+      }
+      s += 5; // step 5 phút
+    }
+    return 1440;
+  }
 
   for (const cat of sortedCategories) {
-    if (newSchedule[cat.id]) continue; // Đã xếp thì bỏ qua
+    if (newSchedule[cat.id]) continue; // already assigned
+    const dur = estimateCategoryDuration(cat, durations);
 
-    const catDuration = estimateCategoryDuration(cat, durations);
-    // Tìm slot vừa đủ trong ngày+thảm chưa quá tải
-    // Tìm (day, mat) trống nhiều nhất trong ngày+thảm chưa quá tải
-    let bestKey = null;
-    let minUsed = Infinity;
-    let bestDay = null;
-    let bestMat = null;
-
+    // Candidates: all combination of Day and Mat
+    const candidates = [];
     for (const day of tournamentDays) {
       for (let mat = 1; mat <= matCount; mat++) {
-        const key = `${day}_${mat}`;
-        const used = matTimeUsed[key] || 0;
-
-        if (used < minUsed && used + catDuration <= minsPerDay) {
-          minUsed = used;
-          bestKey = key;
-          bestDay = day;
-          bestMat = mat;
-        }
+        const earliestSlot = findEarliestFreeSlot(cat, day, mat, dur);
+        candidates.push({
+          day, mat, earliestSlot,
+          dayItems: getDayCount(day),
+          matItems: getMatCount(day, mat)
+        });
       }
     }
 
-    let assigned = false;
-    if (bestKey !== null) {
-      // Tính slot bắt đầu dựa trên số phút đã dùng
-      const slotIdx = Math.min(Math.floor(minUsed / availablePerSlot), allSlots.length - 1);
-      const time = allSlots[slotIdx];
-      const order = Object.values(newSchedule).filter(s => s.mat === bestMat && s.date === bestDay).length + 1;
+    // ⭐ Rule to balance:
+    // 1. Day with least items
+    // 2. Mat with least items
+    // 3. Earliest possible slot
+    candidates.sort((a, b) => {
+      if (a.dayItems !== b.dayItems) return a.dayItems - b.dayItems; // balance days
+      if (a.matItems !== b.matItems) return a.matItems - b.matItems; // balance mats
+      return a.earliestSlot - b.earliestSlot; // keep it early
+    });
 
-      newSchedule[cat.id] = { mat: bestMat, time, order, date: bestDay };
-      matTimeUsed[bestKey] = (matTimeUsed[bestKey] || 0) + catDuration;
-      assigned = true;
-    }
-
-    if (!assigned) {
-      // Overflow: put on last day, mat 1
-      const lastDay = tournamentDays[tournamentDays.length - 1];
-      const order = Object.values(newSchedule).filter(s => s.mat === 1 && s.date === lastDay).length + 1;
-      newSchedule[cat.id] = { mat: 1, time: allSlots[allSlots.length - 1], order: order + 100, date: lastDay };
-    }
+    const chosen = candidates[0];
+    const startMins = chosen.earliestSlot;
+    
+    newSchedule[cat.id] = {
+      mat: chosen.mat,
+      time: convertMinsToTime(startMins),
+      order: chosen.matItems + 1,
+      date: chosen.day
+    };
+    
+    scheduleLog[chosen.day].push({
+      catId: cat.id,
+      mat: chosen.mat,
+      startMins: startMins,
+      endMins: startMins + dur,
+      athletes: cat.athletes
+    });
   }
 
+  // Sort them sequentially by time so order numbers are nice
+  Object.values(newSchedule).forEach(s => {
+    const timeVal = s.time.replace(':', '');
+    s._sortVal = parseInt(timeVal);
+  });
+  
   return newSchedule;
 }
+
+
+export function addMinutesToTime(timeStr, mins) {
+  if (!timeStr) return "";
+  const [h, m] = timeStr.split(':').map(Number);
+  const totalMins = h * 60 + m + Math.round(mins);
+  const newH = Math.floor(totalMins / 60) % 24;
+  const newM = totalMins % 60;
+  return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+}
+
+/**
+ * Phát hiện các xung đột thực sự sau khi xếp lịch:
+ * VĐV bị xếp thi đấu cùng thời điểm ở 2 thảm khác nhau trong cùng ngày.
+ * @returns {Array} Danh sách conflict { date, time, catA, catB, matA, matB, athletes }
+ */
+export function detectScheduleConflicts(schedule, categories) {
+  const conflicts = [];
+  const entries = Object.entries(schedule)
+    .map(([catId, s]) => {
+      const category = categories.find(c => c.id === catId);
+      if (!category) return null;
+      const startMins = convertTimeToMins(s.time);
+      const dur = estimateCategoryDuration(category);
+      return { 
+        catId, ...s, 
+        category, 
+        startMins, 
+        endMins: startMins + dur 
+      };
+    })
+    .filter(Boolean);
+
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      const a = entries[i];
+      const b = entries[j];
+      
+      // Khác thảm, cùng ngày
+      if (a.date !== b.date || a.mat === b.mat) continue;
+
+      // KIỂM TRA OVERLAP (SONG SONG)
+      const isParallel = Math.max(a.startMins, b.startMins) < Math.min(a.endMins, b.endMins);
+      if (!isParallel) continue;
+
+      const overlapping = findAthleteConflicts(a.category, b.category);
+      if (overlapping.length > 0) {
+        conflicts.push({
+          date: a.date,
+          time: a.time,
+          catA: a.category,
+          catB: b.category,
+          matA: a.mat,
+          matB: b.mat,
+          athletes: overlapping,
+        });
+      }
+    }
+  }
+  return conflicts;
+}
+
+
 
 /**
  * Lấy tất cả VĐV trong 1 nội dung
@@ -245,17 +372,17 @@ export function findAthleteConflicts(category1, category2) {
 /**
  * Kiểm tra xung đột lịch thi đấu khi gán thảm + giờ
  */
-export function checkScheduleConflicts(schedule, categories, targetCategoryId, mat, time) {
+export function checkScheduleConflicts(schedule, categories, targetCategoryId, mat, time, date) {
   const warnings = [];
   const targetCategory = categories.find(c => c.id === targetCategoryId);
   if (!targetCategory) return warnings;
 
   const sameMat = Object.entries(schedule).filter(
-    ([catId, s]) => catId !== targetCategoryId && s.mat === mat
+    ([catId, s]) => catId !== targetCategoryId && s.mat === mat && s.date === date
   );
 
   const otherMats = Object.entries(schedule).filter(
-    ([catId, s]) => catId !== targetCategoryId && s.mat !== mat && s.time === time
+    ([catId, s]) => catId !== targetCategoryId && s.mat !== mat && s.time === time && s.date === date
   );
 
   for (const [catId, s] of otherMats) {
@@ -291,25 +418,51 @@ export function checkScheduleConflicts(schedule, categories, targetCategoryId, m
   }
 
   const allOtherMats = Object.entries(schedule).filter(
-    ([catId, s]) => catId !== targetCategoryId && s.mat !== mat
+    ([catId, s]) => catId !== targetCategoryId && s.mat !== mat && s.date === date
   );
+
+  const targetDur = estimateCategoryDuration(targetCategory);
+  const targetStart = convertTimeToMins(time);
+  const targetEnd = targetStart + targetDur;
 
   for (const [catId, s] of allOtherMats) {
     const otherCategory = categories.find(c => c.id === catId);
     if (!otherCategory) continue;
 
     const conflicts = findAthleteConflicts(targetCategory, otherCategory);
-    if (conflicts.length > 0 && s.time !== time) {
+    if (conflicts.length === 0) continue;
+
+    const sStart = convertTimeToMins(s.time);
+    const sDur = estimateCategoryDuration(otherCategory);
+    const sEnd = sStart + sDur;
+
+    // KIỂM TRA SONG SONG (OVERLAP)
+    const isParallel = Math.max(targetStart, sStart) < Math.min(targetEnd, sEnd);
+
+    if (isParallel) {
       warnings.push({
-        type: 'athlete_other_mat',
-        severity: 'warning',
-        message: `⚡ ${conflicts.length} VĐV cũng thi đấu tại Thảm ${s.mat} (${otherCategory.name}, lúc ${s.time})`,
+        type: 'athlete_conflict',
+        severity: 'error',
+        message: `🚨 ${conflicts.length} VĐV THI ĐẤU SONG SONG tại Thảm ${s.mat} ("${otherCategory.name}", lúc ${s.time})`,
         details: conflicts.map(c => `${c.name} (${c.club})`),
         conflictCategoryId: catId,
         conflictCategoryName: otherCategory?.name,
         conflictMat: s.mat,
         conflictTime: s.time,
       });
+    } else {
+      // Khác giờ nhưng cùng ngày (VĐV thi nhiều nội dung)
+      // Chỉ hiện warning nếu thời gian nghỉ quá ít (dưới 15 phút)
+      const gap = Math.abs(targetStart > sStart ? targetStart - sEnd : sStart - targetEnd);
+      if (gap < 15) {
+        warnings.push({
+          type: 'athlete_other_mat',
+          severity: 'warning',
+          message: `⚡ ${conflicts.length} VĐV thi đấu gần giờ tại Thảm ${s.mat} (cách ${gap} phút)`,
+          details: conflicts.map(c => `${c.name} (${c.club})`),
+          conflictCategoryId: catId,
+        });
+      }
     }
   }
 
@@ -441,7 +594,7 @@ export function buildTimeline(schedule, categories) {
 /**
  * Tạo các slot thời gian theo khoảng bước nhảy (phút)
  */
-export function generateTimeSlotsFromRange(start, end, stepMinutes = 30) {
+export function generateTimeSlotsFromRange(start, end, stepMinutes = 5) {
   const slots = [];
   if (!start || !end) return slots;
   const [sh, sm] = start.split(':').map(Number);

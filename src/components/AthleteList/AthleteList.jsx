@@ -12,6 +12,7 @@ export default function AthleteList({
   onImport,
   onClearAll,
   category,
+  activeHint,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [importing, setImporting] = useState(false);
@@ -81,13 +82,13 @@ export default function AthleteList({
 
         <div className="list-actions">
           <button
-            className="btn btn-secondary"
+            className={`btn btn-secondary ${activeHint === "import_athletes" ? "hint-pulse" : ""}`}
             onClick={() => generateTemplateExcel(category)}
           >
             📥 Tải mẫu Excel
           </button>
           <button
-            className="btn btn-secondary"
+            className={`btn btn-secondary ${activeHint === "import_athletes" ? "hint-pulse" : ""}`}
             onClick={() => fileInputRef.current?.click()}
             disabled={importing}
           >

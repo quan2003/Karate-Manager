@@ -11,6 +11,7 @@ import AthleteForm from "../components/AthleteForm/AthleteForm";
 import SearchableSelect from "../components/common/SearchableSelect";
 import { useToast } from "../components/common/Toast";
 import { fetchSubmissions, deleteSubmissions } from "../services/supabaseService";
+import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import * as XLSX from "xlsx";
 import "./AthletesPage.css";
@@ -20,6 +21,7 @@ export default function AthletesPage() {
   const { tournaments } = useTournament();
   const dispatch = useTournamentDispatch();
   const { toast } = useToast();
+  const { activeHint, clearHint } = useOnboarding();
 
   const tournament = tournaments.find((t) => t.id === id);
 
@@ -183,9 +185,22 @@ export default function AthletesPage() {
           // 2. Group Athletes
           if (data.athletes && data.athletes.length > 0) {
             data.athletes.forEach(a => {
-              if (!athletesToImportMap[a.eventId]) athletesToImportMap[a.eventId] = [];
-              // Force athlete club to match the submission club to avoid "missing info" bugs
-              athletesToImportMap[a.eventId].push({ ...a, club: clubName });
+              // Try to find the correct category by ID first, then by explicit name match
+              let categoryId = a.eventId;
+              let targetCategory = tournament.categories.find(c => c.id === categoryId);
+              
+              if (!targetCategory && a.eventName) {
+                // Find by exact name if ID didn't match, handling Vietnamese NFC/NFD variations
+                const evNameNorm = a.eventName.trim().normalize("NFC");
+                const targetCategoryByName = tournament.categories.find(c => c.name.trim().normalize("NFC") === evNameNorm);
+                if (targetCategoryByName) {
+                  categoryId = targetCategoryByName.id;
+                }
+              }
+              
+              if (!athletesToImportMap[categoryId]) athletesToImportMap[categoryId] = [];
+              // Force athlete club and category ID to match
+              athletesToImportMap[categoryId].push({ ...a, club: clubName, eventId: categoryId });
               totalAthletes++;
             });
           }
@@ -401,9 +416,10 @@ export default function AthletesPage() {
           </div>
           <div className="header-actions" style={{ gap: '10px', position: 'relative' }}>
             <button 
-              className="btn-sync-premium" 
-              onClick={handleSyncOnline} 
+              className={`btn-sync-premium ${activeHint === "import_athletes" ? "hint-pulse" : ""}`} 
+              onClick={() => { handleSyncOnline(); clearHint(); }} 
               disabled={syncing}
+              data-hint="ĐỒNG BỘ CLOUD"
               style={{ 
                 background: 'linear-gradient(135deg, #0284c7, #0369a1)', 
                 color: '#fff',

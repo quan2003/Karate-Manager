@@ -22,6 +22,7 @@ import { createKmatchData, saveKmatchFile } from "../services/matchService";
 import { generateBracket } from "../utils/drawEngine";
 import DateTimeInput from "../components/common/DateTimeInput";
 import { useToast } from "../components/common/Toast";
+import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import "./TournamentPage.css";
 
@@ -30,6 +31,7 @@ export default function TournamentPage() {
   const { tournaments, currentTournament } = useTournament();
   const dispatch = useTournamentDispatch();
   const { toast } = useToast();
+  const { activeHint, clearHint } = useOnboarding();
   const [editingId, setEditingId] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState({
@@ -43,6 +45,18 @@ export default function TournamentPage() {
   const [bulkDrawing, setBulkDrawing] = useState(false);
   const fileInputRef = useRef(null);
   const [lanStatus, setLanStatus] = useState({ running: false, ip: '', port: 3000 });
+
+  // Tự động cuộn tới phần được highlight khi có gợi ý (Re-enactment)
+  useEffect(() => {
+    if (activeHint) {
+      setTimeout(() => {
+        const highlighted = document.querySelector(".hint-pulse");
+        if (highlighted) {
+          highlighted.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 500);
+    }
+  }, [activeHint]);
 
   const handleOpenModal = () => {
     setEditingId(null);
@@ -669,8 +683,8 @@ export default function TournamentPage() {
       if (isTeamCategory) {
         // Team category: group by club
         const teams = getTeamsFromAthletes(cat.athletes || []);
-        if (teams.length < 2) {
-          results.skipped.push({ name: cat.name, reason: `Chỉ có ${teams.length} đội (cần ≥ 2 CLB khác nhau)` });
+        if (teams.length < 3) {
+          results.skipped.push({ name: cat.name, reason: `Chỉ có ${teams.length} đội (cần ≥ 3 CLB khác nhau)` });
           continue;
         }
         try {
@@ -691,7 +705,7 @@ export default function TournamentPage() {
           continue;
         }
 
-        // Check all same club
+        // Check if all athletes are from the same club, but still allow drawing if count >= 3
         const clubs = new Set(cat.athletes.map(a => (a.club || '').trim().toLowerCase()).filter(Boolean));
         if (clubs.size === 1 && athleteCount > 2) {
           // Still allow but note it
@@ -715,7 +729,15 @@ export default function TournamentPage() {
     toast.success(`Đã bốc thăm ${results.success.length}/${cats.length} nội dung`);
   };
 
-  const drawableCount = tournament.categories.filter(c => (c.athletes?.length || 0) >= 3 && !c.bracket).length;
+  const drawableCount = tournament.categories.filter(c => {
+    const isTeamCategory = c.name?.toLowerCase().includes('đồng đội') ||
+      c.isTeam || (c.athletes || []).some(a => a.isTeam);
+    return !c.bracket && (
+      isTeamCategory
+        ? (new Set((c.athletes || []).map(a => (a.club || '').trim().toLowerCase()).filter(Boolean))).size >= 3
+        : (c.athletes?.length || 0) >= 3
+    );
+  }).length;
   const alreadyDrawnCount = tournament.categories.filter(c => c.bracket).length;
   return (
     <div className="page tournament-page">
@@ -748,17 +770,18 @@ export default function TournamentPage() {
         {/* ===== ACTION TOOLBAR - UNIFORM GRID ===== */}
         <div className="tournament-actions-toolbar">
           <button
-            className="tournament-action-btn action-export"
-            onClick={handleOpenKrtModal}
+            className={`tournament-action-btn action-export ${activeHint === "export_krt" ? "hint-pulse" : ""}`}
+            onClick={() => { handleOpenKrtModal(); clearHint(); }}
             title="Xuất file .krt cho HLV đăng ký"
+            data-hint="XUẤT FILE .KRT"
           >
             <span className="action-icon">📤</span>
             <span className="action-label">Xuất<br/>(.krt)</span>
           </button>
 
           <button
-            className="tournament-action-btn action-export"
-            onClick={handleOpenKmatchModal}
+            className={`tournament-action-btn action-export ${activeHint === "export_kmatch" ? "hint-pulse" : ""}`}
+            onClick={() => { handleOpenKmatchModal(); clearHint(); }}
             title="Xuất file chấm điểm cho Thư ký"
           >
             <span className="action-icon">🎯</span>
@@ -767,8 +790,8 @@ export default function TournamentPage() {
 
           {tournament.categories.filter((c) => c.bracket).length > 0 && (
             <button
-              className="tournament-action-btn action-export"
-              onClick={handleExportAllPDF}
+              className={`tournament-action-btn action-export ${activeHint === "publish_bracket" ? "hint-pulse" : ""}`}
+              onClick={() => { handleExportAllPDF(); clearHint(); }}
             >
               <span className="action-icon">📄</span>
               <span className="action-label">Xuất tất cả<br/>PDF</span>
@@ -776,14 +799,14 @@ export default function TournamentPage() {
           )}
 
           <button
-            className="tournament-action-btn action-export"
-            onClick={handleDownloadTemplate}
+            className={`tournament-action-btn action-export ${activeHint === "create_category" ? "hint-pulse" : ""}`}
+            onClick={() => { handleDownloadTemplate(); clearHint(); }}
           >
             <span className="action-icon">📥</span>
             <span className="action-label">Tải mẫu<br/>Excel</span>
           </button>
 
-          <label className="tournament-action-btn action-import" style={{ cursor: "pointer" }}>
+          <label className={`tournament-action-btn action-import ${activeHint === "create_category" ? "hint-pulse" : ""}`} style={{ cursor: "pointer" }} onClick={() => clearHint()}>
             <span className="action-icon">📤</span>
             <span className="action-label">Import từ<br/>Excel</span>
             <input
@@ -795,7 +818,7 @@ export default function TournamentPage() {
             />
           </label>
 
-          <label className="tournament-action-btn action-import" style={{ cursor: "pointer" }}>
+          <label className={`tournament-action-btn action-import ${activeHint === "import_athletes" ? "hint-pulse" : ""}`} style={{ cursor: "pointer" }} onClick={() => clearHint()}>
             <span className="action-icon">🏢</span>
             <span className="action-label">{importingClub ? "Đang nhập..." : "Import VĐV\ntừ CLB"}</span>
             <input
@@ -810,8 +833,8 @@ export default function TournamentPage() {
           </label>
 
           <button
-            className="tournament-action-btn action-draw"
-            onClick={handleOpenBulkDraw}
+            className={`tournament-action-btn action-draw ${(activeHint === "smart_draw" || activeHint === "smart_draw_need_category") ? "hint-pulse" : ""}`}
+            onClick={() => { handleOpenBulkDraw(); clearHint(); }}
             title={`${drawableCount} nội dung có thể bốc thăm`}
           >
             <span className="action-icon">🎲</span>
@@ -820,7 +843,9 @@ export default function TournamentPage() {
 
           <Link
             to={`/schedule/${tournament.id}`}
-            className="tournament-action-btn action-schedule"
+            className={`tournament-action-btn action-schedule ${activeHint === "setup_schedule" ? "hint-pulse" : ""}`}
+            onClick={() => clearHint()}
+            data-hint="BƯỚC 1: XẾP LỊCH"
           >
             <span className="action-icon">📋</span>
             <span className="action-label">Lịch thi<br/>đấu</span>
@@ -828,8 +853,10 @@ export default function TournamentPage() {
 
           <Link
             to={`/athletes/${tournament.id}`}
-            className="tournament-action-btn action-schedule"
+            className={`tournament-action-btn action-schedule ${activeHint === "import_athletes" ? "hint-pulse" : ""}`}
             title="Quản lý toàn bộ VĐV"
+            onClick={() => clearHint()}
+            data-hint="QUẢN LÝ VĐV"
           >
             <span className="action-icon">👥</span>
             <span className="action-label">Quản lý<br/>VĐV</span>
@@ -837,19 +864,48 @@ export default function TournamentPage() {
 
           <Link
             to={`/certificate/${tournament.id}`}
-            className="tournament-action-btn action-schedule"
+            className={`tournament-action-btn action-schedule ${activeHint === "closing_ceremony" ? "hint-pulse" : ""}`}
             title="In giấy chứng nhận huy chương"
+            onClick={() => clearHint()}
+            data-hint="IN GIẤY CHỨNG NHẬN"
           >
             <span className="action-icon">🏅</span>
             <span className="action-label">In<br/>GCN</span>
           </Link>
 
           <button
-            className="tournament-action-btn action-add"
-            onClick={handleOpenModal}
+            className={`tournament-action-btn action-add ${activeHint === "create_category" ? "hint-pulse" : ""}`}
+            onClick={() => { handleOpenModal(); clearHint(); }}
+            data-hint="THÊM HẠNG MỤC"
           >
             <span className="action-icon">➕</span>
             <span className="action-label">Thêm hạng<br/>mục</span>
+          </button>
+
+          <button
+            className={`tournament-action-btn action-lan ${activeHint === "lan_sync" ? "hint-pulse" : ""}`}
+            onClick={() => {
+              clearHint();
+              alert("Chức năng Đồng bộ LAN: Kết nối máy Admin với các máy Thư ký qua WIFI/LAN nội bộ để nhận kết quả trực tiếp.");
+            }}
+            title="Đồng bộ kết quả qua mạng nội bộ LAN/WIFI"
+            data-hint="BẬT ĐỒNG BỘ LAN"
+          >
+            <span className="action-icon">🌐</span>
+            <span className="action-label">Đồng bộ<br/>LAN</span>
+          </button>
+
+          <button
+            className={`tournament-action-btn action-logo ${activeHint === "logo_sponsor" ? "hint-pulse" : ""}`}
+            onClick={() => {
+              clearHint();
+              alert("Chức năng Logo & Tài trợ: Tùy chỉnh Logo giải đấu, Logo nhà tài trợ và Chữ ký số trên các bản in.");
+            }}
+            title="Tùy chỉnh Logo, Chữ ký và Nhà tài trợ"
+            data-hint="LOGO & TÀI TRỢ"
+          >
+            <span className="action-icon">🏷️</span>
+            <span className="action-label">Logo &<br/>Tài trợ</span>
           </button>
         </div>
 
@@ -960,18 +1016,25 @@ export default function TournamentPage() {
                 <span className="medal-label">Tổng</span>
               </div>
             </div>
-            <Link to={`/statistics/${tournament.id}`} className="btn btn-secondary" style={{marginTop: '12px', alignSelf: 'flex-start'}}>
+            <Link to={`/statistics/${tournament.id}`} className={`btn btn-secondary ${activeHint === "check_fees" ? "hint-pulse" : ""}`} style={{marginTop: '12px', alignSelf: 'flex-start'}}>
               📊 Quản lý thống kê & Bảng tổng sắp huy chương
             </Link>
           </div>
         )}
 
         {/* Split Settings */}
-        <div style={{
-          background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px',
-          padding: '16px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap'
-        }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, color: '#334155', fontSize: '14px', cursor: 'pointer' }}>
+        <div 
+          className={activeHint === "sigma_split" ? "hint-pulse" : ""}
+          style={{
+            background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px',
+            padding: '16px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap'
+          }}
+        >
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#111827', fontWeight: 600 }}
+            className={activeHint === "sigma_split" ? "hint-pulse" : ""}
+            data-hint="BƯỚC 1: BẬT CHIA"
+          >
             <input
               type="checkbox"
               checked={tournament.splitSettings?.enabled || false}
@@ -986,6 +1049,7 @@ export default function TournamentPage() {
                     },
                   },
                 });
+                clearHint();
               }}
               style={{ width: '18px', height: '18px', accentColor: '#7c3aed' }}
             />
@@ -997,6 +1061,7 @@ export default function TournamentPage() {
                 <span style={{ fontSize: '13px', color: '#64748b' }}>Ngưỡng:</span>
                 <input
                   type="number"
+                  data-hint="BƯỚC 2: CHỈNH NGƯỠNG"
                   value={tournament.splitSettings?.threshold || 20}
                   onChange={(e) => {
                     dispatch({
@@ -1023,13 +1088,17 @@ export default function TournamentPage() {
         </div>
 
         {/* Dual Combat (LAN Sync) Settings */}
-        <div style={{
-          background: lanStatus.running ? '#f0fdf4' : '#f8fafc', 
-          border: lanStatus.running ? '1px solid #bbf7d0' : '1px solid #e2e8f0', 
-          borderRadius: '12px',
-          padding: '16px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap',
-          transition: 'all 0.3s'
-        }}>
+        <div 
+          className={activeHint === "lan_sync" ? "hint-pulse" : ""}
+          data-hint="BƯỚC 1: ĐẾN ĐÂY"
+          style={{
+            background: lanStatus.running ? '#f0fdf4' : '#f8fafc', 
+            border: lanStatus.running ? '1px solid #bbf7d0' : '1px solid #e2e8f0', 
+            borderRadius: '12px',
+            padding: '16px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap',
+            transition: 'all 0.3s'
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ fontSize: '24px' }}>📡</span>
             <div>
@@ -1050,6 +1119,7 @@ export default function TournamentPage() {
             
             <button 
               onClick={async () => {
+                clearHint();
                 if (!window.electronAPI?.lan) {
                   toast.error("Không hỗ trợ tính năng này trên trình duyệt");
                   return;
@@ -1069,8 +1139,9 @@ export default function TournamentPage() {
                   }
                 }
               }}
-              className={`btn ${lanStatus.running ? 'btn-danger' : 'btn-primary'}`}
+              className={`btn ${lanStatus.running ? 'btn-danger' : 'btn-primary'} ${activeHint === "lan_sync" ? "hint-pulse" : ""}`}
               style={{ padding: '8px 16px', borderRadius: '8px', fontWeight: 600 }}
+              data-hint="BƯỚC 2: BẬT MÁY CHỦ"
             >
               {lanStatus.running ? '⏹ Tắt máy chủ' : '▶ Bật máy chủ nhận điểm'}
             </button>
@@ -1078,11 +1149,18 @@ export default function TournamentPage() {
         </div>
 
         {/* Sponsor & Logo Settings */}
-        <div style={{
-          background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px',
-          padding: '16px 20px', marginBottom: '20px'
-        }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div 
+          className={activeHint === "logo_sponsor" ? "hint-pulse" : ""}
+          style={{
+            background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px',
+            padding: '16px 20px', marginBottom: '20px'
+          }}
+        >
+          <h3 
+            className={activeHint === "logo_sponsor" ? "hint-pulse" : ""}
+            data-hint="BƯỚC 1: XUỐNG ĐÂY"
+            style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
             🏷️ Logo hệ thống & Nhà tài trợ
           </h3>
           
@@ -1114,7 +1192,12 @@ export default function TournamentPage() {
                   >×</button>
                 </div>
               )}
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#e0f2fe', color: '#0369a1', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, border: '1px dashed #7dd3fc', transition: 'all 0.2s' }}>
+              <label 
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#e0f2fe', color: '#0369a1', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, border: '1px dashed #7dd3fc', transition: 'all 0.2s' }}
+                onClick={() => clearHint()}
+                className={activeHint === "logo_sponsor" ? "hint-pulse" : ""}
+                data-hint="BƯỚC 2: TẢI LOGO"
+              >
                 📷 {tournament.sponsorLogos?.systemLogo ? 'Đổi logo' : 'Tải lên logo giải đấu'}
                 <input
                   type="file"
@@ -1183,7 +1266,12 @@ export default function TournamentPage() {
                   >×</button>
                 </div>
               ))}
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#fef3c7', color: '#92400e', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, border: '1px dashed #fbbf24', transition: 'all 0.2s' }}>
+              <label 
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#fef3c7', color: '#92400e', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, border: '1px dashed #fbbf24', transition: 'all 0.2s' }}
+                onClick={() => clearHint()}
+                className={activeHint === "logo_sponsor" ? "hint-pulse" : ""}
+                data-hint="BƯỚC 2: TẢI LOGO"
+              >
                 ➕ Thêm logo nhà tài trợ
                 <input
                   type="file"
@@ -1260,7 +1348,12 @@ export default function TournamentPage() {
                   >×</button>
                 </div>
               )}
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#f0fdf4', color: '#16a34a', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, border: '1px dashed #86efac', transition: 'all 0.2s' }}>
+              <label 
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#f0fdf4', color: '#16a34a', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, border: '1px dashed #86efac', transition: 'all 0.2s' }}
+                onClick={() => clearHint()}
+                className={activeHint === "logo_sponsor" ? "hint-pulse" : ""}
+                data-hint="BƯỚC 2: TẢI LOGO"
+              >
                 ✍️ {tournament.sponsorLogos?.signature ? 'Đổi chữ ký' : 'Tải lên chữ ký (PNG/JPG)'}
                 <input
                   type="file"

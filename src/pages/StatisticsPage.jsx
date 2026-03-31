@@ -10,6 +10,7 @@ import { useToast } from "../components/common/Toast";
 import * as XLSX from "xlsx";
 import { updateMatchResult as applyMatchResult } from "../utils/drawEngine";
 import { getAppBaseUrl } from "../services/pdfService";
+import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import "./StatisticsPage.css";
 
@@ -19,9 +20,26 @@ export default function StatisticsPage() {
   const dispatch = useTournamentDispatch();
   const fileInputRef = useRef(null);
   const { toast } = useToast();
+  const { activeHint, clearHint } = useOnboarding();
 
   const tournament = tournaments.find((t) => t.id === id);
   const [activeTab, setActiveTab] = useState("overview"); // overview | results | medals | delegation | fees
+
+  // Tự động chuyển tab và cuộn tới phần được highlight khi có gợi ý (Re-enactment)
+  useEffect(() => {
+    if (activeHint === "check_fees") {
+      setActiveTab("fees");
+    }
+    
+    if (activeHint) {
+      setTimeout(() => {
+        const highlighted = document.querySelector(".hint-pulse");
+        if (highlighted) {
+          highlighted.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 500);
+    }
+  }, [activeHint]);
   const [showResultModal, setShowResultModal] = useState(null);
   const [resultForm, setResultForm] = useState({
     first: "",
@@ -1855,7 +1873,7 @@ export default function StatisticsPage() {
   const handleExportMedalTally = () => {
     const tally = getMedalTally();
     const data = tally.map((club, idx) => ({
-      Hạng: idx + 1,
+      Hạng: idx === 0 ? "NHẤT TOÀN ĐOÀN" : idx === 1 ? "NHÌ TOÀN ĐOÀN" : idx === 2 ? "BA TOÀN ĐOÀN" : idx + 1,
       "Đơn vị/CLB": club.name,
       "HCV 🥇": club.gold,
       "HCB 🥈": club.silver,
@@ -1973,7 +1991,7 @@ export default function StatisticsPage() {
             ${tally
               .map(
                 (club, idx) => `<tr class="${idx < 3 ? "top" : ""}">
-              <td style="text-align:center;font-weight:bold">${idx + 1}</td>
+              <td style="text-align:center;font-weight:bold">${idx === 0 ? "NHẤT TOÀN ĐOÀN" : idx === 1 ? "NHÌ TOÀN ĐOÀN" : idx === 2 ? "BA TOÀN ĐOÀN" : idx + 1}</td>
               <td><strong>${club.name}</strong></td>
               <td style="text-align:center;color:#b45309">${
                 club.gold || "-"
@@ -3968,7 +3986,10 @@ export default function StatisticsPage() {
               </div>
             </div>
 
-            <div className="section-card">
+            <div 
+              className={`section-card ${activeHint === "check_fees" ? "hint-pulse" : ""}`}
+              data-hint="BƯỚC 1: XEM LỆ PHÍ"
+            >
               <div
                 style={{
                   display: "flex",
@@ -4846,11 +4867,11 @@ export default function StatisticsPage() {
                         </td>
                         <td className="rank-cell">
                           {idx === 0
-                            ? "🥇"
+                            ? "NHẤT TOÀN ĐOÀN"
                             : idx === 1
-                            ? "🥈"
+                            ? "NHÌ TOÀN ĐOÀN"
                             : idx === 2
-                            ? "🥉"
+                            ? "BA TOÀN ĐOÀN"
                             : idx + 1}
                         </td>
                         <td className="club-cell">{club.name}</td>

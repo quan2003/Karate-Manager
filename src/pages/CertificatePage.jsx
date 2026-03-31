@@ -15,6 +15,7 @@ import {
   exportCertificatePDF,
 } from "../services/certificateService";
 import { useToast } from "../components/common/Toast";
+import { useOnboarding } from "../context/OnboardingContext";
 import "./CertificatePage.css";
 
 // ─── Constants ──────────────────────────────────────────────
@@ -77,9 +78,22 @@ export default function CertificatePage() {
 
   const tournament = tournaments.find((t) => t.id === id);
   const canvasRef = useRef(null);
+  const { activeHint, clearHint } = useOnboarding();
 
   // ─── Tabs ─────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState("builder");
+
+  // Tự động cuộn tới phần được highlight khi có gợi ý (Re-enactment)
+  useEffect(() => {
+    if (activeHint) {
+      setTimeout(() => {
+        const highlighted = document.querySelector(".hint-pulse");
+        if (highlighted) {
+          highlighted.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 500);
+    }
+  }, [activeHint]);
 
   // ─── Templates ───────────────────────────────────────────
   const templates = tournament?.certificateTemplates || [];
@@ -489,20 +503,27 @@ export default function CertificatePage() {
         {/* Tab Bar */}
         <div className="cert-tabs">
           {[
-            { id: "builder", icon: "🎨", label: "Thiết kế mẫu" },
-            { id: "filter", icon: "🔍", label: "Lọc dữ liệu" },
-            { id: "preview", icon: "👁️", label: "Xem trước" },
-            { id: "print", icon: "🖨️", label: "In & Xuất" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              className={`cert-tab ${activeTab === tab.id ? "active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <span className="cert-tab-icon">{tab.icon}</span>
-              <span>{tab.label}</span>
-            </button>
-          ))}
+            { id: "builder", icon: "🎨", label: "Thiết kế mẫu", step: 1 },
+            { id: "filter", icon: "🔍", label: "Lọc dữ liệu", step: 4 },
+            { id: "preview", icon: "👁️", label: "Xem trước", step: 5 },
+            { id: "print", icon: "🖨️", label: "In & Xuất", step: 6 },
+          ].map((tab) => {
+            const isStepActive = activeHint === "closing_ceremony";
+            // Highlight all navigation tabs during the onboarding process
+            const isHighlighted = isStepActive;
+
+            return (
+              <button
+                key={tab.id}
+                className={`cert-tab ${activeTab === tab.id ? "active" : ""} ${isHighlighted ? "hint-pulse" : ""}`}
+                onClick={() => { setActiveTab(tab.id); if (isHighlighted) clearHint(); }}
+                data-hint={`BƯỚC ${tab.step}: ${tab.label.toUpperCase()}`}
+              >
+                <span className="cert-tab-icon">{tab.icon}</span>
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* ╔══════════════════════════════════════╗
@@ -534,8 +555,9 @@ export default function CertificatePage() {
                     </div>
                     <div className="cert-template-actions">
                       <button
-                        className="cert-btn-icon"
-                        title="Chỉnh sửa"
+                        className={`cert-btn-icon ${activeHint === "closing_ceremony" ? "hint-pulse" : ""}`}
+                        title="Chỉnh sửa mẫu"
+                        data-hint="BƯỚC 2: CHỈNH SỬA"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleEditTemplate(t.id);
@@ -592,8 +614,9 @@ export default function CertificatePage() {
                   </div>
                 </div>
                 <button
-                  className="cert-btn cert-btn-primary"
-                  onClick={handleCreateTemplate}
+                  className={`cert-btn cert-btn-primary ${activeHint === "closing_ceremony" ? "hint-pulse" : ""}`}
+                  onClick={() => { handleCreateTemplate(); clearHint(); }}
+                  data-hint="BƯỚC 1: TẠO MẪU"
                 >
                   Tạo mẫu
                 </button>
@@ -635,7 +658,12 @@ export default function CertificatePage() {
                       >+</button>
                     </div>
 
-                    <label className="cert-btn cert-btn-secondary" style={{ cursor: "pointer" }}>
+                    <label 
+                      className={`cert-btn cert-btn-secondary ${activeHint === "closing_ceremony" ? "hint-pulse" : ""}`} 
+                      style={{ cursor: "pointer" }} 
+                      onClick={() => clearHint()}
+                      data-hint="BƯỚC 2: TẢI ẢNH NỀN"
+                    >
                       🖼 Tải ảnh nền
                       <input
                         type="file"
@@ -661,10 +689,11 @@ export default function CertificatePage() {
                   {VARIABLE_TOKENS.map((vt) => (
                     <div
                       key={vt.token}
-                      className="cert-token-chip"
+                      className={`cert-token-chip ${activeHint === "closing_ceremony" ? "hint-pulse" : ""}`}
                       draggable
-                      onDragStart={(e) => handleTokenDragStart(e, vt.token)}
+                      onDragStart={(e) => { handleTokenDragStart(e, vt.token); clearHint(); }}
                       title={vt.desc}
+                      data-hint="BƯỚC 3: KÉO BIẾN"
                     >
                       {vt.label}
                     </div>

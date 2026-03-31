@@ -1,0 +1,61 @@
+.help-floating-btn {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: white;
+  border: none;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  overflow: hidden;
+  color: #1e3a8a;
+  padding: 0;
+}
+
+.help-floating-btn:hover {
+  width: 200px;
+  border-radius: 30px;
+  background: #1e3a8a;
+  color: white;
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px rgba(30, 58, 138, 0.3);
+}
+
+.help-icon {
+  font-size: 28px;
+  transition: all 0.3s;
+}
+
+.help-label {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 14px;
+  margin-left: 0;
+  transition: all 0.3s;
+  opacity: 0;
+}
+
+.help-floating-btn:hover .help-label {
+  max-width: 155px;
+  margin-left: 8px;
+  opacity: 1;
+}
+
+/* Hide in small screens if necessary */
+@media (max-width: 768px) {
+  .help-floating-btn {
+    bottom: 20px;
+    right: 20px;
+  }
+}
+
+/* Animations when sidebar/banner is active? No, just fixed bottom right as requested */

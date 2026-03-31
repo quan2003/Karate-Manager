@@ -6,6 +6,31 @@
     <link rel="icon" type="image/png" href="../logo.png" />
     <title>Karate Scoreboard - Admin Panel</title>
     <link rel="stylesheet" href="css/admin.css" />
+    <style>
+      .help-btn {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 50px;
+        height: 50px;
+        background: #1a5f7a;
+        color: white;
+        border-radius: 50%;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s;
+      }
+      .help-btn:hover {
+        transform: scale(1.1);
+        background: #2980b9;
+      }
+    </style>
   </head>
   <body>
     <div class="container">
@@ -55,7 +80,7 @@
             🔄 Đổi AKA ⇄ AO
           </button>
           <button class="btn btn-lg btn-primary" onclick="openDisplay()">
-            📺 Mở Display
+            📺 Mở màn hình khán giả
           </button>
         </div>
       </div>
@@ -494,27 +519,9 @@
 
     <script src="js/admin.js"></script>
     <script>
-      // ============================================
-      // AUTO-CLOSE DISPLAY WHEN ADMIN CLOSES
-      // ============================================
-
-      // Reference to display window
-      let displayWindow = null;
-
-      // Override openDisplay to track the window reference
-      const originalOpenDisplay = window.openDisplay;
-      window.openDisplay = function () {
-        displayWindow = window.open(
-          "display.html",
-          "KarateScoreboardDisplay",
-          "width=1920,height=1080,fullscreen=yes"
-        );
-        return displayWindow;
-      };
-
       // Close display window when admin page is closed
       window.addEventListener("beforeunload", function () {
-        if (displayWindow && !displayWindow.closed) {
+        if (typeof displayWindow !== "undefined" && displayWindow && !displayWindow.closed) {
           displayWindow.close();
         }
       });
@@ -541,5 +548,18 @@
         Phát hành ngày 01/01/2026
       </p>
     </div>
+
+    <!-- Help Button -->
+    <button class="help-btn" onclick="openHelp()" title="Hướng dẫn sử dụng">❓</button>
+
+    <script>
+      function openHelp() {
+        if (window.opener) {
+          window.opener.postMessage({ type: 'OPEN_HELP' }, '*');
+        } else {
+          alert("Vui lòng mở bảng điểm từ phần mềm chính để xem hướng dẫn.");
+        }
+      }
+    </script>
   </body>
 </html>

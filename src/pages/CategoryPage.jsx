@@ -11,6 +11,7 @@ import AthleteList from "../components/AthleteList/AthleteList";
 import Modal from "../components/common/Modal";
 import ConfirmDialog from "../components/common/ConfirmDialog";
 import { useToast } from "../components/common/Toast";
+import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import "./CategoryPage.css";
 
@@ -33,6 +34,7 @@ export default function CategoryPage() {
   const countdownTimerRef = useRef(null);
   const shuffleTimerRef = useRef(null);
   const { toast } = useToast();
+  const { activeHint, clearHint } = useOnboarding();
 
   // Find the category from tournaments
   useEffect(() => {
@@ -230,7 +232,7 @@ export default function CategoryPage() {
   const canDraw = isTeamCategory
     ? (() => {
         const clubs = new Set(category.athletes.map(a => (a.club || '').trim().toLowerCase()).filter(Boolean));
-        return clubs.size >= 2;
+        return clubs.size >= 3;
       })()
     : category.athletes.length >= 3;
   const allSameClub = (() => {
@@ -279,8 +281,8 @@ export default function CategoryPage() {
 
           <div className="header-actions">
             <button
-              className="btn btn-secondary"
-              onClick={() => setShowAddModal(true)}
+              className={`btn btn-secondary ${activeHint === "import_athletes" ? "hint-pulse" : ""}`}
+              onClick={() => { setShowAddModal(true); clearHint(); }}
             >
               + Thêm VĐV
             </button>
@@ -291,11 +293,12 @@ export default function CategoryPage() {
               </Link>
             ) : (
               <button
-                className="btn btn-primary btn-lg"
+                className={`btn btn-primary btn-lg ${activeHint === "smart_draw" ? "hint-pulse" : ""}`}
                 onClick={() => {
+                  clearHint();
                   if (!canDraw) {
                     if (isTeamCategory) {
-                      toast.warning("Nội dung đồng đội cần ít nhất 2 đội (CLB) khác nhau để bốc thăm!");
+                      toast.warning("Nội dung đồng đội cần ít nhất 3 đội (CLB) khác nhau để bốc thăm!");
                     } else {
                       toast.warning("Cần ít nhất 3 VĐV để bốc thăm!");
                     }
@@ -348,6 +351,7 @@ export default function CategoryPage() {
             onImport={handleImportAthletes}
             onClearAll={handleClearAllAthletes}
             category={category}
+            activeHint={activeHint}
           />
         </div>
         {/* Add Athlete Modal */}{" "}

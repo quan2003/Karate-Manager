@@ -10,6 +10,7 @@ import {
   openScoreboard,
   listenForMatchResult,
 } from "../services/scoreboardService";
+import { useOnboarding } from "../context/OnboardingContext";
 import {
   updateMatchResult as updateBracketWithResult,
   disqualifyAthlete,
@@ -45,6 +46,7 @@ function SecretaryPage() {
   const [finishedMatch, setFinishedMatch] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [adminIp, setAdminIp] = useState(localStorage.getItem("adminIp") || "");
+  const { activeHint, clearHint } = useOnboarding();
 
   // Sidebar search/filter
   const [sidebarSearch, setSidebarSearch] = useState("");
@@ -134,6 +136,7 @@ function SecretaryPage() {
 
   // Open .kmatch file
   const handleOpenFile = async () => {
+    clearHint();
     setError("");
     setLoading(true);
     try {
@@ -311,7 +314,9 @@ function SecretaryPage() {
         selectedCategory.type || "kumite",
         selectedCategory.name,
         matchData.tournamentName,
-        roundName
+        roundName,
+        matchData.schedule?.[selectedCategory.id] || null,
+        matchData.sponsorLogos || null
       );
       setNotification("📺 Đã mở bảng điểm. Vui lòng thao tác trên cửa sổ mới.");
       setTimeout(() => setNotification(""), 5000);
@@ -474,9 +479,10 @@ function SecretaryPage() {
           <div className="header-right">
             {!matchData && (
               <button
-                className="open-file-btn"
+                className={`open-file-btn ${activeHint === "import_kmatch_secretary" ? "hint-pulse" : ""}`}
                 onClick={handleOpenFile}
                 disabled={loading}
+                data-hint="MỞ FILE .KMATCH"
               >
                 {loading ? "⏳ Đang tải..." : "📂 Mở file .kmatch"}
               </button>
@@ -497,7 +503,11 @@ function SecretaryPage() {
             <div className="no-file-icon">📂</div>
             <h2>Chưa có file giải đấu</h2>
             <p>Mở file .kmatch từ Admin để bắt đầu bấm điểm</p>
-            <button className="open-file-btn" onClick={handleOpenFile}>
+            <button 
+              className={`open-file-btn ${activeHint === "import_kmatch_secretary" ? "hint-pulse" : ""}`} 
+              onClick={handleOpenFile}
+              data-hint="MỞ FILE .KMATCH"
+            >
               Mở file .kmatch
             </button>
           </div>

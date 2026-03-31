@@ -19,6 +19,7 @@ import ConfirmDialog from "../components/common/ConfirmDialog";
 import DateInput from "../components/common/DateInput";
 import DateTimeInput from "../components/common/DateTimeInput";
 import BackupManager from "../components/BackupManager/BackupManager";
+import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import "./HomePage.css";
 
@@ -27,6 +28,7 @@ export default function HomePage() {
   const { tournaments } = useTournament();
   const dispatch = useTournamentDispatch();
   const { role, resetRole } = useRole();
+  const { activeHint, clearHint } = useOnboarding();
   const [showModal, setShowModal] = useState(false);
   const [showKrtModal, setShowKrtModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -573,8 +575,9 @@ export default function HomePage() {
               💾 Backup / Đồng bộ
             </button>
             <button
-              className="btn btn-primary btn-lg"
-              onClick={() => handleOpenModal()}
+              className={`btn btn-primary btn-lg ${activeHint === "create_tournament" ? "hint-pulse" : ""}`}
+              onClick={() => { handleOpenModal(); clearHint(); }}
+              data-hint="TẠO GIẢI MỚI"
             >
               <svg
                 width="20"
@@ -615,8 +618,9 @@ export default function HomePage() {
             <h3>Chưa có giải đấu nào</h3>
             <p>Tạo giải đấu đầu tiên để bắt đầu quản lý và bốc thăm.</p>
             <button
-              className="btn btn-primary"
-              onClick={() => handleOpenModal()}
+              className={`btn btn-primary ${activeHint === "create_tournament" ? "hint-pulse" : ""}`}
+              onClick={() => { handleOpenModal(); clearHint(); }}
+              data-hint="TẠO GIẢI MỚI"
             >
               Tạo giải đấu
             </button>

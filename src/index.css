@@ -668,6 +668,18 @@ tr:hover {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  transition: padding-right 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Reserve space when the onboarding sidebar is open */
+.app--sidebar-open {
+  padding-right: 300px;
+}
+
+@media (max-width: 1024px) {
+  .app--sidebar-open {
+    padding-right: 0;
+  }
 }
 
 .app-footer {
@@ -833,8 +845,71 @@ tr:hover {
     border-color: #000 !important;
     opacity: 1 !important;
   }
-
   ::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* =========================================================
+   Onboarding Next Step Highlight effect
+   ========================================================= */
+.hint-pulse {
+  position: relative !important;
+  z-index: 9999 !important;
+  animation: oc-btn-glow 1.5s infinite alternate !important;
+  overflow: visible !important;
+}
+
+@keyframes oc-btn-glow {
+  from {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7);
+  }
+  to {
+    box-shadow: 0 0 0 12px rgba(37, 99, 235, 0);
+  }
+}
+
+.hint-pulse::after {
+  content: "👆 " attr(data-hint) " " !important;
+  position: absolute !important;
+  top: 100% !important;
+  margin-top: 12px !important;
+  left: 0 !important;
+  right: 0 !important;
+  text-align: center !important;
+  background: #1e3a8a !important;
+  color: #ffffff !important;
+  padding: 10px 14px !important;
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  white-space: nowrap !important;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.4) !important;
+  pointer-events: none !important;
+  z-index: 100000 !important;
+  border: 2px solid #ffffff !important;
+  display: block !important;
+  width: max-content !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.hint-pulse::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 100% !important;
+  margin-top: 6px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  border-width: 0 6px 6px 6px !important;
+  border-style: solid !important;
+  border-color: transparent transparent #1e3a8a transparent !important;
+  pointer-events: none !important;
+  display: block !important;
+}
+
+@keyframes oc-bounce-up {
+  from { margin-top: 2px; }
+  to { margin-top: -2px; }
 }

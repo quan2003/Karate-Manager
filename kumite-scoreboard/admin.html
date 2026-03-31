@@ -6,6 +6,31 @@
     <link rel="icon" type="image/png" href="../logo.png" />
     <title>Kumite Scoreboard - Admin</title>
     <link rel="stylesheet" href="css/admin.css" />
+    <style>
+      .help-btn {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 50px;
+        height: 50px;
+        background: #1a5f7a;
+        color: white;
+        border-radius: 50%;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s;
+      }
+      .help-btn:hover {
+        transform: scale(1.1);
+        background: #2980b9;
+      }
+    </style>
   </head>
   <body>
     <div class="main-container">
@@ -171,8 +196,9 @@
             <button class="btn btn-sm" onclick="setTimerSpeed(0.5)">
               0.5x
             </button>
-            <button class="btn btn-sm" onclick="setTimerSpeed(1)">1x</button>
-            <button class="btn btn-sm btn-primary" onclick="setTimerSpeed(2)">
+            <button class="btn btn-sm btn-primary" onclick="setTimerSpeed(1)">1x</button>
+            <button class="btn btn-sm" onclick="setTimerSpeed(1.5)">1.5x</button>
+            <button class="btn btn-sm" onclick="setTimerSpeed(2)">
               2x
             </button>
             <button class="btn btn-sm" onclick="setTimerSpeed(5)">5x</button>
@@ -707,7 +733,7 @@
             class="btn btn-primary btn-open-display"
             onclick="openDisplay()"
           >
-            📺 Open Display Window
+            📺 Mở màn hình khán giả
           </button>
           <button
             class="btn btn-open-display"
@@ -763,5 +789,18 @@
         Phát hành ngày 01/01/2026
       </p>
     </div>
+
+    <!-- Help Button -->
+    <button class="help-btn" onclick="openHelp()" title="Hướng dẫn sử dụng">❓</button>
+
+    <script>
+      function openHelp() {
+        if (window.opener) {
+          window.opener.postMessage({ type: 'OPEN_HELP' }, '*');
+        } else {
+          alert("Vui lòng mở bảng điểm từ phần mềm chính để xem hướng dẫn.");
+        }
+      }
+    </script>
   </body>
 </html>

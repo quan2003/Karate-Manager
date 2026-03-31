@@ -1104,10 +1104,10 @@ function resetMatch() {
 
 // Open display window
 function openDisplay() {
-  window.open(
+  displayWindow = window.open(
     "display.html",
     "KarateScoreboardDisplay",
-    "width=1920,height=1080,fullscreen=yes"
+    "width=1920,height=1080"
   );
 }
 
@@ -1921,10 +1921,8 @@ function loadPendingMatch() {
     if (eventInput) eventInput.value = state.eventTitle;
   }
 
-  // Load sponsor logos
-  if (pendingMatchData.sponsorLogos) {
-    state.sponsorLogos = pendingMatchData.sponsorLogos;
-  }
+  // Load sponsor logos (ALWAYS update to reflect bracket settings, even if null/empty)
+  state.sponsorLogos = pendingMatchData.sponsorLogos || null;
 
   // Load existing scores if match has data (for re-editing)
   if (

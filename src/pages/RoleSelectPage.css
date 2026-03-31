@@ -166,9 +166,19 @@
 }
 
 .role-icon {
-  font-size: 3.5rem;
+  width: 64px;
+  height: 64px;
   margin-bottom: 1rem;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.14));
+  transition: filter 0.3s ease, transform 0.3s ease;
+}
+
+.role-card:hover .role-icon {
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.22));
+  transform: scale(1.08);
 }
 
 .role-card h2 {
@@ -389,4 +399,213 @@
 
 .password-submit-btn:hover {
   transform: scale(1.02);
+}
+
+/* Help Trigger */
+.help-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  padding: 8px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #64748b;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.help-trigger:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.help-icon {
+  font-size: 1.1rem;
+}
+
+/* Help Modal */
+.help-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.3s ease;
+}
+
+.help-modal {
+  background: white;
+  width: 90%;
+  max-width: 700px;
+  max-height: 85vh;
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  animation: slideUp 0.3s ease;
+  overflow: hidden;
+}
+
+.help-modal-header {
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  background: #f8fafc;
+}
+
+.help-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.help-modal-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #0f172a;
+}
+
+.help-role-tabs {
+  display: flex;
+  gap: 8px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 12px;
+}
+
+.help-tab {
+  padding: 6px 16px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.help-tab.active {
+  background: white;
+  color: var(--color-primary);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.help-modal-header .close-btn {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  line-height: 1;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.help-modal-header .close-btn:hover {
+  color: #475569;
+}
+
+.help-modal-body {
+  padding: 2rem;
+  overflow-y: auto;
+  line-height: 1.6;
+  background: white;
+}
+
+.role-summary {
+  color: #64748b;
+  font-size: 0.95rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.help-function-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.help-func-item {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  transition: all 0.2s;
+}
+
+.help-func-item:hover {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+
+.func-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.func-info strong {
+  color: #1e293b;
+  font-size: 0.95rem;
+}
+
+.func-info span {
+  color: #64748b;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.btn-repro {
+  align-self: flex-start;
+  padding: 6px 12px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: var(--color-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-repro:hover {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+  transform: translateY(-1px);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }

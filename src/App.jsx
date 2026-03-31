@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { HashRouter as Router, Routes, Route } from "react-router-dom";
 import { TournamentProvider } from "./context/TournamentContext";
 import { RoleProvider } from "./context/RoleContext";
+import { OnboardingProvider, useOnboarding } from "./context/OnboardingContext";
 import RoleSelectPage from "./pages/RoleSelectPage";
 import HomePage from "./pages/HomePage";
 import TournamentPage from "./pages/TournamentPage";
@@ -14,6 +15,11 @@ import SchedulePage from "./pages/SchedulePage";
 import AthletesPage from "./pages/AthletesPage";
 import CertificatePage from "./pages/CertificatePage";
 import SmartFileRouter from "./components/SmartFileRouter/SmartFileRouter";
+import OnboardingChecklist, { NavHintBanner } from "./components/OnboardingChecklist/OnboardingChecklist";
+import WelcomePopup from "./components/OnboardingChecklist/WelcomePopup";
+import HelpModal from "./components/OnboardingChecklist/HelpModal";
+import HelpFloatingButton from "./components/OnboardingChecklist/HelpFloatingButton";
+import GlobalHelpHandler from "./components/OnboardingChecklist/GlobalHelpHandler";
 
 import {
   initializeTrialIfNeeded,
@@ -27,6 +33,15 @@ import { ToastProvider } from "./components/common/Toast";
 import appIcon from "./assets/icon.png";
 import "./index.css";
 
+// Inner shell that reads sidebar state to apply layout class
+function AppShell({ children }) {
+  const { sidebarOpen } = useOnboarding();
+  return (
+    <div className={`app${sidebarOpen ? " app--sidebar-open" : ""}`}>
+      {children}
+    </div>
+  );
+}
 
 function App() {
   // Tự động kích hoạt Trial khi người dùng mới tải ứng dụng
@@ -42,11 +57,17 @@ function App() {
         <RoleProvider>
           <TournamentProvider>
             <Router>
-              <div className="app">
+              <OnboardingProvider>
+              <AppShell>
                 <TrialWatermark />
                 <LicenseBadge />
-                {/* SmartFileRouter: Tự động điều hướng khi mở file .krt/.kmatch */}
                 <SmartFileRouter />
+                <OnboardingChecklist />
+                <WelcomePopup />
+                <NavHintBanner />
+                <GlobalHelpHandler />
+                <HelpModal />
+                <HelpFloatingButton />
                 <Routes>
                   {/* Role Selection */}
                   <Route path="/" element={<RoleSelectPage />} />
@@ -158,7 +179,8 @@ function App() {
                     </p>
                   </div>
                 </footer>
-              </div>
+              </AppShell>
+              </OnboardingProvider>
             </Router>
           </TournamentProvider>
         </RoleProvider>
