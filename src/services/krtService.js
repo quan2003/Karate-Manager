@@ -168,7 +168,7 @@ export function validateAthlete(athlete, event) {
   
   if (!athlete.gender) {
     errors.push('Giới tính không được để trống');
-  } else if (event.gender && event.gender !== 'any' && athlete.gender !== event.gender) {
+  } else if (event.gender && event.gender !== 'any' && event.gender !== 'mixed' && athlete.gender !== event.gender) {
     errors.push(`Nội dung này chỉ dành cho ${event.gender === 'male' ? 'Nam' : 'Nữ'}`);
   }
   

@@ -1164,23 +1164,28 @@ export default function TournamentPage() {
             🏷️ Logo hệ thống & Nhà tài trợ
           </h3>
           
-          {/* System Logo */}
+          {/* Tournament Logos (multiple) */}
           <div style={{ marginBottom: '16px' }}>
             <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '8px' }}>
-              Logo giải đấu (hiển thị trên PDF)
+              🏆 Logo giải đấu — có thể thêm nhiều logo (hiển thị góc trái trên PDF)
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              {tournament.sponsorLogos?.systemLogo && (
-                <div style={{ position: 'relative', display: 'inline-block' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              {/* Backward compat: show old systemLogo as first item if exists and no tournamentLogos */}
+              {(tournament.sponsorLogos?.tournamentLogos || (tournament.sponsorLogos?.systemLogo ? [tournament.sponsorLogos.systemLogo] : [])).map((logo, idx) => (
+                <div key={idx} style={{ position: 'relative', display: 'inline-block' }}>
                   <img 
-                    src={tournament.sponsorLogos.systemLogo} 
-                    alt="Logo giải đấu" 
-                    style={{ height: '60px', maxWidth: '180px', objectFit: 'contain', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', padding: '4px' }} 
+                    src={logo} 
+                    alt={`Logo giải đấu ${idx + 1}`}
+                    style={{ height: '60px', maxWidth: '180px', objectFit: 'contain', borderRadius: '8px', border: '2px solid #bfdbfe', background: '#fff', padding: '4px', boxShadow: '0 1px 4px rgba(59,130,246,0.10)' }} 
                   />
+                  <div style={{ position: 'absolute', top: '-8px', left: '-8px', background: '#3b82f6', color: '#fff', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{idx + 1}</div>
                   <button
                     onClick={() => {
+                      const currentLogos = tournament.sponsorLogos?.tournamentLogos || (tournament.sponsorLogos?.systemLogo ? [tournament.sponsorLogos.systemLogo] : []);
+                      const newLogos = currentLogos.filter((_, i) => i !== idx);
                       const updated = { ...(tournament.sponsorLogos || {}) };
-                      delete updated.systemLogo;
+                      updated.tournamentLogos = newLogos;
+                      delete updated.systemLogo; // migrate away from old key
                       dispatch({
                         type: ACTIONS.UPDATE_SPONSOR_LOGOS,
                         payload: { tournamentId: tournament.id, sponsorLogos: updated }
@@ -1191,45 +1196,58 @@ export default function TournamentPage() {
                     title="Xóa logo"
                   >×</button>
                 </div>
-              )}
+              ))}
               <label 
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#e0f2fe', color: '#0369a1', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, border: '1px dashed #7dd3fc', transition: 'all 0.2s' }}
                 onClick={() => clearHint()}
                 className={activeHint === "logo_sponsor" ? "hint-pulse" : ""}
                 data-hint="BƯỚC 2: TẢI LOGO"
               >
-                📷 {tournament.sponsorLogos?.systemLogo ? 'Đổi logo' : 'Tải lên logo giải đấu'}
+                ➕ Thêm logo giải đấu
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   style={{ display: 'none' }}
                   onChange={(e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    if (file.size > 2 * 1024 * 1024) {
-                      toast.error("File quá lớn! Tối đa 2MB.");
-                      return;
-                    }
-                    const reader = new FileReader();
-                    reader.onload = (evt) => {
-                      dispatch({
-                        type: ACTIONS.UPDATE_SPONSOR_LOGOS,
-                        payload: {
-                          tournamentId: tournament.id,
-                          sponsorLogos: {
-                            ...(tournament.sponsorLogos || {}),
-                            systemLogo: evt.target.result,
-                          }
+                    const files = Array.from(e.target.files);
+                    if (!files.length) return;
+                    const currentLogos = tournament.sponsorLogos?.tournamentLogos || (tournament.sponsorLogos?.systemLogo ? [tournament.sponsorLogos.systemLogo] : []);
+                    let loaded = 0;
+                    const newLogos = [...currentLogos];
+                    files.forEach((file) => {
+                      if (file.size > 2 * 1024 * 1024) {
+                        toast.error(`${file.name}: quá lớn (tối đa 2MB)`);
+                        loaded++;
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = (evt) => {
+                        newLogos.push(evt.target.result);
+                        loaded++;
+                        if (loaded === files.length) {
+                          const updated = { ...(tournament.sponsorLogos || {}) };
+                          updated.tournamentLogos = newLogos;
+                          delete updated.systemLogo; // migrate to new key
+                          dispatch({
+                            type: ACTIONS.UPDATE_SPONSOR_LOGOS,
+                            payload: { tournamentId: tournament.id, sponsorLogos: updated }
+                          });
+                          toast.success(`Đã thêm ${files.length} logo giải đấu!`);
                         }
-                      });
-                      toast.success("Đã cập nhật logo giải đấu!");
-                    };
-                    reader.readAsDataURL(file);
+                      };
+                      reader.readAsDataURL(file);
+                    });
                     e.target.value = "";
                   }}
                 />
               </label>
             </div>
+            {((tournament.sponsorLogos?.tournamentLogos?.length || 0) === 0 && !tournament.sponsorLogos?.systemLogo) && (
+              <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
+                💡 Tải lên logo giải đấu để hiển thị góc trái trên tất cả file PDF xuất ra (hỗ trợ nhiều logo)
+              </span>
+            )}
           </div>
 
           {/* Sponsor Logos */}
@@ -1320,23 +1338,28 @@ export default function TournamentPage() {
               </span>
             )}
           </div>
-          {/* Signature Image */}
+          {/* Signature Images (multiple) */}
           <div style={{ marginTop: '16px' }}>
             <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '8px' }}>
-              Chữ ký Ban tổ chức (hiển thị cuối PDF)
+              ✍️ Chữ ký Ban tổ chức — có thể thêm nhiều chữ ký (hiển thị cuối PDF)
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              {tournament.sponsorLogos?.signature && (
-                <div style={{ position: 'relative', display: 'inline-block' }}>
+              {/* Backward compat: show old signature as first item if exists and no signatures array */}
+              {(tournament.sponsorLogos?.signatures || (tournament.sponsorLogos?.signature ? [tournament.sponsorLogos.signature] : [])).map((sig, idx) => (
+                <div key={idx} style={{ position: 'relative', display: 'inline-block' }}>
                   <img 
-                    src={tournament.sponsorLogos.signature} 
-                    alt="Chữ ký" 
+                    src={sig} 
+                    alt={`Chữ ký ${idx + 1}`} 
                     style={{ height: '60px', maxWidth: '180px', objectFit: 'contain', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', padding: '4px' }} 
                   />
+                  <div style={{ position: 'absolute', top: '-8px', left: '-8px', background: '#22c55e', color: '#fff', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{idx + 1}</div>
                   <button
                     onClick={() => {
+                      const currentSigs = tournament.sponsorLogos?.signatures || (tournament.sponsorLogos?.signature ? [tournament.sponsorLogos.signature] : []);
+                      const newSigs = currentSigs.filter((_, i) => i !== idx);
                       const updated = { ...(tournament.sponsorLogos || {}) };
-                      delete updated.signature;
+                      updated.signatures = newSigs;
+                      delete updated.signature; // migrate away from old key
                       dispatch({
                         type: ACTIONS.UPDATE_SPONSOR_LOGOS,
                         payload: { tournamentId: tournament.id, sponsorLogos: updated }
@@ -1347,45 +1370,58 @@ export default function TournamentPage() {
                     title="Xóa chữ ký"
                   >×</button>
                 </div>
-              )}
+              ))}
               <label 
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#f0fdf4', color: '#16a34a', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, border: '1px dashed #86efac', transition: 'all 0.2s' }}
                 onClick={() => clearHint()}
                 className={activeHint === "logo_sponsor" ? "hint-pulse" : ""}
-                data-hint="BƯỚC 2: TẢI LOGO"
+                data-hint="BƯỚC 2: TẢI CHỮ KÝ"
               >
-                ✍️ {tournament.sponsorLogos?.signature ? 'Đổi chữ ký' : 'Tải lên chữ ký (PNG/JPG)'}
+                ➕ Thêm chữ ký (PNG/JPG)
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   style={{ display: 'none' }}
                   onChange={(e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    if (file.size > 1 * 1024 * 1024) {
-                      toast.error("File quá lớn! Tối đa 1MB.");
-                      return;
-                    }
-                    const reader = new FileReader();
-                    reader.onload = (evt) => {
-                      dispatch({
-                        type: ACTIONS.UPDATE_SPONSOR_LOGOS,
-                        payload: {
-                          tournamentId: tournament.id,
-                          sponsorLogos: {
-                            ...(tournament.sponsorLogos || {}),
-                            signature: evt.target.result,
-                          }
+                    const files = Array.from(e.target.files);
+                    if (!files.length) return;
+                    const currentSigs = tournament.sponsorLogos?.signatures || (tournament.sponsorLogos?.signature ? [tournament.sponsorLogos.signature] : []);
+                    let loaded = 0;
+                    const newSigs = [...currentSigs];
+                    files.forEach((file) => {
+                      if (file.size > 1 * 1024 * 1024) {
+                        toast.error(`${file.name}: quá lớn (tối đa 1MB)`);
+                        loaded++;
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = (evt) => {
+                        newSigs.push(evt.target.result);
+                        loaded++;
+                        if (loaded === files.length) {
+                          const updated = { ...(tournament.sponsorLogos || {}) };
+                          updated.signatures = newSigs;
+                          delete updated.signature; // migrate to new key
+                          dispatch({
+                            type: ACTIONS.UPDATE_SPONSOR_LOGOS,
+                            payload: { tournamentId: tournament.id, sponsorLogos: updated }
+                          });
+                          toast.success(`Đã thêm ${files.length} chữ ký!`);
                         }
-                      });
-                      toast.success("Đã cập nhật chữ ký!");
-                    };
-                    reader.readAsDataURL(file);
+                      };
+                      reader.readAsDataURL(file);
+                    });
                     e.target.value = "";
                   }}
                 />
               </label>
             </div>
+            {((tournament.sponsorLogos?.signatures?.length || 0) === 0 && !tournament.sponsorLogos?.signature) && (
+              <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', display: 'block', marginTop: '6px' }}>
+                💡 Tải lên chữ ký Ban tổ chức để hiển thị cuối các file PDF (hỗ trợ nhiều chữ ký, dàn ngang qua phải)
+              </span>
+            )}
           </div>
         </div>
 

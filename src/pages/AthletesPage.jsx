@@ -42,6 +42,8 @@ export default function AthletesPage() {
   });
   const [syncing, setSyncing] = useState(false);
   const [showCleanupMenu, setShowCleanupMenu] = useState(false);
+  const [showCloudIdModal, setShowCloudIdModal] = useState(false);
+  const [customCloudId, setCustomCloudId] = useState("");
 
   if (!tournament) {
     return (
@@ -153,10 +155,11 @@ export default function AthletesPage() {
     });
   };
 
-  const handleSyncOnline = async () => {
+  const handleSyncOnline = async (overrideCloudId) => {
     setSyncing(true);
+    const cloudTournamentId = overrideCloudId || tournament.id;
     try {
-      const result = await fetchSubmissions(tournament.id);
+      const result = await fetchSubmissions(cloudTournamentId);
       if (result.success && result.data.length > 0) {
         let totalAthletes = 0;
         let totalClubs = result.data.length;
@@ -415,28 +418,50 @@ export default function AthletesPage() {
             <p className="page-subtitle">Quản lý tất cả VĐV trong giải đấu</p>
           </div>
           <div className="header-actions" style={{ gap: '10px', position: 'relative' }}>
-            <button 
-              className={`btn-sync-premium ${activeHint === "import_athletes" ? "hint-pulse" : ""}`} 
-              onClick={() => { handleSyncOnline(); clearHint(); }} 
-              disabled={syncing}
-              data-hint="ĐỒNG BỘ CLOUD"
-              style={{ 
-                background: 'linear-gradient(135deg, #0284c7, #0369a1)', 
-                color: '#fff',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                border: 'none',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 4px 6px -1px rgba(2, 132, 199, 0.3)',
-                cursor: 'pointer'
-              }}
-            >
-              <span style={{ fontSize: '18px' }}>☁️</span>
-              {syncing ? "Đang đồng bộ..." : "Đồng bộ từ Cloud"}
-            </button>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button 
+                className={`btn-sync-premium ${activeHint === "import_athletes" ? "hint-pulse" : ""}`} 
+                onClick={() => { handleSyncOnline(); clearHint(); }} 
+                disabled={syncing}
+                data-hint="ĐỒNG BỘ CLOUD"
+                title={`Sync với Tournament ID: ${tournament.id}`}
+                style={{ 
+                  background: 'linear-gradient(135deg, #0284c7, #0369a1)', 
+                  color: '#fff',
+                  padding: '10px 20px',
+                  borderRadius: '8px 0 0 8px',
+                  border: 'none',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 6px -1px rgba(2, 132, 199, 0.3)',
+                  cursor: 'pointer'
+                }}
+              >
+                <span style={{ fontSize: '18px' }}>☁️</span>
+                {syncing ? "Đang đồng bộ..." : "Đồng bộ từ Cloud"}
+              </button>
+              <button
+                onClick={() => setShowCloudIdModal(true)}
+                disabled={syncing}
+                title="Sync với Cloud ID tùy chỉnh (khi ID local khác cloud)"
+                style={{
+                  background: 'linear-gradient(135deg, #0369a1, #1e3a5f)',
+                  color: '#fff',
+                  padding: '10px 12px',
+                  borderRadius: '0 8px 8px 0',
+                  border: 'none',
+                  borderLeft: '1px solid rgba(255,255,255,0.2)',
+                  fontWeight: 600,
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 6px -1px rgba(2, 132, 199, 0.3)',
+                }}
+              >
+                🔧
+              </button>
+            </div>
 
             <button className="btn btn-secondary" onClick={handleExportExcel} style={{ borderRadius: '8px' }}>
               📥 Xuất Excel
@@ -661,6 +686,77 @@ export default function AthletesPage() {
             </div>
           )}
         </Modal>
+
+        {/* Modal đổi Cloud ID */}
+        {showCloudIdModal && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            <div style={{
+              background: '#fff', borderRadius: '16px', padding: '28px',
+              width: '480px', maxWidth: '90vw',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.3)'
+            }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700 }}>🔧 Sync với Cloud ID tùy chỉnh</h3>
+              <p style={{ margin: '0 0 20px', color: '#64748b', fontSize: '14px', lineHeight: 1.6 }}>
+                Dùng khi ID giải đấu local <strong>không khớp</strong> với ID trên Cloud (ví dụ: sau khi tạo lại giải đấu).
+                Nhập <strong>Tournament ID trên Supabase</strong> để kéo dữ liệu về.
+              </p>
+              
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Cloud Tournament ID
+                </label>
+                <input
+                  type="text"
+                  value={customCloudId}
+                  onChange={e => setCustomCloudId(e.target.value.trim())}
+                  placeholder="ví dụ: d3c564c9-3ff3-4d71-9d7f-9d3a93851f64"
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    padding: '10px 14px', borderRadius: '8px',
+                    border: '1.5px solid #cbd5e1', fontSize: '13px',
+                    fontFamily: 'monospace', outline: 'none',
+                    transition: 'border-color 0.2s'
+                  }}
+                  onFocus={e => e.target.style.borderColor = '#0284c7'}
+                  onBlur={e => e.target.style.borderColor = '#cbd5e1'}
+                />
+              </div>
+
+              <div style={{ background: '#f0f9ff', borderRadius: '8px', padding: '12px', marginBottom: '20px', fontSize: '12px', color: '#0369a1' }}>
+                <strong>ID local hiện tại:</strong><br/>
+                <code style={{ fontSize: '11px' }}>{tournament.id}</code>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => { setShowCloudIdModal(false); setCustomCloudId(""); }}
+                  style={{
+                    padding: '9px 20px', borderRadius: '8px',
+                    border: '1.5px solid #e2e8f0', background: '#fff',
+                    cursor: 'pointer', fontWeight: 600, color: '#64748b'
+                  }}
+                >Hủy</button>
+                <button
+                  onClick={() => {
+                    if (!customCloudId) { toast.error('Vui lòng nhập Cloud ID!'); return; }
+                    setShowCloudIdModal(false);
+                    handleSyncOnline(customCloudId);
+                    clearHint();
+                  }}
+                  style={{
+                    padding: '9px 20px', borderRadius: '8px',
+                    border: 'none', background: 'linear-gradient(135deg, #0284c7, #0369a1)',
+                    color: '#fff', cursor: 'pointer', fontWeight: 600
+                  }}
+                >☁️ Đồng bộ ngay</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Modal xóa */}
         <ConfirmDialog

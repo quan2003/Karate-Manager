@@ -72,6 +72,34 @@ export function getAppBaseUrl() {
 }
 
 /**
+ * Get tournament logos array (backward compatible: supports tournamentLogos (new) or systemLogo (old))
+ * @param {Object} sponsorLogos
+ * @returns {string[]} array of logo data URLs
+ */
+export function getTournamentLogos(sponsorLogos) {
+  if (!sponsorLogos) return [];
+  if (sponsorLogos.tournamentLogos && sponsorLogos.tournamentLogos.length > 0) {
+    return sponsorLogos.tournamentLogos;
+  }
+  if (sponsorLogos.systemLogo) return [sponsorLogos.systemLogo];
+  return [];
+}
+
+/**
+ * Get tournament signatures array (backward compatible: supports signatures (new) or signature (old))
+ * @param {Object} sponsorLogos
+ * @returns {string[]} array of signature data URLs
+ */
+export function getTournamentSignatures(sponsorLogos) {
+  if (!sponsorLogos) return [];
+  if (sponsorLogos.signatures && sponsorLogos.signatures.length > 0) {
+    return sponsorLogos.signatures;
+  }
+  if (sponsorLogos.signature) return [sponsorLogos.signature];
+  return [];
+}
+
+/**
  * Determine how many splits a category needs based on tournament settings
  * @param {Object} category
  * @param {Object} splitSettings - { enabled: bool, threshold: number }
@@ -233,7 +261,7 @@ export async function exportScoreSheetToPDF(
 
     // Logo header area
     let logoY = margin;
-    const systemLogo = sponsorLogos?.systemLogo || null;
+    const tournamentLogos = getTournamentLogos(sponsorLogos);
     const sponsors = sponsorLogos?.sponsors || [];
     
     // Always load the app icon
@@ -244,11 +272,12 @@ export async function exportScoreSheetToPDF(
       console.warn("Could not load default icon.png", e);
     }
     
-    // Always show logo header row
-    // Left: systemLogo (tournament logo)
-    if (systemLogo) {
+    // Left: tournament logos (multiple)
+    let lx = margin;
+    for (const tLogo of tournamentLogos) {
       try {
-        pdf.addImage(systemLogo, 'PNG', margin, logoY, 25, 25);
+        pdf.addImage(tLogo, 'PNG', lx, logoY, 25, 25);
+        lx += 28;
       } catch(e) { /* ignore logo errors */ }
     }
     // Center: app icon (always shown)
@@ -415,29 +444,36 @@ export async function exportScoreSheetToPDF(
     pdf.rect(margin, tableTop, contentWidth, currentY - tableTop, "S");
 
     // Add signature if available
-    const signature = sponsorLogos?.signature || null;
-    if (signature) {
+    const signatures = getTournamentSignatures(sponsorLogos);
+    if (signatures.length > 0) {
       const sigWidth = 40;
       const sigHeight = 20;
-      const sigX = pageWidth - margin - sigWidth;
+      const sigGap = 5; // Gap between signatures
+      const totalWidth = signatures.length * sigWidth + (signatures.length - 1) * sigGap;
       const sigY = currentY + 10;
       
-      // Check if signature fits on current page
+      // Check if signatures fit on current page
       if (sigY + sigHeight > pageHeight - margin) {
         pdf.addPage();
         pdf.setFontSize(10);
         pdf.setFont("helvetica", "bold");
-        pdf.text("BAN TO CHUC", sigX + sigWidth / 2, margin + 5, { align: "center" });
-        try {
-          pdf.addImage(signature, 'PNG', sigX, margin + 8, sigWidth, sigHeight);
-        } catch(e) { console.error("Error adding signature to PDF", e); }
+        pdf.text("BAN TO CHUC", pageWidth - margin - (totalWidth / 2), margin + 5, { align: "center" });
+        signatures.forEach((sig, idx) => {
+          const currentX = pageWidth - margin - totalWidth + idx * (sigWidth + sigGap);
+          try {
+            pdf.addImage(sig, 'PNG', currentX, margin + 8, sigWidth, sigHeight);
+          } catch(e) { console.error("Error adding signature to PDF", e); }
+        });
       } else {
         pdf.setFontSize(10);
         pdf.setFont("helvetica", "bold");
-        pdf.text("BAN TO CHUC", sigX + sigWidth / 2, sigY - 2, { align: "center" });
-        try {
-          pdf.addImage(signature, 'PNG', sigX, sigY, sigWidth, sigHeight);
-        } catch(e) { console.error("Error adding signature to PDF", e); }
+        pdf.text("BAN TO CHUC", pageWidth - margin - (totalWidth / 2), sigY, { align: "center" });
+        signatures.forEach((sig, idx) => {
+          const currentX = pageWidth - margin - totalWidth + idx * (sigWidth + sigGap);
+          try {
+            pdf.addImage(sig, 'PNG', currentX, sigY + 3, sigWidth, sigHeight);
+          } catch(e) { console.error("Error adding signature to PDF", e); }
+        });
       }
     }
 
@@ -748,13 +784,17 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
   // Sponsor logos bar above header
   const appIconUrl = `${getAppBaseUrl()}icon.png`;
   const sponsorsList = sponsorLogos?.sponsors || [];
-  const systemLogo = sponsorLogos?.systemLogo || null;
+  const tournamentLogosList = getTournamentLogos(sponsorLogos);
   
   // Always show logo bar with app icon in center
   html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:4px 10px;">`;
-  // Left: systemLogo (tournament logo) if available
-  if (systemLogo) {
-    html += `<img src="${systemLogo}" style="height:50px;max-width:150px;object-fit:contain;" />`;
+  // Left: tournament logos (multiple) if available
+  if (tournamentLogosList.length > 0) {
+    html += `<div style="display:flex;align-items:center;gap:8px;">`;
+    tournamentLogosList.forEach(logo => {
+      html += `<img src="${logo}" style="height:50px;max-width:140px;object-fit:contain;" />`;
+    });
+    html += `</div>`;
   } else {
     html += `<div></div>`;
   }
@@ -780,9 +820,9 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
   if (timeLabel) html += `<div class="pdf-info-item">${timeLabel}</div>`;
   html += `<div class="pdf-info-item" style="background:#fff;">${splitLabel}</div>`;
   html += `</div>`;
-  // Header right: system logo or app icon
-  if (systemLogo) {
-    html += `<div class="pdf-header-right" style="padding:4px;"><img src="${systemLogo}" style="max-height:60px;max-width:210px;object-fit:contain;" /></div>`;
+  // Header right: first tournament logo or app icon
+  if (tournamentLogosList.length > 0) {
+    html += `<div class="pdf-header-right" style="padding:4px;"><img src="${tournamentLogosList[0]}" style="max-height:60px;max-width:210px;object-fit:contain;" /></div>`;
   } else {
     html += `<div class="pdf-header-right" style="padding:4px;"><img src="${appIconUrl}" style="max-height:60px;max-width:60px;object-fit:contain;" /></div>`;
   }

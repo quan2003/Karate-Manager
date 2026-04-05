@@ -9,7 +9,7 @@ import Modal from "../components/common/Modal";
 import { useToast } from "../components/common/Toast";
 import * as XLSX from "xlsx";
 import { updateMatchResult as applyMatchResult } from "../utils/drawEngine";
-import { getAppBaseUrl } from "../services/pdfService";
+import { getAppBaseUrl, getTournamentLogos, getTournamentSignatures } from "../services/pdfService";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import "./StatisticsPage.css";
@@ -273,10 +273,12 @@ export default function StatisticsPage() {
       let teamEntries = 0;
       let individualCount = 0;
       let extraEventsForSurcharge = 0;
+      const allEventsByAthlete = {};
 
-      // Tính số đội tham gia của CLB này
       tournament.categories.forEach((cat) => {
-        if (cat.isTeam) {
+        // Tính số đội tham gia
+        const isTeamCat = cat.isTeam || (cat.name && (cat.name.toLowerCase().includes("đồng đội") || cat.name.toLowerCase().includes("hỗn hợp")));
+        if (isTeamCat) {
           const hasAthletesInTeam = (cat.athletes || []).some(
             (a) => a.club?.trim() === club
           );
@@ -284,28 +286,22 @@ export default function StatisticsPage() {
             teamEntries += 1;
           }
         }
-      });
 
-      // Tính lệ phí cá nhân
-      const individualEventsByAthlete = {};
-
-      tournament.categories.forEach((cat) => {
-        if (!cat.isTeam) {
-          (cat.athletes || []).forEach((a) => {
-            if (a.club?.trim() === club) {
-              const identifier = `${a.name.trim().toLowerCase()}_${
-                a.birthDate || a.birthYear || ""
-              }_${a.gender}`;
-              if (!individualEventsByAthlete[identifier]) {
-                individualEventsByAthlete[identifier] = 0;
-              }
-              individualEventsByAthlete[identifier] += 1;
+        // Tính lệ phí cá nhân và phụ thu cho TẤT CẢ VĐV ở TẤT CẢ hạng mục
+        (cat.athletes || []).forEach((a) => {
+          if (a.club?.trim() === club) {
+            const identifier = `${(a.name || "").trim().toLowerCase()}_${
+              a.birthDate || a.birthYear || ""
+            }_${a.gender || ""}`;
+            if (!allEventsByAthlete[identifier]) {
+              allEventsByAthlete[identifier] = 0;
             }
-          });
-        }
+            allEventsByAthlete[identifier] += 1;
+          }
+        });
       });
 
-      Object.values(individualEventsByAthlete).forEach((eventCount) => {
+      Object.values(allEventsByAthlete).forEach((eventCount) => {
         individualCount += 1;
         if (feeSettings.enableSurcharge && eventCount > 1) {
           extraEventsForSurcharge += eventCount - 1;
@@ -720,11 +716,19 @@ export default function StatisticsPage() {
       ${(() => {
         const appIconUrl = `${getAppBaseUrl()}icon.png`;
         const sl = tournament.sponsorLogos || {};
-        const sysLogo = sl.systemLogo || null;
+        const tournamentLogosList = getTournamentLogos(sl);
         const spons = sl.sponsors || [];
         
         let h = '<div class="logo-header">';
-        h += `<div class="header-left">${sysLogo ? `<img src="${sysLogo}" class="system-logo" />` : ""}</div>`;
+        h += `<div class="header-left">`;
+        if (tournamentLogosList.length > 0) {
+          h += `<div class="sponsor-logos">`;
+          tournamentLogosList.forEach(logo => {
+            h += `<img src="${logo}" class="system-logo" />`;
+          });
+          h += `</div>`;
+        }
+        h += `</div>`;
         h += `<div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>`;
         h += `<div class="header-right">`;
         if (spons.length > 0) {
@@ -822,12 +826,20 @@ export default function StatisticsPage() {
           </tr>
         </tbody>
       </table>
-      ${tournament.sponsorLogos?.signature ? `
-        <div class="signature-section">
-          <div class="signature-label">BAN TỔ CHỨC</div>
-          <img src="${tournament.sponsorLogos.signature}" class="signature-img" />
-        </div>
-      ` : ""}
+      ${(() => {
+        const sigs = getTournamentSignatures(tournament.sponsorLogos);
+        if (sigs.length > 0) {
+          return `
+            <div class="signature-section">
+              <div class="signature-label" style="width: auto; min-width: 150px; text-align: center;">BAN TỔ CHỨC</div>
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                ${sigs.map(sig => `<img src="${sig}" class="signature-img" style="margin-top: 5px;" />`).join("")}
+              </div>
+            </div>
+          `;
+        }
+        return "";
+      })()}
     </body></html>`);
 
     printWindow.contentDocument.close();
@@ -1025,12 +1037,14 @@ export default function StatisticsPage() {
     }
     const appIconUrl = `${getAppBaseUrl()}icon.png`;
     const sponsorLogos = tournament.sponsorLogos || {};
-    const systemLogo = sponsorLogos.systemLogo || null;
+    const tournamentLogosList = getTournamentLogos(sponsorLogos);
     const sponsors = sponsorLogos.sponsors || [];
 
     let logoHeaderHTML = `
       <div class="logo-header">
-        <div class="header-left">${systemLogo ? `<img src="${systemLogo}" class="system-logo" />` : ""}</div>
+        <div class="header-left">
+          ${tournamentLogosList.length > 0 ? `<div class="sponsor-logos">${tournamentLogosList.map(logo => `<img src="${logo}" class="system-logo" />`).join("")}</div>` : ""}
+        </div>
         <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
         <div class="header-right">
           ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
@@ -1110,10 +1124,13 @@ export default function StatisticsPage() {
       .signature-img { height: 70px; max-width: 180px; object-fit: contain; }
     `;
 
-    const signatureHTML = sponsorLogos.signature ? `
+    const sigsList = getTournamentSignatures(sponsorLogos);
+    const signatureHTML = sigsList.length > 0 ? `
       <div class="signature-section">
-        <div class="signature-label">BAN TỔ CHỨC</div>
-        <img src="${sponsorLogos.signature}" class="signature-img" />
+        <div class="signature-label" style="width: auto; min-width: 150px; text-align: center;">BAN TỔ CHỨC</div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          ${sigsList.map(sig => `<img src="${sig}" class="signature-img" style="margin-top: 5px;" />`).join("")}
+        </div>
       </div>
     ` : "";
 
@@ -1924,11 +1941,13 @@ export default function StatisticsPage() {
     // Build logo header HTML - always include app icon.png
     const appIconUrl = `${getAppBaseUrl()}icon.png`;
     const sponsorLogos = tournament.sponsorLogos || {};
-    const systemLogo = sponsorLogos.systemLogo || null;
+    const tournamentLogosList = getTournamentLogos(sponsorLogos);
     const sponsors = sponsorLogos.sponsors || [];
     let logoHeaderHTML = `
       <div class="logo-header">
-        <div class="header-left">${systemLogo ? `<img src="${systemLogo}" class="system-logo" />` : ""}</div>
+        <div class="header-left">
+          ${tournamentLogosList.length > 0 ? `<div class="sponsor-logos">${tournamentLogosList.map(logo => `<img src="${logo}" class="system-logo" />`).join("")}</div>` : ""}
+        </div>
         <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
         <div class="header-right">
           ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
@@ -2060,12 +2079,20 @@ export default function StatisticsPage() {
       </style>
     </head><body>
       ${htmlContent}
-      ${sponsorLogos.signature ? `
-        <div class="signature-section">
-          <div class="signature-label">BAN TỔ CHỨC</div>
-          <img src="${sponsorLogos.signature}" class="signature-img" />
-        </div>
-      ` : ""}
+      ${(() => {
+        const sigs = getTournamentSignatures(sponsorLogos);
+        if (sigs.length > 0) {
+          return `
+            <div class="signature-section">
+              <div class="signature-label" style="width: auto; min-width: 150px; text-align: center;">BAN TỔ CHỨC</div>
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                ${sigs.map(sig => `<img src="${sig}" class="signature-img" style="margin-top: 5px;" />`).join("")}
+              </div>
+            </div>
+          `;
+        }
+        return "";
+      })()}
     </body></html>`);
 
   };
@@ -2348,11 +2375,13 @@ export default function StatisticsPage() {
     // Logos
     const appIconUrl = `${getAppBaseUrl()}icon.png`;
     const sponsorLogos = tournament.sponsorLogos || {};
-    const systemLogo = sponsorLogos.systemLogo || null;
+    const tournamentLogosList = getTournamentLogos(sponsorLogos);
     const sponsors = sponsorLogos.sponsors || [];
     let logoHeaderHTML = `
       <div class="logo-header">
-        <div class="header-left">${systemLogo ? `<img src="${systemLogo}" class="system-logo" />` : ""}</div>
+        <div class="header-left">
+          ${tournamentLogosList.length > 0 ? `<div class="sponsor-logos">${tournamentLogosList.map(logo => `<img src="${logo}" class="system-logo" />`).join("")}</div>` : ""}
+        </div>
         <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
         <div class="header-right">
           ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
@@ -2444,12 +2473,20 @@ export default function StatisticsPage() {
 
     printIframeWithLoading(
       `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}
-      ${sponsorLogos.signature ? `
-        <div class="signature-section">
-          <div class="signature-label">BAN TỔ CHỨC</div>
-          <img src="${sponsorLogos.signature}" class="signature-img" />
-        </div>
-      ` : ""}
+      ${(() => {
+        const sigs = getTournamentSignatures(sponsorLogos);
+        if (sigs.length > 0) {
+          return `
+            <div class="signature-section">
+              <div class="signature-label" style="width: auto; min-width: 150px; text-align: center;">BAN TỔ CHỨC</div>
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                ${sigs.map(sig => `<img src="${sig}" class="signature-img" style="margin-top: 5px;" />`).join("")}
+              </div>
+            </div>
+          `;
+        }
+        return "";
+      })()}
       </body></html>`
     );
   };
@@ -2512,11 +2549,13 @@ export default function StatisticsPage() {
     // Logos
     const appIconUrl = `${getAppBaseUrl()}icon.png`;
     const sponsorLogos = tournament.sponsorLogos || {};
-    const systemLogo = sponsorLogos.systemLogo || null;
+    const tournamentLogosList = getTournamentLogos(sponsorLogos);
     const sponsors = sponsorLogos.sponsors || [];
     let logoHeaderHTML = `
       <div class="logo-header">
-        <div class="header-left">${systemLogo ? `<img src="${systemLogo}" class="system-logo" />` : ""}</div>
+        <div class="header-left">
+          ${tournamentLogosList.length > 0 ? `<div class="sponsor-logos">${tournamentLogosList.map(logo => `<img src="${logo}" class="system-logo" />`).join("")}</div>` : ""}
+        </div>
         <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
         <div class="header-right">
           ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
@@ -2601,12 +2640,20 @@ export default function StatisticsPage() {
 
     printIframeWithLoading(
       `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}
-      ${sponsorLogos.signature ? `
-        <div class="signature-section">
-          <div class="signature-label">BAN TỔ CHỨC</div>
-          <img src="${sponsorLogos.signature}" class="signature-img" />
-        </div>
-      ` : ""}
+      ${(() => {
+        const sigs = getTournamentSignatures(sponsorLogos);
+        if (sigs.length > 0) {
+          return `
+            <div class="signature-section">
+              <div class="signature-label" style="width: auto; min-width: 150px; text-align: center;">BAN TỔ CHỨC</div>
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                ${sigs.map(sig => `<img src="${sig}" class="signature-img" style="margin-top: 5px;" />`).join("")}
+              </div>
+            </div>
+          `;
+        }
+        return "";
+      })()}
       </body></html>`
     );
   };
@@ -2647,12 +2694,10 @@ export default function StatisticsPage() {
     const logoUrl = getAppBaseUrl() + "icon.png";
     const appLogoHTML = `<img src="${logoUrl}" class="app-icon" alt="App Logo" />`;
     const getSystemLogoHTML = () => {
-      const savedLogo =
-        tournament.sponsorLogos?.systemLogo ||
-        tournament.customLogoBase64 ||
-        null;
-      if (savedLogo)
-        return `<img src="${savedLogo}" class="system-logo" alt="System Logo" />`;
+      const savedLogosList = getTournamentLogos(sponsorLogos);
+      if (savedLogosList.length > 0) {
+        return `<div class="sponsor-logos">${savedLogosList.map(logo => `<img src="${logo}" class="system-logo" alt="System Logo" />`).join("")}</div>`;
+      }
       return "";
     };
     const getSponsorLogosHTML = () => {
@@ -2744,12 +2789,20 @@ export default function StatisticsPage() {
 
     printIframeWithLoading(
       `<!DOCTYPE html><html><head><style>${styleStr}</style></head><body>${htmlContent}
-      ${sponsorLogos.signature ? `
-        <div class="signature-section">
-          <div class="signature-label">BAN TỔ CHỨC</div>
-          <img src="${sponsorLogos.signature}" class="signature-img" />
-        </div>
-      ` : ""}
+      ${(() => {
+        const sigs = getTournamentSignatures(sponsorLogos);
+        if (sigs.length > 0) {
+          return `
+            <div class="signature-section">
+              <div class="signature-label" style="width: auto; min-width: 150px; text-align: center;">BAN TỔ CHỨC</div>
+              <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                ${sigs.map(sig => `<img src="${sig}" class="signature-img" style="margin-top: 5px;" />`).join("")}
+              </div>
+            </div>
+          `;
+        }
+        return "";
+      })()}
       </body></html>`
     );
   };
@@ -2761,11 +2814,13 @@ export default function StatisticsPage() {
     // Logos
     const appIconUrl = `${getAppBaseUrl()}icon.png`;
     const sponsorLogos = tournament.sponsorLogos || {};
-    const systemLogo = sponsorLogos.systemLogo || null;
+    const tournamentLogosList = getTournamentLogos(sponsorLogos);
     const sponsors = sponsorLogos.sponsors || [];
     let logoHeaderHTML = `
       <div class="logo-header">
-        <div class="header-left">${systemLogo ? `<img src="${systemLogo}" class="system-logo" />` : ""}</div>
+        <div class="header-left">
+          ${tournamentLogosList.length > 0 ? `<div class="sponsor-logos">${tournamentLogosList.map(logo => `<img src="${logo}" class="system-logo" />`).join("")}</div>` : ""}
+        </div>
         <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
         <div class="header-right">
           ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
@@ -4489,11 +4544,13 @@ export default function StatisticsPage() {
                           });
                           const appIconUrl = `${getAppBaseUrl()}icon.png`;
                           const sponsorLogos = tournament.sponsorLogos || {};
-                          const systemLogo = sponsorLogos.systemLogo || null;
+                          const tournamentLogosList = getTournamentLogos(sponsorLogos);
                           const sponsors = sponsorLogos.sponsors || [];
                           const logoHeaderHTML = `
                             <div class="logo-header">
-                              <div class="header-left">${systemLogo ? `<img src="${systemLogo}" class="system-logo" />` : ""}</div>
+                              <div class="header-left">
+                                ${tournamentLogosList.length > 0 ? `<div class="sponsor-logos">${tournamentLogosList.map(logo => `<img src="${logo}" class="system-logo" />`).join("")}</div>` : ""}
+                              </div>
                               <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
                               <div class="header-right">
                                 ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
@@ -4531,12 +4588,20 @@ export default function StatisticsPage() {
                               <th>#</th><th>Hạng mục</th>
                               <th>🥇 HCV</th><th>🥈 HCB</th><th>🥉 HCĐ (1)</th><th>🥉 HCĐ (2)</th>
                             </tr></thead><tbody>${rows}</tbody></table>
-                            ${sponsorLogos.signature ? `
-                              <div style="margin-top: 40px; display: flex; flex-direction: column; align-items: flex-end; padding-right: 40px;">
-                                <div style="font-size: 14px; font-weight: bold; margin-bottom: 5px; text-align: center; width: 150px;">BAN TỔ CHỨC</div>
-                                <img src="${sponsorLogos.signature}" style="height: 70px; max-width: 180px; object-fit: contain;" />
-                              </div>
-                            ` : ""}
+                            ${(() => {
+                              const sigs = getTournamentSignatures(sponsorLogos);
+                              if (sigs.length > 0) {
+                                return `
+                                  <div class="signature-section" style="margin-top: 40px; display: flex; flex-direction: column; align-items: flex-end; padding-right: 40px;">
+                                    <div class="signature-label" style="font-size: 14px; font-weight: bold; margin-bottom: 5px; text-align: center; width: 150px;">BAN TỔ CHỨC</div>
+                                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                                      ${sigs.map(sig => `<img src="${sig}" style="height: 70px; max-width: 180px; object-fit: contain; margin-top: 5px;" />`).join("")}
+                                    </div>
+                                  </div>
+                                `;
+                              }
+                              return "";
+                            })()}
                           </body></html>`);
 
                           setShowExportMenu(false);
