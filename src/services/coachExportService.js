@@ -55,7 +55,7 @@ export async function exportToExcel(data) {
       i + 1,
       a.name,
       birthDisplay,
-      a.gender === "male" ? "Nam" : "Nữ",
+      a.gender === "male" ? "Nam" : (a.gender === "female" ? "Nữ" : "—"),
       a.club || data.clubName || "",
       a.eventName,
       a.weight || "",

@@ -294,7 +294,30 @@ function tournamentReducer(state, action) {
       }
       break;
 
-    case ACTIONS.UPDATE_ATHLETE:
+    case ACTIONS.UPDATE_ATHLETE: {
+      // Helper: sync updated athlete fields into a bracket's matches
+      const syncAthleteInBracket = (bracket, updatedAthlete) => {
+        if (!bracket) return bracket;
+        const updatedMatches = bracket.matches.map((m) => {
+          let changed = false;
+          const updated = { ...m };
+          if (m.athlete1?.id === updatedAthlete.id) {
+            updated.athlete1 = { ...m.athlete1, ...updatedAthlete };
+            changed = true;
+          }
+          if (m.athlete2?.id === updatedAthlete.id) {
+            updated.athlete2 = { ...m.athlete2, ...updatedAthlete };
+            changed = true;
+          }
+          if (m.winner?.id === updatedAthlete.id) {
+            updated.winner = { ...m.winner, ...updatedAthlete };
+            changed = true;
+          }
+          return changed ? updated : m;
+        });
+        return { ...bracket, matches: updatedMatches };
+      };
+
       newState = {
         ...state,
         tournaments: state.tournaments.map((t) => ({
@@ -304,6 +327,8 @@ function tournamentReducer(state, action) {
             athletes: c.athletes.map((a) =>
               a.id === action.payload.id ? { ...a, ...action.payload } : a
             ),
+            // Also sync athlete info into bracket matches so sigma stays up-to-date
+            bracket: syncAthleteInBracket(c.bracket, action.payload),
           })),
         })),
       };
@@ -318,6 +343,7 @@ function tournamentReducer(state, action) {
         );
       }
       break;
+    }
 
     case ACTIONS.DELETE_ATHLETE:
       newState = {

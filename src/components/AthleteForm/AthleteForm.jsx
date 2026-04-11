@@ -37,9 +37,14 @@ export default function AthleteForm({
 }) {
   const isKumite = category?.type === "kumite";
 
+  const getInitGender = () => {
+    const val = initialData?.gender || category?.gender || "male";
+    return ["male", "female"].includes(val) ? val : "male";
+  };
+
   const [formData, setFormData] = useState({
     name: initialData?.name || "",
-    gender: initialData?.gender || category?.gender || "male",
+    gender: getInitGender(),
     birthDate: initialData?.birthDate || "",
     club: initialData?.club || "",
     country: initialData?.country || "VN",
@@ -104,7 +109,7 @@ export default function AthleteForm({
       if (!initialData) {
         setFormData({
           name: "",
-          gender: category?.gender || "male",
+          gender: category?.gender && ["male", "female"].includes(category.gender) ? category.gender : "male",
           birthDate: "",
           club: "",
           country: "VN",

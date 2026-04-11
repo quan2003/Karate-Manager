@@ -261,23 +261,49 @@ export default function TournamentPage() {
   const getEstimatedMedals = () => {
     let gold = 0, silver = 0, bronze = 0;
     const teamKataSize = tournament.teamMedalsSettings?.kata || 3;
-    const teamKumiteSize = tournament.teamMedalsSettings?.kumite || 5;
+    const teamKumiteSize = tournament.teamMedalsSettings?.kumite || 3;
+    const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
 
     tournament.categories.forEach((cat) => {
-      // Check if this is a team category
-      const isTeamName = cat.name?.toLowerCase().includes('đồng đội') || cat.name?.toLowerCase().includes('hỗn hợp');
-      const isTeamCategory = cat.isTeam || (cat.athletes || []).some(a => a.isTeam) || isTeamName;
+      const nameLower = cat.name?.toLowerCase() || '';
+      const hasTeamKeywords = nameLower.includes('đồng đội') || nameLower.includes('hỗn hợp');
+      const hasIndividualKeywords = nameLower.includes('cá nhân');
+      
+      // Determination logic: 
+      // 1. If name says 'cá nhân', it's individual (ignores athlete isTeam flags)
+      // 2. Otherwise, if cat.isTeam is true or name has team keywords, it's a team
+      // 3. Fallback: only trust athlete isTeam flags if the category name is ambiguous
+      let isTeamCategory = false;
+      if (hasIndividualKeywords) {
+        isTeamCategory = false;
+      } else if (cat.isTeam || hasTeamKeywords) {
+        isTeamCategory = true;
+      } else if ((cat.athletes || []).some(a => a.isTeam)) {
+        // Only fallback to athlete flags if no explicit 'individual' or 'team' keyword is in the name
+        isTeamCategory = true;
+      }
+      
+      // Calculate how many sets of medals are awarded (accounts for Sigma splits)
+      let setsCount = 1;
+      if (splitSettings.enabled) {
+        const threshold = splitSettings.threshold || 20;
+        const athleteCount = cat.athletes?.length || 0;
+        if (athleteCount > threshold) {
+          setsCount = Math.ceil(athleteCount / Math.ceil(threshold / 2));
+        }
+      }
+
       if (isTeamCategory) {
         // Team: medals per participant depending on type
         const teamSize = cat.type === 'kata' ? teamKataSize : teamKumiteSize;
-        gold += teamSize;
-        silver += teamSize;
-        bronze += teamSize * 2;
+        gold += teamSize * setsCount;
+        silver += teamSize * setsCount;
+        bronze += (teamSize * 2) * setsCount;
       } else {
-        // Individual: 1 gold, 1 silver, 2 bronze per category
-        gold += 1;
-        silver += 1;
-        bronze += 2;
+        // Individual: 1 gold, 1 silver, 2 bronze per category (per set)
+        gold += 1 * setsCount;
+        silver += 1 * setsCount;
+        bronze += 2 * setsCount;
       }
     });
     return { gold, silver, bronze, total: gold + silver + bronze };

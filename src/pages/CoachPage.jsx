@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRole, TIME_STATUS, ROLES } from "../context/RoleContext";
 import { openKrtFile, validateAthlete } from "../services/krtService";
@@ -1262,7 +1262,7 @@ function CoachPage() {
                             })()
                           : athlete.birthYear || "-"}
                       </td>
-                      <td>{athlete.gender === "male" ? "Nam" : "Nữ"}</td>
+                      <td className="text-center">{athlete.gender === "male" ? "Nam" : (athlete.gender === "female" ? "Nữ" : "—")}</td>
                       <td>{athlete.eventName}</td>
                       <td>{athlete.weight || "-"}</td>
                       <td>{athlete.seed || "-"}</td>

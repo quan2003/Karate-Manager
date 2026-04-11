@@ -62,7 +62,7 @@ export default function SchedulePage() {
   const [matchDurations, setMatchDurations] = useState(DEFAULT_MATCH_DURATIONS);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [assignForm, setAssignForm] = useState({ mat: 1, time: "08:00", order: 1 });
+  const [assignForm, setAssignForm] = useState({ mat: 1, time: "08:00", endTime: "", order: 1 });
   const [warnings, setWarnings] = useState([]);
   const [viewMode, setViewMode] = useState("timeline"); // "timeline" | "table"
   const [showConflictDetails, setShowConflictDetails] = useState(null);
@@ -268,15 +268,66 @@ export default function SchedulePage() {
     }
   };
 
+  const getNextAvailableTimeAndOrder = (matId, targetDate) => {
+    let nextTime = sessionConfig?.morningStart || "08:00";
+    let nextOrder = 1;
+    let maxTimeMins = -1;
+
+    Object.entries(schedule).forEach(([catId, s]) => {
+      if (s.mat === matId && s.date === targetDate) {
+        if ((s.order || 0) >= nextOrder) nextOrder = (s.order || 0) + 1;
+        const cat = categories.find(c => c.id === catId);
+        if (cat) {
+          const dur = estimateCategoryDuration(cat, matchDurations);
+          const endT = s.endTime || addMinutesToTime(s.time, dur);
+          const [h, m] = endT.split(':').map(Number);
+          const mins = h * 60 + m;
+          if (mins > maxTimeMins) {
+            maxTimeMins = mins;
+            nextTime = endT;
+          }
+        }
+      }
+    });
+
+    customEvents.forEach(evt => {
+      if ((evt.mat === 0 || evt.mat === matId) && (evt.date === targetDate || !evt.date)) {
+        if (evt.time) {
+          const [h, m] = evt.time.split(':').map(Number);
+          const endMins = h * 60 + m + 15; // Mặc định sự kiện chiếm 15p
+          if (endMins > maxTimeMins) {
+            maxTimeMins = endMins;
+            nextTime = addMinutesToTime(evt.time, 15);
+          }
+        }
+      }
+    });
+
+    // Làm tròn lên 5 phút để khớp với UI dropdown
+    let [h, m] = nextTime.split(':').map(Number);
+    const rem = m % 5;
+    if (rem !== 0) {
+      m += (5 - rem);
+      if (m >= 60) {
+        m -= 60;
+        h += 1;
+      }
+    }
+    return { 
+      nextTime: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`, 
+      nextOrder 
+    };
+  };
+
   // Open assign modal
   const handleOpenAssign = (category) => {
     setSelectedCategory(category);
     const existing = schedule[category.id];
     if (existing) {
-      setAssignForm({ mat: existing.mat, time: existing.time, order: existing.order || 1, date: existing.date || selectedDate });
+      setAssignForm({ mat: existing.mat, time: existing.time, endTime: existing.endTime || "", order: existing.order || 1, date: existing.date || selectedDate });
     } else {
-      const mat1Items = Object.values(schedule).filter(s => s.mat === 1 && s.date === selectedDate);
-      setAssignForm({ mat: 1, time: "08:00", order: mat1Items.length + 1, date: selectedDate });
+      const { nextTime, nextOrder } = getNextAvailableTimeAndOrder(1, selectedDate);
+      setAssignForm({ mat: 1, time: nextTime, endTime: "", order: nextOrder, date: selectedDate });
     }
     setWarnings([]);
     setShowAssignModal(true);
@@ -302,6 +353,7 @@ export default function SchedulePage() {
       [selectedCategory.id]: {
         mat: assignForm.mat,
         time: assignForm.time,
+        endTime: assignForm.endTime,
         order: assignForm.order,
         date: assignForm.date || selectedDate,
       },
@@ -333,50 +385,36 @@ export default function SchedulePage() {
     });
   };
 
-  // Quick assign all unassigned
   const handleAutoAssign = () => {
     if (unassignedCategories.length === 0) {
       toast.info("Tất cả nội dung đã được xếp lịch");
       return;
     }
 
-    const morningSlots = generateTimeSlotsFromRange(sessionConfig.morningStart, sessionConfig.morningEnd);
-    const afternoonSlots = generateTimeSlotsFromRange(sessionConfig.afternoonStart, sessionConfig.afternoonEnd);
-    
-    // Total slots per mat = morning + afternoon
+    if (!selectedDate) {
+      toast.error("Vui lòng chọn ngày thi đấu trước!");
+      return;
+    }
+
+    const morningSlots = generateTimeSlotsFromRange(sessionConfig.morningStart, sessionConfig.morningEnd, 5);
+    const afternoonSlots = generateTimeSlotsFromRange(sessionConfig.afternoonStart, sessionConfig.afternoonEnd, 5);
     const slotsPerMat = [...morningSlots, ...afternoonSlots];
     if (slotsPerMat.length === 0) {
       toast.error("Vui lòng cấu hình thời gian buổi sáng/chiều trước!");
       return;
     }
 
-    const newSchedule = { ...schedule };
-    
-    // Track slot index per mat (how many items already on this mat ON THIS DAY)
-    const slotIndexPerMat = {};
-    for (let m = 1; m <= matCount; m++) {
-      slotIndexPerMat[m] = Object.values(schedule).filter(s => s.mat === m && s.date === selectedDate).length;
-    }
-
-    // Round-robin across mats, assign time slots sequentially per mat
-    let matCursor = 0;
-    unassignedCategories.forEach((cat) => {
-      const mat = (matCursor % matCount) + 1;
-      const slotIdx = slotIndexPerMat[mat] || 0;
-      const time = slotsPerMat[Math.min(slotIdx, slotsPerMat.length - 1)];
-      
-      newSchedule[cat.id] = {
-        mat: mat,
-        time: time,
-        order: slotIdx + 1,
-        date: selectedDate,
-      };
-      slotIndexPerMat[mat] = slotIdx + 1;
-      matCursor++;
-    });
+    const newSchedule = smartAutoAssign(
+      categories,
+      [selectedDate],
+      matCount,
+      sessionConfig,
+      matchDurations,
+      schedule
+    );
 
     saveSchedule(newSchedule);
-    toast.success(`Đã tự động xếp lịch cho ${unassignedCategories.length} nội dung`);
+    toast.success(`Đã tự động xếp lịch nối tiếp thông minh cho ${unassignedCategories.length} nội dung trong ngày này.`);
   };
 
   // Auto-assign ALL categories across ALL days
@@ -922,10 +960,21 @@ export default function SchedulePage() {
                         if (!cat) return;
                         setSelectedCategory(cat);
                         const existing = schedule[dragCategoryId];
+                        
+                        let assignedTime = existing?.time;
+                        let assignedOrder = existing?.order;
+                        
+                        if (!existing) {
+                          const { nextTime, nextOrder } = getNextAvailableTimeAndOrder(mat.id, selectedDate);
+                          assignedTime = nextTime;
+                          assignedOrder = nextOrder;
+                        }
+
                         setAssignForm({
                           mat: mat.id,
-                          time: existing?.time || '08:00',
-                          order: matItems.length + 1,
+                          time: assignedTime || '08:00',
+                          endTime: existing?.endTime || '',
+                          order: assignedOrder || (matItems.length + 1),
                           date: existing?.date || selectedDate,
                         });
                         setWarnings([]);
@@ -998,7 +1047,7 @@ export default function SchedulePage() {
                                     {item.time || '--:--'}
                                     {item.category && item.time && (
                                       <span className="scard-time-end"> 
-                                        - {addMinutesToTime(item.time, estimateCategoryDuration(item.category, currentTournament.setup?.durations))}
+                                        - {item.endTime || addMinutesToTime(item.time, estimateCategoryDuration(item.category, currentTournament.setup?.durations))}
                                       </span>
                                     )}
                                   </span>
@@ -1117,7 +1166,7 @@ export default function SchedulePage() {
                             ) : '—'}
                           </td>
                           <td style={{fontSize:'12px', color:'#475569', whiteSpace:'nowrap'}}>{dayLabel}</td>
-                          <td style={{fontWeight:600, color:'#4338ca'}}>{s?.time || '—'}</td>
+                          <td style={{fontWeight:600, color:'#4338ca'}}>{s?.time ? `${s.time}${s.endTime ? ` - ${s.endTime}` : ''}` : '—'}</td>
                           <td>
                             <div className="table-actions">
                               {s && (
@@ -1175,7 +1224,17 @@ export default function SchedulePage() {
                           borderColor: assignForm.mat === mat.id ? mat.color : 'transparent',
                           background: assignForm.mat === mat.id ? `${mat.color}20` : 'rgba(255,255,255,0.05)',
                         }}
-                        onClick={() => setAssignForm(prev => ({ ...prev, mat: mat.id }))}
+                        onClick={() => {
+                          setAssignForm(prev => {
+                            const newState = { ...prev, mat: mat.id };
+                            if (selectedCategory && !schedule[selectedCategory.id]) {
+                              const { nextTime, nextOrder } = getNextAvailableTimeAndOrder(mat.id, selectedDate);
+                              newState.time = nextTime;
+                              newState.order = nextOrder;
+                            }
+                            return newState;
+                          });
+                        }}
                       >
                         <div className="mat-option-dot" style={{ background: mat.color }}></div>
                         {mat.name}
@@ -1194,6 +1253,19 @@ export default function SchedulePage() {
                     onChange={(e) => setAssignForm(prev => ({ ...prev, time: e.target.value }))}
                   >
                     {timeSlots.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label className="input-label">Giờ kết thúc</label>
+                  <select
+                    className="input"
+                    value={assignForm.endTime || ""}
+                    onChange={(e) => setAssignForm(prev => ({ ...prev, endTime: e.target.value }))}
+                  >
+                    <option value="">--:-- (Tự ước tính)</option>
+                    {ALL_TIME_OPTIONS.map(t => (
                       <option key={t} value={t}>{t}</option>
                     ))}
                   </select>

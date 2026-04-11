@@ -8,7 +8,7 @@ import { isTrialLicense, getCurrentLicense } from "./licenseService";
  */
 
 const DEFAULT_SPLIT_THRESHOLD = 20; // Mặc định chia nhánh khi > 20 VĐV
-const RENDER_SCALE = 2;
+const RENDER_SCALE = 4; // Render siêu nét
 
 /**
  * Render one bracket HTML to a canvas image
@@ -37,26 +37,34 @@ async function renderBracketToCanvas(htmlContent) {
 function addCanvasPage(pdf, canvas, isFirstPage) {
   const imgWidth = canvas.width;
   const imgHeight = canvas.height;
-  const isPortrait = imgHeight >= imgWidth * 1.2;
-  const orientation = isPortrait ? "portrait" : "landscape";
-  const A4_WIDTH = orientation === "landscape" ? 297 : 210;
-  const A4_HEIGHT = orientation === "landscape" ? 210 : 297;
+  
+  const orientation = 'landscape';
+  const A4_WIDTH = 297;
+  const A4_HEIGHT = 210;
   const MARGIN = 10;
+  
   const safeWidth = A4_WIDTH - MARGIN * 2;
   const safeHeight = A4_HEIGHT - MARGIN * 2;
+  
   const scaleX = safeWidth / (imgWidth / RENDER_SCALE);
   const scaleY = safeHeight / (imgHeight / RENDER_SCALE);
+  // Trọng tâm cốt lõi: Layout đã được thiết kế lại để luôn fill ngang giấy!
   const scale = Math.min(scaleX, scaleY);
+  
   const finalWidth = (imgWidth / RENDER_SCALE) * scale;
   const finalHeight = (imgHeight / RENDER_SCALE) * scale;
+  
   const offsetX = MARGIN + (safeWidth - finalWidth) / 2;
   const offsetY = MARGIN + (safeHeight - finalHeight) / 2;
+  
   if (isFirstPage) {
     pdf = new jsPDF({ orientation, unit: "mm", format: "a4" });
   } else {
-    pdf.addPage([A4_WIDTH, A4_HEIGHT], orientation);
+    pdf.addPage("a4", orientation);
   }
-  pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", offsetX, offsetY, finalWidth, finalHeight);
+  
+  pdf.addImage(canvas.toDataURL("image/png", 1.0), "PNG", offsetX, offsetY, finalWidth, finalHeight, undefined, 'FAST');
+  
   if (isTrialLicense()) addTrialWatermark(pdf, A4_WIDTH, A4_HEIGHT);
   return pdf;
 }
@@ -121,6 +129,7 @@ export async function exportBracketToPDF(
   const scheduleInfo = options.scheduleInfo || null;
   const splitSettings = options.splitSettings || null;
   const sponsorLogos = options.sponsorLogos || null;
+
   try {
     const originalCursor = document.body.style.cursor;
     document.body.style.cursor = "wait";
@@ -173,18 +182,15 @@ export async function exportAllBracketsToPDF(
     return;
   }
 
-  const finalFilename =
-    filename || `${tournamentName.replace(/\s+/g, "_")}_tat_ca_so_do.pdf`;
-  const isTrial = isTrialLicense();
+  const finalFilename = filename || `${tournamentName.replace(/\\s+/g, "_")}_tat_ca_so_do`;
 
   try {
     const originalCursor = document.body.style.cursor;
     document.body.style.cursor = "wait";
 
     let pdf = null;
-    let isFirstPage = true;
-
     let pageCount = 0;
+
     for (let i = 0; i < categoriesWithBracket.length; i++) {
       const category = categoriesWithBracket[i];
       const scheduleInfo = schedule ? schedule[category.id] : null;
@@ -209,7 +215,6 @@ export async function exportAllBracketsToPDF(
     if (pdf) {
       pdf.save(finalFilename);
     }
-
     document.body.style.cursor = originalCursor;
     alert(`Đã xuất ${pageCount} sơ đồ thành công!`);
   } catch (error) {
@@ -533,13 +538,29 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
     Object.assign(matchesByRound, fullMatchesByRound);
   }
 
-  // Dimensions
-  const cellWidth = 260;
-  const cellHeight = 24;
-  const cellGap = 50;
+  // Cấu trúc DOM "Siêu Ngang" (Ultra-Wide) Khôi phục tỷ lệ lấp đầy
+  let cellWidth = 350;     
+  let cellHeight = 28;     // Phục hồi lại 28px để Layout bè ngang tràn lề
+  let cellGap = 10;        
+  let connectorWidth = 80; 
+  
+  const athleteCountRaw = category.athletes?.length || 0;
+  const athletesInThisView = (totalSplits > 1) ? Math.ceil(athleteCountRaw / totalSplits) : athleteCountRaw;
+  
+  if (athletesInThisView > 16) {
+    cellWidth = 350;     
+    cellHeight = 28;     // Phục hồi 28px (tránh 40px làm khung quá dài dọc)
+    cellGap = 10;        // Khe thoáng 10px chuẩn
+    connectorWidth = 60; 
+  } else if (athletesInThisView >= 8) {
+    cellWidth = 320;
+    cellHeight = 30;
+    cellGap = 20;
+    connectorWidth = 60;
+  }
+
   const matchHeight = cellHeight + cellGap + cellHeight; 
   const baseGap = 16;
-  const connectorWidth = 60; 
 
   const BASE_LINE_SPACING = matchHeight + baseGap; 
 
@@ -614,14 +635,14 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
       .pdf-bracket-area { 
         display: flex; 
         flex: 1; 
-        padding-right: 280px; 
+        padding-right: 210px; /* Tiết kiệm chỗ chứa Champion */
       }
       .pdf-rounds { display: flex; align-items: flex-start; }
       .pdf-round { display: flex; flex-direction: column; }
       .pdf-round-header { 
-        text-align: center; padding: 5px 0; margin-bottom: 10px; min-width: ${cellWidth}px;
+        text-align: center; padding: 5px 0; margin-bottom: 20px; min-width: ${cellWidth}px;
       }
-      .pdf-round-title { font-size: 12px; font-weight: bold; color: #000; text-transform: uppercase; border-bottom: 2px solid #ccc; display: inline-block; padding-bottom: 2px; }
+      .pdf-round-title { font-size: 20px; font-weight: bold; color: #000; text-transform: uppercase; border-bottom: 3px solid #ccc; display: inline-block; padding-bottom: 4px; }
       .pdf-round-body { display: flex; flex-direction: column; padding-right: ${connectorWidth}px; }
       
       /* Match Wrapper - ABSOLUTE LAYOUT */
@@ -634,50 +655,48 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
       .pdf-match-pair { display: contents; } 
       .pdf-match-wrapper.bye { opacity: 0.6; }
 
-      /* Cells */
+      /* Cells - Gradient */
       .pdf-cell { 
-        display: flex; align-items: center; gap: 4px;
-        width: 100%; min-height: ${cellHeight}px; 
-        padding: 2px 8px 2px 12px; 
-        border: 1px solid #64748b;
+        display: flex; align-items: center; justify-content: flex-start; gap: 6px;
+        width: 100%; 
+        height: ${cellHeight}px; min-height: ${cellHeight}px; max-height: ${cellHeight}px; 
+        padding: 0 6px 0 10px; 
+        border: 1px solid #64748b; box-sizing: border-box;
         background: #fff;
         position: relative;
-        border-right: none;
-        font-size: 11px;
+        overflow: visible; /* CỐT LÕI: Cho phép chữ tràn viền băng qua biên giới Khung */
       }
       .pdf-cell.aka {
         background: linear-gradient(to right, #fee2e2 0%, #ffffff 50%);
         border: 1px solid #fca5a5;
         border-left: 4px solid #dc2626;
-        border-right: none;
       }
       .pdf-cell.ao {
         background: linear-gradient(to right, #dbeafe 0%, #ffffff 50%);
         border: 1px solid #93c5fd;
         border-left: 4px solid #2563eb;
-        border-right: none;
       }
       .pdf-cell.aka.empty {
         background: linear-gradient(to right, #fee2e2 0%, #ffffff 50%);
         border: 1px solid #fca5a5;
         border-left: 4px solid #dc2626;
-        border-right: none;
       }
       .pdf-cell.ao.empty {
         background: linear-gradient(to right, #dbeafe 0%, #ffffff 50%);
         border: 1px solid #93c5fd;
         border-left: 4px solid #2563eb;
-        border-right: none;
       }
       
       .pdf-name { 
-        flex: 1; font-size: 11px; font-weight: 600; color: #1f2937; 
-        white-space: normal; word-break: break-word; overflow: visible; 
-        line-height: 1.2;
+        font-size: 15px; font-weight: 700; color: #000; 
+        flex-shrink: 0;
+        white-space: nowrap; 
+        line-height: ${cellHeight}px; 
       }
       .pdf-club { 
-        font-size: 9px; color: #64748b; font-weight: 500;
-        white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; 
+        font-size: 14px; color: #000; font-weight: 700;
+        flex-shrink: 0;
+        white-space: nowrap;
       }
 
       /* Connectors */
@@ -689,17 +708,17 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         z-index: 10;
         pointer-events: none;
       }
-      .pdf-v-line { position: absolute; left: 0; width: 1px; background: #64748b; }
-      .pdf-h-mid { position: absolute; left: 0; width: 100%; height: 1px; background: #64748b; }
+      .pdf-v-line { position: absolute; left: 0; width: 1.5px; background: #64748b; }
+      .pdf-h-mid { position: absolute; left: 0; width: 100%; height: 1.5px; background: #64748b; }
 
       /* Match Number */
       .pdf-match-number { 
         position: absolute; 
-        right: 5px;
+        right: 8px;
         transform: translateY(-50%);
-        font-size: 15px; font-weight: 700; color: #000; 
+        font-size: 16px; font-weight: 700; color: #000; 
         background: #fff; border-radius: 50%;
-        width: 20px; height: 20px;
+        width: 22px; height: 22px;
         display: flex; align-items: center; justify-content: center;
         z-index: 60;
         border: 2px solid #ef4444;
@@ -709,36 +728,39 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
       /* Champion Slot - ABSOLUTE positioning */
       .pdf-champion-slot {
         position: absolute;
-        right: -310px; 
+        right: -210px; 
         display: flex;
         align-items: center;
-        gap: 4px;
-        min-height: ${cellHeight}px;
-        padding: 2px 8px 2px 12px;
+        justify-content: flex-start;
+        gap: 6px;
+        height: ${cellHeight}px;
+        padding: 0 10px;
         background: linear-gradient(to right, #fef3c7 0%, #ffffff 50%);
         border: 1px solid #fcd34d;
         border-left: 4px solid #f59e0b;
-        border-right: none;
-        font-size: 11px;
         min-width: 150px;
-        max-width: 280px;
+        max-width: 200px;
         z-index: 100;
+        overflow: visible; /* Trào tự do */
       }
-      .pdf-champion-icon { font-size: 14px; }
+      .pdf-champion-icon { font-size: 16px; }
       .pdf-champion-name { 
-        flex: 1; font-size: 11px; font-weight: 600; color: #1f2937;
-        white-space: normal; word-break: break-word; overflow: visible;
-        line-height: 1.2;
+        font-size: 15px; font-weight: 700; color: #000;
+        flex-shrink: 0;
+        white-space: nowrap; 
+        line-height: ${cellHeight}px; 
       }
       .pdf-champion-club {
-        font-size: 10px; color: #64748b; font-weight: 500; white-space: nowrap;
+        font-size: 14px; font-weight: 700; color: #000; 
+        flex-shrink: 0;
+        white-space: nowrap;
       }
 
       /* Champion Connector */
       .pdf-champion-connector {
         position: absolute;
-        right: -310px; 
-        width: 250px; 
+        right: -210px; 
+        width: 160px; 
         height: 1px; 
         background: #64748b;
         z-index: 9;
@@ -900,8 +922,8 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
 
       // Champion Slot (Absolute)
       if (isLastRound) {
-        html += `<div class="pdf-champion-connector" style="top: ${lineCenter}px; right: -310px;"></div>`;
-        html += `<div class="pdf-champion-slot" style="top: ${lineCenter - cellHeight / 2}px; right: -310px;">`;
+        html += `<div class="pdf-champion-connector" style="top: ${lineCenter}px; right: -210px;"></div>`;
+        html += `<div class="pdf-champion-slot" style="top: ${lineCenter - cellHeight / 2}px; right: -210px;">`;
         html += `<span class="pdf-champion-icon">🥇</span>`;
         html += `<span class="pdf-champion-name">${winner?.name || ""}</span>`;
         if (!isTeamBracket && winner?.club) html += `<span class="pdf-champion-club">(${winner.club})</span>`;
