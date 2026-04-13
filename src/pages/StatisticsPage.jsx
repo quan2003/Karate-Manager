@@ -1084,26 +1084,26 @@ export default function StatisticsPage() {
       .sort()
       .forEach((club) => {
         htmlContent += `
-        <div style="margin-bottom:24px; page-break-inside: avoid;">
-          <h3 style="background:#f1f5f9; padding:8px 12px; border-left:4px solid #1e3a5f; margin-bottom:8px;">${club}</h3>
-          <table style="width:100%; border-collapse:collapse; font-size:14px;">
-            <thead>
-              <tr style="background:#f8fafc;">
-                <th style="border:1px solid #e2e8f0; padding:8px; width:40px;">STT</th>
-                <th style="border:1px solid #e2e8f0; padding:8px; text-align:left;">VĐV / Đội</th>
-                <th style="border:1px solid #e2e8f0; padding:8px; text-align:left;">Hạng mục</th>
-                <th style="border:1px solid #e2e8f0; padding:8px; width:100px;">Huy chương</th>
+        <div style="margin-bottom:24px;">
+          <h3 style="background:#f1f5f9; padding:8px 12px; border-left:4px solid #1e3a5f; margin-bottom:8px; page-break-after: avoid;">${club}</h3>
+          <table style="width:100%; border-collapse:collapse; font-size:14px; border: 1px solid black;">
+            <thead style="display: table-header-group;">
+              <tr style="background:#f8fafc; page-break-inside: avoid;">
+                <th style="border:1px solid black; padding:8px; width:40px;">STT</th>
+                <th style="border:1px solid black; padding:8px; text-align:left;">VĐV / Đội</th>
+                <th style="border:1px solid black; padding:8px; text-align:left;">Hạng mục</th>
+                <th style="border:1px solid black; padding:8px; width:100px;">Huy chương</th>
               </tr>
             </thead>
             <tbody>
               ${clubMap[club]
                 .map(
                   (res, idx) => `
-                <tr>
-                  <td style="border:1px solid #e2e8f0; padding:8px; text-align:center;">${
+                <tr style="page-break-inside: avoid;">
+                  <td style="border:1px solid black; padding:8px; text-align:center;">${
                     idx + 1
                   }</td>
-                  <td style="border:1px solid #e2e8f0; padding:8px; font-weight:bold;">
+                  <td style="border:1px solid black; padding:8px; font-weight:bold;">
                     ${res.athleteName}
                     ${
                       res.memberNames
@@ -1111,10 +1111,10 @@ export default function StatisticsPage() {
                         : ""
                     }
                   </td>
-                  <td style="border:1px solid #e2e8f0; padding:8px;">${
+                  <td style="border:1px solid black; padding:8px;">${
                     res.categoryName
                   }</td>
-                  <td style="border:1px solid #e2e8f0; padding:8px; text-align:center; font-weight:bold;">${
+                  <td style="border:1px solid black; padding:8px; text-align:center; font-weight:bold;">${
                     res.medal
                   }</td>
                 </tr>
@@ -1872,6 +1872,20 @@ export default function StatisticsPage() {
   // ===== MEDAL TALLY (Bảng tổng sắp) =====
   const getMedalTally = () => {
     const clubMap = {};
+    
+    // Khởi tạo trước tất cả các CLB (ngay cả khi chưa có huy chương)
+    getClubs().forEach(club => {
+      if (club) {
+        clubMap[club] = {
+          name: club,
+          gold: 0,
+          silver: 0,
+          bronze: 0,
+          total: 0,
+        };
+      }
+    });
+
     const cats = getFilteredCategories();
 
     cats.forEach((cat) => {
@@ -1983,6 +1997,9 @@ export default function StatisticsPage() {
         ${logoHeaderHTML}
         <h1>KẾT QUẢ THI ĐẤU${filterLabel}</h1>
         <h2>${tournament.name}</h2>
+        <div style="text-align: right; font-style: italic; font-size: 13px; margin-bottom: 8px; color: #000;">
+          Cập nhật: ${new Date().toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}, ngày ${new Date().toLocaleDateString('vi-VN')}
+        </div>
         <table>
           <thead>
             <tr>
@@ -2016,6 +2033,9 @@ export default function StatisticsPage() {
         ${logoHeaderHTML}
         <h1>BẢNG TỔNG SẮP HUY CHƯƠNG${filterLabel}</h1>
         <h2>${tournament.name}</h2>
+        <div style="text-align: right; font-style: italic; font-size: 13px; margin-bottom: 8px; color: #000;">
+          Cập nhật: ${new Date().toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}, ngày ${new Date().toLocaleDateString('vi-VN')}
+        </div>
         <table>
           <thead>
             <tr>
@@ -2033,13 +2053,13 @@ export default function StatisticsPage() {
                 (club, idx) => `<tr class="${idx < 3 ? "top" : ""}">
               <td style="text-align:center;font-weight:bold">${idx === 0 ? "NHẤT TOÀN ĐOÀN" : idx === 1 ? "NHÌ TOÀN ĐOÀN" : idx === 2 ? "BA TOÀN ĐOÀN" : idx + 1}</td>
               <td><strong>${club.name}</strong></td>
-              <td style="text-align:center;color:#b45309">${
+              <td style="text-align:center;color:#000">${
                 club.gold || "-"
               }</td>
-              <td style="text-align:center;color:#6b7280">${
+              <td style="text-align:center;color:#000">${
                 club.silver || "-"
               }</td>
-              <td style="text-align:center;color:#92400e">${
+              <td style="text-align:center;color:#000">${
                 club.bronze || "-"
               }</td>
               <td style="text-align:center;font-weight:bold">${club.total}</td>
@@ -4448,6 +4468,106 @@ export default function StatisticsPage() {
                           const cats = tournament.categories.filter((c) =>
                             selectedForExport.has(c.id)
                           );
+                          const data = [];
+                          cats.forEach((cat) => {
+                            const result = getCategoryResults(cat.id);
+                            if (!result) return;
+                            
+                            const addMedalRow = (athleteName, clubName, medal) => {
+                              if (!athleteName && !clubName) return;
+                              
+                              const isTeamCat =
+                                cat.name?.toLowerCase().includes("đồng đội") ||
+                                cat.isTeam ||
+                                (cat.athletes || []).some((a) => a.isTeam);
+
+                              let members = [];
+                              if (isTeamCat) {
+                                const searchName = athleteName || clubName;
+                                members = (cat.athletes || []).filter(
+                                  (a) =>
+                                    (a.club || "").trim().toLowerCase() === (searchName || "").trim().toLowerCase()
+                                );
+                              }
+
+                              if (isTeamCat && members.length > 0) {
+                                members.forEach((m) => {
+                                  data.push({
+                                    "Hạng mục": cat.name,
+                                    "Họ và tên": m.name || "",
+                                    "Đơn vị": clubName || athleteName || "",
+                                    "Huy chương": medal
+                                  });
+                                });
+                              } else {
+                                data.push({
+                                  "Hạng mục": cat.name,
+                                  "Họ và tên": athleteName || "",
+                                  "Đơn vị": clubName || "",
+                                  "Huy chương": medal
+                                });
+                              }
+                            };
+
+                            addMedalRow(result.first, result.club1, "Huy chương vàng");
+                            addMedalRow(result.second, result.club2, "Huy chương bạc");
+                            addMedalRow(result.third1, result.club3a, "Huy chương đồng");
+                            addMedalRow(result.third2, result.club3b, "Huy chương đồng");
+                          });
+                          
+                          if (!data.length) {
+                            toast.error("Không có dữ liệu kết quả để xuất!");
+                            return;
+                          }
+                          const ws = XLSX.utils.json_to_sheet(data);
+                          const wb = XLSX.utils.book_new();
+                          XLSX.utils.book_append_sheet(wb, ws, "Kết quả chọn");
+                          const colWidths = Object.keys(data[0]).map((key) => ({
+                            wch:
+                              Math.max(
+                                key.length,
+                                ...data.map(
+                                  (r) => (r[key] || "").toString().length
+                                )
+                              ) + 2,
+                          }));
+                          ws["!cols"] = colWidths;
+                          XLSX.writeFile(
+                            wb,
+                            `KetQua_DaChon_Doc_${selectedForExport.size}.xlsx`
+                          );
+                          toast.success(
+                            `Đã xuất ${selectedForExport.size} nội dung ra Excel (Hàng dọc)!`
+                          );
+                          setShowExportMenu(false);
+                        }}
+                      >
+                        📤 Xuất Excel (Hàng dọc)
+                      </button>
+                      <div style={{ height: "1px", background: "#e2e8f0" }} />
+                      <button
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "10px 16px",
+                          border: "none",
+                          background: "none",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          color: "#16a34a",
+                        }}
+                        onMouseOver={(e) =>
+                          (e.currentTarget.style.background = "#f0fdf4")
+                        }
+                        onMouseOut={(e) =>
+                          (e.currentTarget.style.background = "none")
+                        }
+                        onClick={() => {
+                          const cats = tournament.categories.filter((c) =>
+                            selectedForExport.has(c.id)
+                          );
                           const data = cats.map((cat) => {
                             const result = getCategoryResults(cat.id);
                             return {
@@ -4501,15 +4621,15 @@ export default function StatisticsPage() {
                           ws["!cols"] = colWidths;
                           XLSX.writeFile(
                             wb,
-                            `KetQua_DaChon_${selectedForExport.size}.xlsx`
+                            `KetQua_DaChon_Ngang_${selectedForExport.size}.xlsx`
                           );
                           toast.success(
-                            `Đã xuất ${selectedForExport.size} nội dung ra Excel!`
+                            `Đã xuất ${selectedForExport.size} nội dung ra Excel (Hàng ngang)!`
                           );
                           setShowExportMenu(false);
                         }}
                       >
-                        📤 Xuất Excel
+                        📤 Xuất Excel (Hàng ngang)
                       </button>
                       <div style={{ height: "1px", background: "#e2e8f0" }} />
                       <button

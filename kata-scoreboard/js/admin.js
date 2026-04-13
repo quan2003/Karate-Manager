@@ -1938,17 +1938,17 @@ function loadPendingMatch() {
     state.scoringStarted = false;
   }
 
-  // Clear Kata info from previous match
-  state.aka.kataName = "";
-  state.ao.kataName = "";
+  // Clear or Set Kata info from previous match
+  state.aka.kataName = pendingMatchData.kata1 || "";
+  state.ao.kataName = pendingMatchData.kata2 || "";
   if (document.getElementById("akaKataSelect"))
     document.getElementById("akaKataSelect").selectedIndex = 0;
   if (document.getElementById("aoKataSelect"))
     document.getElementById("aoKataSelect").selectedIndex = 0;
   if (document.getElementById("akaKataSearch"))
-    document.getElementById("akaKataSearch").value = "";
+    document.getElementById("akaKataSearch").value = state.aka.kataName;
   if (document.getElementById("aoKataSearch"))
-    document.getElementById("aoKataSearch").value = "";
+    document.getElementById("aoKataSearch").value = state.ao.kataName;
 
   saveState();
   updateUI();
@@ -2023,24 +2023,40 @@ function finishMatch() {
   );
 
   // Reset cho trận tiếp theo
+  state.aka.athlete = "";
+  state.aka.unit = "";
+  state.aka.team = "";
+  state.ao.athlete = "";
+  state.ao.unit = "";
+  state.ao.team = "";
   state.aka.score = 0;
   state.ao.score = 0;
   state.aka.kataName = "";
   state.ao.kataName = "";
   state.scoringStarted = false;
 
-  if (document.getElementById("akaScore"))
-    document.getElementById("akaScore").textContent = 0;
-  if (document.getElementById("aoScore"))
-    document.getElementById("aoScore").textContent = 0;
-  if (document.getElementById("akaKataSelect"))
-    document.getElementById("akaKataSelect").selectedIndex = 0;
-  if (document.getElementById("aoKataSelect"))
-    document.getElementById("aoKataSelect").selectedIndex = 0;
-  if (document.getElementById("akaKataSearch"))
-    document.getElementById("akaKataSearch").value = "";
-  if (document.getElementById("aoKataSearch"))
-    document.getElementById("aoKataSearch").value = "";
+  if (document.getElementById("akaScore")) document.getElementById("akaScore").textContent = 0;
+  if (document.getElementById("aoScore")) document.getElementById("aoScore").textContent = 0;
+  if (document.getElementById("akaKataSelect")) document.getElementById("akaKataSelect").selectedIndex = 0;
+  if (document.getElementById("aoKataSelect")) document.getElementById("aoKataSelect").selectedIndex = 0;
+  if (document.getElementById("akaKataSearch")) document.getElementById("akaKataSearch").value = "";
+  if (document.getElementById("aoKataSearch")) document.getElementById("aoKataSearch").value = "";
+  
+  if (document.getElementById("akaAthleteSelect")) document.getElementById("akaAthleteSelect").selectedIndex = 0;
+  if (document.getElementById("aoAthleteSelect")) document.getElementById("aoAthleteSelect").selectedIndex = 0;
+  if (document.getElementById("akaAthleteSearch")) {
+    document.getElementById("akaAthleteSearch").value = "";
+    document.getElementById("akaAthleteSearch").style.borderColor = "";
+  }
+  if (document.getElementById("aoAthleteSearch")) {
+    document.getElementById("aoAthleteSearch").value = "";
+    document.getElementById("aoAthleteSearch").style.borderColor = "";
+  }
+
+  ['akaAthleteName', 'aoAthleteName', 'akaUnit', 'aoUnit', 'akaTeamName', 'aoTeamName', 'akaTeamMembers', 'aoTeamMembers'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
 
   saveState();
   updateUI();

@@ -309,6 +309,11 @@ export default function Bracket({
                           )}
                         </>
                       )}
+                      {categoryType === "kata" && match.kata1 && (
+                        <span className="kata-label" style={{ position: "absolute", top: "100%", left: "12px", fontSize: "10.5px", color: "#0d9488", fontWeight: "600", whiteSpace: "nowrap", pointerEvents: "none", zIndex: 1 }}>
+                          {match.kata1}
+                        </span>
+                      )}
                       {match.athlete1?.disqualified && (
                         <span
                           className="dq-badge"
@@ -399,6 +404,11 @@ export default function Bracket({
                             </span>
                           )}
                         </>
+                      )}
+                      {categoryType === "kata" && match.kata2 && (
+                        <span className="kata-label" style={{ position: "absolute", top: "100%", left: "12px", fontSize: "10.5px", color: "#0d9488", fontWeight: "600", whiteSpace: "nowrap", pointerEvents: "none", zIndex: 1 }}>
+                          {match.kata2}
+                        </span>
                       )}
                       {match.athlete2?.disqualified && (
                         <span
@@ -554,6 +564,20 @@ export default function Bracket({
             <span className="context-menu-icon">🔀</span>
             <span>Kéo để hoán đổi vị trí</span>
           </button>
+          
+          {categoryType === "kata" && (
+            <>
+              <div className="context-menu-divider" />
+              <button
+                className="context-menu-item"
+                style={{ color: "#0d9488" }}
+                onClick={() => handleAction("set_kata")}
+              >
+                <span className="context-menu-icon" style={{filter: 'hue-rotate(120deg)'}}>🥋</span>
+                <span>Đăng ký bài quyền (Kata)</span>
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -561,10 +585,22 @@ export default function Bracket({
 }
 
 function getFlagEmoji(countryCode) {
-  if (!countryCode || countryCode.length !== 2) return "";
-  const codePoints = countryCode
-    .toUpperCase()
-    .split("")
-    .map((char) => 127397 + char.charCodeAt(0));
-  return String.fromCodePoint(...codePoints);
+  if (!countryCode) return null;
+  const code = countryCode.toUpperCase();
+  return (
+    <img 
+      src={`${import.meta.env.BASE_URL}flags/${code}.png`}
+      alt={code}
+      style={{ 
+        width: '18px', 
+        height: '12px', 
+        objectFit: 'cover', 
+        display: 'inline-block', 
+        verticalAlign: 'middle', 
+        border: '1px solid #cbd5e1',
+        borderRadius: '2px'
+      }}
+      onError={(e) => e.target.style.display = 'none'}
+    />
+  );
 }

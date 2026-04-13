@@ -4,14 +4,181 @@ import { isTrialLicense, getCurrentLicense } from "./licenseService";
 
 /**
  * PDF Export Service - Client-side
+ * 
+ * PRIMARY: Electron printToPDF (vector, custom page size, no shrinking)
+ * FALLBACK: jsPDF + html2canvas (raster, for browser-only mode)
+ * 
  * Theme: SportData Replica (Gradient backgrounds, Header with Logo, Referees Table)
  */
 
 const DEFAULT_SPLIT_THRESHOLD = 20; // Mặc định chia nhánh khi > 20 VĐV
-const RENDER_SCALE = 4; // Render siêu nét
+const RENDER_SCALE = 4; // Render siêu nét (dùng cho fallback)
+
+// 1px ≈ 0.2646mm (at 96 DPI)
+const PX_TO_MM = 25.4 / 96;
+// Minimum page dimensions (mm) - at least A4 landscape
+const MIN_PAGE_WIDTH_MM = 297;
+const MIN_PAGE_HEIGHT_MM = 210;
+// Padding added around content (mm)
+const PAGE_PADDING_MM = 10;
 
 /**
- * Render one bracket HTML to a canvas image
+ * Check if Electron's printToPDF API is available
+ */
+function isElectronPdfAvailable() {
+  return !!(window.electronAPI && window.electronAPI.pdf && window.electronAPI.pdf.printBracket);
+}
+
+/**
+ * Convert an image URL to a base64 data URL.
+ * This is needed because the hidden BrowserWindow (loaded via data: URL)
+ * cannot resolve relative or file:// image URLs.
+ */
+function imageToBase64(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (e) {
+        resolve(url); // fallback: keep original
+      }
+    };
+    img.onerror = () => resolve(''); // return empty on error
+    img.src = url;
+  });
+}
+
+/**
+ * Process all <img> tags in HTML string:
+ * Convert their src attributes from file:///... or relative URLs to inline base64 data URLs.
+ * This ensures images render correctly in the hidden BrowserWindow.
+ */
+async function processHtmlImages(htmlContent) {
+  // Extract all img src values
+  const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/gi;
+  const matches = [...htmlContent.matchAll(imgRegex)];
+  
+  // Collect unique URLs
+  const uniqueUrls = [...new Set(matches.map(m => m[1]))];
+  
+  // Convert each unique URL to base64 (skip ones already base64)
+  const urlMap = {};
+  for (const url of uniqueUrls) {
+    if (url.startsWith('data:')) {
+      urlMap[url] = url; // already base64
+    } else {
+      urlMap[url] = await imageToBase64(url);
+    }
+  }
+  
+  // Replace all src values in HTML
+  let result = htmlContent;
+  for (const [originalUrl, base64Url] of Object.entries(urlMap)) {
+    if (base64Url && base64Url !== originalUrl) {
+      // Escape special regex characters in URL
+      const escaped = originalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      result = result.replace(new RegExp(escaped, 'g'), base64Url);
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Measure the natural dimensions (in px) of bracket HTML by rendering in a hidden container.
+ * The container is unstyled (no max-width constraints) so the bracket renders at its natural size.
+ */
+function measureBracketSize(htmlContent) {
+  return new Promise((resolve) => {
+    const container = document.createElement("div");
+    container.style.position = "absolute";
+    container.style.left = "-99999px";
+    container.style.top = "0";
+    container.style.background = "white";
+    container.style.padding = "0";
+    container.style.display = "inline-block"; // shrink-wrap to content
+    container.style.whiteSpace = "nowrap";
+    container.innerHTML = htmlContent;
+    document.body.appendChild(container);
+
+    // Use requestAnimationFrame to ensure layout is computed
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const width = container.scrollWidth;
+        const height = container.scrollHeight;
+        document.body.removeChild(container);
+        resolve({ width, height });
+      });
+    });
+  });
+}
+
+/**
+ * Wrap bracket HTML fragment into a full standalone HTML document.
+ * Includes @page CSS to remove print margins and set page size.
+ */
+function wrapAsFullDocument(htmlContent) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    margin: 0;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: white;
+  }
+  body {
+    padding: 30px;
+    display: inline-block; /* shrink-wrap: body size = content size */
+    box-sizing: content-box;
+  }
+  @media print {
+    html, body {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
+</style>
+</head>
+<body>
+${htmlContent}
+</body>
+</html>`;
+}
+
+/**
+ * Calculate the custom page size (in mm) from the content's natural pixel dimensions.
+ * The page grows to fit the content; never shrinks below A4 landscape.
+ */
+function calculatePageSize(contentWidthPx, contentHeightPx) {
+  // Thêm buffer 5% để đảm bảo content không bị tràn viền gây co nhỏ
+  const bufferFactor = 1.05;
+  const contentWidthMM = contentWidthPx * PX_TO_MM * bufferFactor + PAGE_PADDING_MM * 2;
+  const contentHeightMM = contentHeightPx * PX_TO_MM * bufferFactor + PAGE_PADDING_MM * 2;
+
+  return {
+    widthMM: Math.max(MIN_PAGE_WIDTH_MM, Math.ceil(contentWidthMM)),
+    heightMM: Math.max(MIN_PAGE_HEIGHT_MM, Math.ceil(contentHeightMM)),
+  };
+}
+
+// ====================================================================
+// FALLBACK: old jsPDF + html2canvas pipeline (raster, for non-Electron)
+// ====================================================================
+
+/**
+ * Render one bracket HTML to a canvas image (fallback)
  */
 async function renderBracketToCanvas(htmlContent) {
   const tempContainer = document.createElement("div");
@@ -32,7 +199,7 @@ async function renderBracketToCanvas(htmlContent) {
 }
 
 /**
- * Add a canvas image as a page to a jsPDF, returns {pdf, width, height}
+ * Add a canvas image as a page to a jsPDF (fallback)
  */
 function addCanvasPage(pdf, canvas, isFirstPage) {
   const imgWidth = canvas.width;
@@ -48,7 +215,6 @@ function addCanvasPage(pdf, canvas, isFirstPage) {
   
   const scaleX = safeWidth / (imgWidth / RENDER_SCALE);
   const scaleY = safeHeight / (imgHeight / RENDER_SCALE);
-  // Trọng tâm cốt lõi: Layout đã được thiết kế lại để luôn fill ngang giấy!
   const scale = Math.min(scaleX, scaleY);
   
   const finalWidth = (imgWidth / RENDER_SCALE) * scale;
@@ -120,6 +286,11 @@ function getSplitCount(category, splitSettings) {
   return Math.ceil(athleteCount / Math.ceil(threshold / 2));
 }
 
+// ====================================================================
+// MAIN EXPORT: exportBracketToPDF
+// Uses Electron printToPDF (vector) if available, else fallback to raster
+// ====================================================================
+
 export async function exportBracketToPDF(
   category,
   tournamentName,
@@ -134,6 +305,54 @@ export async function exportBracketToPDF(
     const originalCursor = document.body.style.cursor;
     document.body.style.cursor = "wait";
     const numSplits = getSplitCount(category, splitSettings);
+
+    // ─── Electron printToPDF path (VECTOR, custom page size) ───
+    if (isElectronPdfAvailable()) {
+      if (numSplits <= 1) {
+        // Single page
+        const html = generateBracketHTML(category, tournamentName, scheduleInfo, null, 1, 1, sponsorLogos);
+        const processedHtml = await processHtmlImages(html);
+        const fullDoc = wrapAsFullDocument(processedHtml);
+
+        const result = await window.electronAPI.pdf.printBracket({
+          htmlContent: fullDoc,
+          filename,
+        });
+
+        document.body.style.cursor = originalCursor;
+        if (result.success) {
+          alert("Đã xuất PDF thành công!");
+        } else if (!result.canceled) {
+          alert("Lỗi xuất PDF: " + result.error);
+        }
+      } else {
+        // Multiple splits → merge into one PDF
+        const pages = [];
+        for (let half = 0; half < numSplits; half++) {
+          const splitSchedule = { ...scheduleInfo, splitLabel: `Trận ${half + 1}/${numSplits}` };
+          const html = generateBracketHTML(category, tournamentName, splitSchedule, half, half + 1, numSplits, sponsorLogos);
+          const processedHtml = await processHtmlImages(html);
+          pages.push({
+            htmlContent: wrapAsFullDocument(processedHtml),
+          });
+        }
+
+        const result = await window.electronAPI.pdf.printBracketMulti({
+          pages,
+          filename,
+        });
+
+        document.body.style.cursor = originalCursor;
+        if (result.success) {
+          alert(`Đã xuất ${result.pageCount} trang PDF thành công!`);
+        } else if (!result.canceled) {
+          alert("Lỗi xuất PDF: " + result.error);
+        }
+      }
+      return;
+    }
+
+    // ─── Fallback: jsPDF + html2canvas (raster) ───
     let pdf = null;
 
     if (numSplits <= 1) {
@@ -167,6 +386,11 @@ function addTrialWatermark(pdf, pageWidth, pageHeight) {
   });
 }
 
+// ====================================================================
+// MAIN EXPORT: exportAllBracketsToPDF
+// Uses Electron printToPDF (vector) if available, else fallback to raster
+// ====================================================================
+
 export async function exportAllBracketsToPDF(
   categories,
   tournamentName = "Giai_dau",
@@ -182,12 +406,49 @@ export async function exportAllBracketsToPDF(
     return;
   }
 
-  const finalFilename = filename || `${tournamentName.replace(/\\s+/g, "_")}_tat_ca_so_do`;
+  const finalFilename = filename || `${tournamentName.replace(/\\s+/g, "_")}_tat_ca_so_do.pdf`;
 
   try {
     const originalCursor = document.body.style.cursor;
     document.body.style.cursor = "wait";
 
+    // ─── Electron printToPDF path (VECTOR, custom page size) ───
+    if (isElectronPdfAvailable()) {
+      const pages = [];
+
+      for (let i = 0; i < categoriesWithBracket.length; i++) {
+        const category = categoriesWithBracket[i];
+        const scheduleInfo = schedule ? schedule[category.id] : null;
+        const numSplits = getSplitCount(category, splitSettings);
+
+        for (let half = 0; half < numSplits; half++) {
+          const splitSchedule = numSplits > 1
+            ? { ...scheduleInfo, splitLabel: `Trận ${half + 1}/${numSplits}` }
+            : scheduleInfo;
+          const splitHalf = numSplits > 1 ? half : null;
+          const html = generateBracketHTML(category, tournamentName, splitSchedule, splitHalf, half + 1, numSplits, sponsorLogos);
+          const processedHtml = await processHtmlImages(html);
+          pages.push({
+            htmlContent: wrapAsFullDocument(processedHtml),
+          });
+        }
+      }
+
+      const result = await window.electronAPI.pdf.printBracketMulti({
+        pages,
+        filename: finalFilename,
+      });
+
+      document.body.style.cursor = originalCursor;
+      if (result.success) {
+        alert(`Đã xuất ${result.pageCount} sơ đồ thành công!`);
+      } else if (!result.canceled) {
+        alert("Lỗi xuất PDF: " + result.error);
+      }
+      return;
+    }
+
+    // ─── Fallback: jsPDF + html2canvas (raster) ───
     let pdf = null;
     let pageCount = 0;
 
@@ -538,29 +799,31 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
     Object.assign(matchesByRound, fullMatchesByRound);
   }
 
-  // Cấu trúc DOM "Siêu Ngang" (Ultra-Wide) Khôi phục tỷ lệ lấp đầy
+  // Cấu trúc DOM "Siêu Ngang" (Ultra-Wide) — Tối ưu cho printToPDF (custom page size)
   let cellWidth = 350;     
-  let cellHeight = 28;     // Phục hồi lại 28px để Layout bè ngang tràn lề
-  let cellGap = 10;        
+  let cellHeight = 32;     
+  let cellGap = 16;        
   let connectorWidth = 80; 
   
   const athleteCountRaw = category.athletes?.length || 0;
   const athletesInThisView = (totalSplits > 1) ? Math.ceil(athleteCountRaw / totalSplits) : athleteCountRaw;
   
   if (athletesInThisView > 16) {
-    cellWidth = 350;     
-    cellHeight = 28;     // Phục hồi 28px (tránh 40px làm khung quá dài dọc)
-    cellGap = 10;        // Khe thoáng 10px chuẩn
-    connectorWidth = 60; 
+    // Bracket lớn (21+ VĐV): tăng kích thước ô để dễ đọc khi in
+    // printToPDF sẽ tự mở rộng trang → không cần lo co nhỏ
+    cellWidth = 380;     
+    cellHeight = 36;     // Tăng từ 28→36 để chữ rõ hơn
+    cellGap = 16;        // Khe thoáng 16px
+    connectorWidth = 70; 
   } else if (athletesInThisView >= 8) {
-    cellWidth = 320;
-    cellHeight = 30;
+    cellWidth = 350;
+    cellHeight = 34;
     cellGap = 20;
-    connectorWidth = 60;
+    connectorWidth = 70;
   }
 
   const matchHeight = cellHeight + cellGap + cellHeight; 
-  const baseGap = 16;
+  const baseGap = 18;
 
   const BASE_LINE_SPACING = matchHeight + baseGap; 
 
@@ -604,15 +867,16 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
       /* Header */
       .pdf-header { 
         display: flex; justify-content: space-between; align-items: flex-start;
-        padding: 5px 10px; 
+        padding: 8px 14px; 
         background: #e2e8f0; 
         border: 1px solid #94a3b8;
         margin-bottom: 20px;
         position: relative;
+        min-height: 50px;
       }
       .pdf-header-left { display: flex; flex-direction: column; }
-      .pdf-category-name { font-size: 16px; font-weight: bold; color: #000; }
-      .pdf-tournament-name { font-size: 11px; color: #333; margin-top: 2px; }
+      .pdf-category-name { font-size: 22px; font-weight: bold; color: #000; }
+      .pdf-tournament-name { font-size: 14px; color: #333; margin-top: 2px; font-weight: 600; }
       
       .pdf-header-right { 
         position: absolute; right: 0; top: 0;
@@ -625,9 +889,9 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
       
       .pdf-info-bar { 
         position: absolute; right: 230px; top: 5px;
-        display: flex; gap: 0; font-size: 11px; border: 1px solid #000;
+        display: flex; gap: 0; font-size: 14px; border: 1px solid #000;
       }
-      .pdf-info-item { padding: 4px 10px; border-right: 1px solid #000; background: #ddd; }
+      .pdf-info-item { padding: 5px 12px; border-right: 1px solid #000; background: #ddd; font-weight: 600; }
       .pdf-info-item:last-child { border-right: none; background: #fff; }
 
       /* Rounds Layout */
@@ -661,30 +925,30 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         width: 100%; 
         height: ${cellHeight}px; min-height: ${cellHeight}px; max-height: ${cellHeight}px; 
         padding: 0 6px 0 10px; 
-        border: 1px solid #64748b; box-sizing: border-box;
+        border: 2px solid #334155; box-sizing: border-box;
         background: #fff;
         position: relative;
-        overflow: visible; /* CỐT LÕI: Cho phép chữ tràn viền băng qua biên giới Khung */
+        overflow: visible;
       }
       .pdf-cell.aka {
         background: linear-gradient(to right, #fee2e2 0%, #ffffff 50%);
-        border: 1px solid #fca5a5;
-        border-left: 4px solid #dc2626;
+        border: 2px solid #fca5a5;
+        border-left: 5px solid #dc2626;
       }
       .pdf-cell.ao {
         background: linear-gradient(to right, #dbeafe 0%, #ffffff 50%);
-        border: 1px solid #93c5fd;
-        border-left: 4px solid #2563eb;
+        border: 2px solid #93c5fd;
+        border-left: 5px solid #2563eb;
       }
       .pdf-cell.aka.empty {
         background: linear-gradient(to right, #fee2e2 0%, #ffffff 50%);
-        border: 1px solid #fca5a5;
-        border-left: 4px solid #dc2626;
+        border: 2px solid #fca5a5;
+        border-left: 5px solid #dc2626;
       }
       .pdf-cell.ao.empty {
         background: linear-gradient(to right, #dbeafe 0%, #ffffff 50%);
-        border: 1px solid #93c5fd;
-        border-left: 4px solid #2563eb;
+        border: 2px solid #93c5fd;
+        border-left: 5px solid #2563eb;
       }
       
       .pdf-name { 
@@ -699,7 +963,7 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         white-space: nowrap;
       }
 
-      /* Connectors */
+      /* Connectors - In đậm để rõ khi print */
       .pdf-connector { 
         position: absolute; 
         right: -${connectorWidth}px;
@@ -708,8 +972,8 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         z-index: 10;
         pointer-events: none;
       }
-      .pdf-v-line { position: absolute; left: 0; width: 1.5px; background: #64748b; }
-      .pdf-h-mid { position: absolute; left: 0; width: 100%; height: 1.5px; background: #64748b; }
+      .pdf-v-line { position: absolute; left: 0; width: 2.5px; background: #1e293b; }
+      .pdf-h-mid { position: absolute; left: 0; width: 100%; height: 2.5px; background: #1e293b; }
 
       /* Match Number */
       .pdf-match-number { 
@@ -761,8 +1025,8 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         position: absolute;
         right: -210px; 
         width: 160px; 
-        height: 1px; 
-        background: #64748b;
+        height: 2.5px; 
+        background: #1e293b;
         z-index: 9;
       }
       

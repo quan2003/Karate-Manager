@@ -134,6 +134,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   // =============================================
+  // Vector PDF Export (printToPDF) Operations
+  // =============================================
+  pdf: {
+    // Export a single bracket to PDF (vector, custom page size)
+    printBracket: (data) => ipcRenderer.invoke('pdf:printBracket', data),
+    // Export multiple brackets into one merged PDF
+    printBracketMulti: (data) => ipcRenderer.invoke('pdf:printBracketMulti', data),
+    // Listen for progress updates during multi-page export
+    onProgress: (callback) => {
+      const handler = (event, data) => callback(data);
+      ipcRenderer.on('pdf:progress', handler);
+      return () => ipcRenderer.removeListener('pdf:progress', handler);
+    },
+  },
+
+  // =============================================
   // IPC communication (legacy)
   // =============================================
   send: (channel, data) => {
@@ -144,7 +160,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   receive: (channel, func) => {
-    const validChannels = ["app:update-available", "lan:receive-result", "app:open-file"];
+    const validChannels = ["app:update-available", "lan:receive-result", "app:open-file", "pdf:progress"];
     if (validChannels.includes(channel)) {
       const subscription = (event, ...args) => func(...args);
       ipcRenderer.on(channel, subscription);

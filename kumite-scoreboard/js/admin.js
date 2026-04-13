@@ -747,6 +747,8 @@ function triggerFullscreenDisplay(
 
 // Reset functions
 function resetAll() {
+  state.akaName = "AKA";
+  state.aoName = "AO";
   state.akaScore = 0;
   state.aoScore = 0;
   state.akaPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
@@ -754,6 +756,18 @@ function resetAll() {
   state.akaSenshu = false;
   state.aoSenshu = false;
   state.winnerFlash = null; // Reset winner flash
+
+  // Reset dropdown UI
+  if (document.getElementById("redAthleteSelect")) document.getElementById("redAthleteSelect").selectedIndex = 0;
+  if (document.getElementById("blueAthleteSelect")) document.getElementById("blueAthleteSelect").selectedIndex = 0;
+  if (document.getElementById("redAthleteSearch")) {
+    document.getElementById("redAthleteSearch").value = "";
+    document.getElementById("redAthleteSearch").style.borderColor = "";
+  }
+  if (document.getElementById("blueAthleteSearch")) {
+    document.getElementById("blueAthleteSearch").value = "";
+    document.getElementById("blueAthleteSearch").style.borderColor = "";
+  }
 
   // Reset team mode if active
   if (state.mode === "team") {
@@ -1228,13 +1242,30 @@ function finishRound() {
 
 // Reset scores only (for next round in team mode)
 function resetScoresOnly() {
+  state.akaName = "AKA";
+  state.aoName = "AO";
   state.akaScore = 0;
   state.aoScore = 0;
   state.akaPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
   state.aoPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
   state.akaSenshu = false;
   state.aoSenshu = false;
+  state.winnerFlash = null;
+
+  // Reset dropdown UI
+  if (document.getElementById("redAthleteSelect")) document.getElementById("redAthleteSelect").selectedIndex = 0;
+  if (document.getElementById("blueAthleteSelect")) document.getElementById("blueAthleteSelect").selectedIndex = 0;
+  if (document.getElementById("redAthleteSearch")) {
+    document.getElementById("redAthleteSearch").value = "";
+    document.getElementById("redAthleteSearch").style.borderColor = "";
+  }
+  if (document.getElementById("blueAthleteSearch")) {
+    document.getElementById("blueAthleteSearch").value = "";
+    document.getElementById("blueAthleteSearch").style.borderColor = "";
+  }
+
   resetTimer();
+  updateUI();
   updatePreview();
 }
 

@@ -1,4 +1,5 @@
 const { app, BrowserWindow, shell, dialog, ipcMain } = require("electron");
+const { PDFDocument } = require("pdf-lib");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
@@ -544,6 +545,200 @@ ipcMain.handle("lan:stopServer", () => {
     return { success: true };
   }
   return { success: true, message: "Máy chủ chưa chạy" };
+});
+
+// =============================================
+// IPC Handlers cho Vector PDF Export (printToPDF)
+// =============================================
+
+/**
+ * Helper: Write HTML to a temp file and return file:// URL.
+ * We use temp files instead of data: URLs because base64 data URLs
+ * have a size limit in Chromium (~2MB) and bracket HTML with embedded
+ * base64 images easily exceeds this.
+ */
+function writeTempHtml(htmlContent) {
+  const tmpDir = path.join(os.tmpdir(), 'karate-pdf-export');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const tmpFile = path.join(tmpDir, `bracket_${Date.now()}_${Math.random().toString(36).slice(2)}.html`);
+  fs.writeFileSync(tmpFile, htmlContent, 'utf-8');
+  return tmpFile;
+}
+
+function cleanupTempFile(filePath) {
+  try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
+}
+
+/**
+ * Render bracket HTML in a hidden BrowserWindow and export to PDF.
+ * Key: We measure the ACTUAL rendered content size INSIDE the hidden window
+ * using executeJavaScript, then set the PDF page to match exactly.
+ * This prevents any shrinking or mismatched scaling.
+ */
+ipcMain.handle('pdf:printBracket', async (event, { htmlContent, widthMM, heightMM, filename }) => {
+  let tmpFile = null;
+  try {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Lưu sơ đồ thi đấu PDF',
+      defaultPath: filename || 'so_do_thi_dau.pdf',
+      filters: [{ name: 'PDF File', extensions: ['pdf'] }],
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Create hidden window — very wide so content never wraps
+    const printWin = new BrowserWindow({
+      show: false,
+      width: 4000,
+      height: 3000,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        offscreen: true,
+      },
+    });
+
+    // Write HTML to temp file and load
+    tmpFile = writeTempHtml(htmlContent);
+    await printWin.loadFile(tmpFile);
+
+    // Wait for content to fully render
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
+    // Measure ACTUAL content size inside the hidden window (in CSS px)
+    const measured = await printWin.webContents.executeJavaScript(`
+      JSON.stringify({
+        width: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+        height: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)
+      })
+    `);
+    const contentSize = JSON.parse(measured);
+
+    // Convert CSS px to inches (96 CSS px = 1 inch for print)
+    // Add small margin (0.1 inch) to avoid clipping
+    const pageWidthInches = (contentSize.width / 96) + 0.1;
+    const pageHeightInches = (contentSize.height / 96) + 0.1;
+
+    // Print to PDF — page size matches content exactly
+    const pdfBuffer = await printWin.webContents.printToPDF({
+      printBackground: true,
+      pageSize: {
+        width: pageWidthInches,
+        height: pageHeightInches,
+      },
+      margins: {
+        top: 0,
+        bottom: 0,
+        left: 0,
+        right: 0,
+      },
+      scale: 1,
+    });
+
+    printWin.close();
+    cleanupTempFile(tmpFile);
+
+    fs.writeFileSync(result.filePath, pdfBuffer);
+    return { success: true, filePath: result.filePath };
+  } catch (error) {
+    if (tmpFile) cleanupTempFile(tmpFile);
+    console.error('Error in pdf:printBracket:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Render multiple bracket HTML pages into a single merged PDF.
+ * Each page is measured individually in its hidden window.
+ */
+ipcMain.handle('pdf:printBracketMulti', async (event, { pages, filename }) => {
+  const tmpFiles = [];
+  try {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Lưu tất cả sơ đồ thi đấu PDF',
+      defaultPath: filename || 'tat_ca_so_do.pdf',
+      filters: [{ name: 'PDF File', extensions: ['pdf'] }],
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    // Merge all pages into one PDF using pdf-lib
+    const mergedPdf = await PDFDocument.create();
+
+    for (let i = 0; i < pages.length; i++) {
+      const { htmlContent } = pages[i];
+
+      const printWin = new BrowserWindow({
+        show: false,
+        width: 4000,
+        height: 3000,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          offscreen: true,
+        },
+      });
+
+      const tmpFile = writeTempHtml(htmlContent);
+      tmpFiles.push(tmpFile);
+      await printWin.loadFile(tmpFile);
+      await new Promise(resolve => setTimeout(resolve, 1200));
+
+      // Measure ACTUAL content size inside the hidden window
+      const measured = await printWin.webContents.executeJavaScript(`
+        JSON.stringify({
+          width: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+          height: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)
+        })
+      `);
+      const contentSize = JSON.parse(measured);
+
+      const pageWidthInches = (contentSize.width / 96) + 0.1;
+      const pageHeightInches = (contentSize.height / 96) + 0.1;
+
+      const pdfBuffer = await printWin.webContents.printToPDF({
+        printBackground: true,
+        pageSize: {
+          width: pageWidthInches,
+          height: pageHeightInches,
+        },
+        margins: {
+          top: 0,
+          bottom: 0,
+          left: 0,
+          right: 0,
+        },
+        scale: 1,
+      });
+
+      printWin.close();
+
+      // Merge this page into the combined PDF
+      const pagePdf = await PDFDocument.load(pdfBuffer);
+      const copiedPages = await mergedPdf.copyPages(pagePdf, pagePdf.getPageIndices());
+      copiedPages.forEach(page => mergedPdf.addPage(page));
+
+      // Notify renderer of progress
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('pdf:progress', { current: i + 1, total: pages.length });
+      }
+    }
+
+    // Cleanup temp files
+    tmpFiles.forEach(f => cleanupTempFile(f));
+
+    const mergedBytes = await mergedPdf.save();
+    fs.writeFileSync(result.filePath, Buffer.from(mergedBytes));
+    return { success: true, filePath: result.filePath, pageCount: pages.length };
+  } catch (error) {
+    tmpFiles.forEach(f => cleanupTempFile(f));
+    console.error('Error in pdf:printBracketMulti:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 // Khi Electron sẵn sàng

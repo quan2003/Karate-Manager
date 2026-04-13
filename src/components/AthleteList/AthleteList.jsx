@@ -49,12 +49,25 @@ export default function AthleteList({
   };
 
   const getFlagEmoji = (countryCode) => {
-    if (!countryCode || countryCode.length !== 2) return "🏳️";
-    const codePoints = countryCode
-      .toUpperCase()
-      .split("")
-      .map((char) => 127397 + char.charCodeAt(0));
-    return String.fromCodePoint(...codePoints);
+    if (!countryCode) return "🏳️";
+    const code = countryCode.toUpperCase();
+    return (
+      <img 
+        src={`${import.meta.env.BASE_URL}flags/${code}.png`}
+        alt={code}
+        style={{ 
+          width: '18px', 
+          height: '12px', 
+          objectFit: 'cover', 
+          display: 'inline-block', 
+          verticalAlign: 'middle', 
+          border: '1px solid #cbd5e1',
+          borderRadius: '2px',
+          marginRight: '6px'
+        }}
+        onError={(e) => e.target.style.display = 'none'}
+      />
+    );
   };
 
   return (

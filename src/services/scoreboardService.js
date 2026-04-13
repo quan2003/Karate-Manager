@@ -37,6 +37,8 @@ export function openScoreboard(match, categoryType, categoryName, tournamentName
     // Existing scores for re-editing completed matches
     score1: match.score1,
     score2: match.score2,
+    kata1: match.kata1 || '',
+    kata2: match.kata2 || '',
     hasWinner: !!match.winner,
     // Schedule info (mat number)
     matNumber: scheduleInfo?.mat || null,
