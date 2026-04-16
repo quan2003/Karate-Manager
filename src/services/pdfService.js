@@ -132,16 +132,27 @@ function wrapAsFullDocument(htmlContent) {
 <style>
   @page {
     margin: 0;
+    size: landscape;
+  }
+  * {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+  ::-webkit-scrollbar { 
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
   }
   html, body {
     margin: 0;
     padding: 0;
     background: white;
+    overflow: hidden !important;
   }
   body {
-    padding: 30px;
-    display: inline-block; /* shrink-wrap: body size = content size */
-    box-sizing: content-box;
+    padding: 0;
+    display: inline-block; 
+    vertical-align: top;
   }
   @media print {
     html, body {
@@ -279,11 +290,22 @@ export function getTournamentSignatures(sponsorLogos) {
  * @param {Object} splitSettings - { enabled: bool, threshold: number }
  */
 function getSplitCount(category, splitSettings) {
-  if (!splitSettings?.enabled) return 1;
-  const threshold = splitSettings.threshold || DEFAULT_SPLIT_THRESHOLD;
   const athleteCount = category.athletes?.length || 0;
+  const threshold = splitSettings?.threshold || DEFAULT_SPLIT_THRESHOLD;
+
+  // Ưu tiên cài đặt riêng của hạng mục nếu có
+  if (category.sigmaSplitEnabled === false) return 1;
+  if (category.sigmaSplitEnabled === true) {
+    if (athleteCount <= 1) return 1;
+    return Math.max(2, Math.floor(athleteCount / threshold));
+  }
+
+  // Nếu không có cài đặt riêng, dùng cài đặt chung của giải
+  if (!splitSettings?.enabled) return 1;
   if (athleteCount <= threshold) return 1;
-  return Math.ceil(athleteCount / Math.ceil(threshold / 2));
+  
+  // Ưu tiên chia đôi thay vì chia 3 (Dùng floor để chỉ tạo nhánh mới khi đủ số VĐV cho các nhánh cũ)
+  return Math.max(2, Math.floor(athleteCount / threshold));
 }
 
 // ====================================================================
@@ -418,10 +440,19 @@ export async function exportAllBracketsToPDF(
 
       for (let i = 0; i < categoriesWithBracket.length; i++) {
         const category = categoriesWithBracket[i];
-        const scheduleInfo = schedule ? schedule[category.id] : null;
         const numSplits = getSplitCount(category, splitSettings);
 
         for (let half = 0; half < numSplits; half++) {
+          let scheduleInfo = schedule ? schedule[category.id] : null;
+          
+          // Ưu tiên lịch thi đấu riêng của nhánh Sigma nếu có (Dùng cho trang Lịch)
+          if (numSplits > 1 && schedule) {
+            const splitKey = `${category.id}_split${half}`;
+            if (schedule[splitKey]) {
+              scheduleInfo = schedule[splitKey];
+            }
+          }
+
           const splitSchedule = numSplits > 1
             ? { ...scheduleInfo, splitLabel: `Trận ${half + 1}/${numSplits}` }
             : scheduleInfo;
@@ -777,19 +808,22 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
   const roundNames = bracket.roundNames || [];
   const numRounds = bracket.numRounds || Object.keys(fullMatchesByRound).length;
 
-  // === SPLIT LOGIC: filter matches for upper/lower half ===
+  // === SPLIT LOGIC: xác định số vòng hiển thị và lọc matches ===
+  let displayRounds = numRounds;
   const matchesByRound = {};
+
   if (splitHalf !== null && totalSplits > 1) {
-    // Split by filtering first-round positions, then trace forward
+    // Thu hẹp số vòng hiển thị khi chia nhánh Sigma
+    displayRounds = numRounds - Math.ceil(Math.log2(totalSplits));
+    
     const round1 = fullMatchesByRound[1] || [];
     const totalR1 = round1.length;
     const perHalf = Math.ceil(totalR1 / totalSplits);
     const startPos = splitHalf * perHalf;
     const endPos = Math.min((splitHalf + 1) * perHalf, totalR1);
-    // Get allowed positions for each round
-    for (let r = 1; r <= numRounds; r++) {
+
+    for (let r = 1; r <= displayRounds; r++) {
       const allMatches = fullMatchesByRound[r] || [];
-      const totalInRound = allMatches.length;
       const divisor = Math.pow(2, r - 1);
       const rStart = Math.floor(startPos / divisor);
       const rEnd = Math.ceil(endPos / divisor);
@@ -799,33 +833,69 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
     Object.assign(matchesByRound, fullMatchesByRound);
   }
 
-  // Cấu trúc DOM "Siêu Ngang" (Ultra-Wide) — Tối ưu cho printToPDF (custom page size)
-  let cellWidth = 350;     
-  let cellHeight = 32;     
-  let cellGap = 16;        
-  let connectorWidth = 80; 
+  // ── Sizing: Tỉ lệ HTML cố định để lấp đầy Aspect Ratio chuẩn (A4/A3 Landscape) ──
+  const HTML_TARGET_H = 1100; // Chiều cao chuẩn để tính toán giãn cách
+  const HTML_TARGET_W = Math.round(1.414 * HTML_TARGET_H); // ~1556px
+
+  // Tăng vùng trống chân trang để tránh đè lên trận cuối
+  const OVERHEAD_H = 325; 
+  const availableRoundsH = HTML_TARGET_H - OVERHEAD_H;
+
+  const numMatchesR1 = Math.pow(2, displayRounds - 1);
+  const numSlotsR1 = numMatchesR1 * 2;
+
+  // Bước 1: Tính cellHeight cơ bản
+  const MIN_CELL_GAP = 4;
+  const MIN_MATCH_GAP = 2;
+  const minGapsH = (numMatchesR1 * MIN_CELL_GAP) + ((numMatchesR1 - 1) * MIN_MATCH_GAP);
   
-  const athleteCountRaw = category.athletes?.length || 0;
-  const athletesInThisView = (totalSplits > 1) ? Math.ceil(athleteCountRaw / totalSplits) : athleteCountRaw;
+  let cellHeight = Math.floor((availableRoundsH - minGapsH) / numSlotsR1);
+  cellHeight = Math.max(26, Math.min(cellHeight, 35)); // Giảm chiều cao ô để gọn hơn
+
+  // Bước 2: Phân bổ phần dư vào cellGap và matchGap để FILL TRANG (SportData style)
+  const totalCellH = numSlotsR1 * cellHeight;
+  const remainingH = availableRoundsH - totalCellH;
   
-  if (athletesInThisView > 16) {
-    // Bracket lớn (21+ VĐV): tăng kích thước ô để dễ đọc khi in
-    // printToPDF sẽ tự mở rộng trang → không cần lo co nhỏ
-    cellWidth = 380;     
-    cellHeight = 36;     // Tăng từ 28→36 để chữ rõ hơn
-    cellGap = 16;        // Khe thoáng 16px
-    connectorWidth = 70; 
-  } else if (athletesInThisView >= 8) {
-    cellWidth = 350;
-    cellHeight = 34;
-    cellGap = 20;
-    connectorWidth = 70;
+  let cellGap = MIN_CELL_GAP;
+  let matchGap = MIN_MATCH_GAP;
+  
+  if (remainingH > 0 && numMatchesR1 > 1) {
+    // Phân bổ phần dư: 70% cho cellGap (giữa 2 VĐV), 30% cho matchGap (giữa các trận)
+    const factor = numMatchesR1 + 0.3 * (numMatchesR1 - 1);
+    cellGap = Math.floor(remainingH / factor);
+    matchGap = Math.max(MIN_MATCH_GAP, Math.round(cellGap * 0.3));
+  } else if (remainingH > 0 && numMatchesR1 === 1) {
+    cellGap = remainingH;
+    matchGap = 0;
   }
 
-  const matchHeight = cellHeight + cellGap + cellHeight; 
-  const baseGap = 18;
+  // Bước 3: Chiều ngang (Tối ưu khoảng cách Sigma)
+  const RIGHT_PANEL_W = 280; // Dành khoảng trống rộng rãi cho Champion và Kết quả
+  const numCellCols = displayRounds;
+  let cellWidth = displayRounds <= 2 ? 380 : displayRounds <= 3 ? 320 : displayRounds <= 4 ? 260 : 190;
+  let connectorWidth = Math.floor((HTML_TARGET_W - RIGHT_PANEL_W - (numCellCols * cellWidth)) / displayRounds);
+  connectorWidth = Math.max(50, Math.min(connectorWidth, 120));
 
-  const BASE_LINE_SPACING = matchHeight + baseGap; 
+  const matchHeight = cellHeight + cellGap + cellHeight; 
+  const BASE_LINE_SPACING = matchHeight + matchGap; 
+
+  // Helper: Adaptive Font Size for names
+  const getFontSize = (text, type = "name") => {
+    if (!text) return type === "name" ? "15px" : "13px";
+    const len = text.length;
+    if (type === "name") {
+      if (len > 35) return "11px";
+      if (len > 28) return "12px";
+      if (len > 22) return "13.5px";
+      return "15px";
+    } else {
+      // Club/Members - Dễ đọc hơn cho tên dài
+      if (len > 45) return "10px";
+      if (len > 35) return "11px";
+      if (len > 25) return "12px";
+      return "13px";
+    }
+  };
 
   // Match Numbering
   let globalMatchNumber = 0;
@@ -839,8 +909,6 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
       }
     });
   }
-
-  // Footer & License
   const license = getCurrentLicense();
   const year = new Date().getFullYear();
   let licenseText = "Bản quyền: BẢN DÙNG THỬ / CHƯA KÍCH HOẠT";
@@ -856,12 +924,13 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
     <style>
       .pdf-bracket * { box-sizing: border-box; margin: 0; padding: 0; }
       .pdf-bracket { 
+        width: ${HTML_TARGET_W}px;
+        height: ${HTML_TARGET_H}px;
         font-family: 'Arial', sans-serif; 
         background: white; 
-        padding: 10px; 
+        padding: 10px 15px; 
         position: relative; 
-        padding-bottom: 40px;
-        min-height: 500px;
+        overflow: hidden;
       }
       
       /* Header */
@@ -870,13 +939,13 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         padding: 8px 14px; 
         background: #e2e8f0; 
         border: 1px solid #94a3b8;
-        margin-bottom: 20px;
+        margin-bottom: 5px;
         position: relative;
         min-height: 50px;
       }
       .pdf-header-left { display: flex; flex-direction: column; }
-      .pdf-category-name { font-size: 22px; font-weight: bold; color: #000; }
-      .pdf-tournament-name { font-size: 14px; color: #333; margin-top: 2px; font-weight: 600; }
+      .pdf-category-name { font-size: 32px; font-weight: bold; color: #000; }
+      .pdf-tournament-name { font-size: 16px; color: #333; margin-top: 4px; font-weight: 600; }
       
       .pdf-header-right { 
         position: absolute; right: 0; top: 0;
@@ -895,18 +964,18 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
       .pdf-info-item:last-child { border-right: none; background: #fff; }
 
       /* Rounds Layout */
-      .pdf-content { display: flex; align-items: flex-start; gap: 0; margin-top: 40px; }
+      .pdf-content { display: flex; align-items: flex-start; gap: 0; margin-top: 5px; position: relative; }
       .pdf-bracket-area { 
         display: flex; 
         flex: 1; 
-        padding-right: 210px; /* Tiết kiệm chỗ chứa Champion */
+        padding-right: ${connectorWidth + 150}px; /* Chỗ chứa Champion & Kết quả linh động */
       }
       .pdf-rounds { display: flex; align-items: flex-start; }
       .pdf-round { display: flex; flex-direction: column; }
       .pdf-round-header { 
-        text-align: center; padding: 5px 0; margin-bottom: 20px; min-width: ${cellWidth}px;
+        text-align: center; padding: 5px 0; margin-bottom: 10px; min-width: ${cellWidth}px;
       }
-      .pdf-round-title { font-size: 20px; font-weight: bold; color: #000; text-transform: uppercase; border-bottom: 3px solid #ccc; display: inline-block; padding-bottom: 4px; }
+      .pdf-round-title { font-size: 24px; font-weight: bold; color: #000; text-transform: uppercase; border-bottom: 4px solid #ccc; display: inline-block; padding-bottom: 6px; }
       .pdf-round-body { display: flex; flex-direction: column; padding-right: ${connectorWidth}px; }
       
       /* Match Wrapper - ABSOLUTE LAYOUT */
@@ -917,7 +986,11 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         position: relative; 
       }
       .pdf-match-pair { display: contents; } 
-      .pdf-match-wrapper.bye { opacity: 0.6; }
+      .pdf-match-wrapper.is-bye .pdf-cell,
+      .pdf-match-wrapper.is-bye .pdf-connector,
+      .pdf-match-wrapper.is-bye .pdf-match-number {
+        visibility: hidden !important;
+      }
 
       /* Cells - Gradient */
       .pdf-cell { 
@@ -925,42 +998,48 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         width: 100%; 
         height: ${cellHeight}px; min-height: ${cellHeight}px; max-height: ${cellHeight}px; 
         padding: 0 6px 0 10px; 
-        border: 2px solid #334155; box-sizing: border-box;
+        box-sizing: border-box;
         background: #fff;
         position: relative;
         overflow: visible;
+        border: none; /* Xóa viền đen */
       }
       .pdf-cell.aka {
-        background: linear-gradient(to right, #fee2e2 0%, #ffffff 50%);
-        border: 2px solid #fca5a5;
+        background: linear-gradient(to right, #fee2e2 0%, #ffffff 80%);
         border-left: 5px solid #dc2626;
+        border-bottom: 1.5px solid #dc2626;
+        border-top: 1.5px solid #dc2626;
       }
       .pdf-cell.ao {
-        background: linear-gradient(to right, #dbeafe 0%, #ffffff 50%);
-        border: 2px solid #93c5fd;
+        background: linear-gradient(to right, #dbeafe 0%, #ffffff 80%);
         border-left: 5px solid #2563eb;
+        border-bottom: 1.5px solid #2563eb;
+        border-top: 1.5px solid #2563eb;
       }
       .pdf-cell.aka.empty {
-        background: linear-gradient(to right, #fee2e2 0%, #ffffff 50%);
-        border: 2px solid #fca5a5;
+        background: linear-gradient(to right, #fee2e2 0%, #ffffff 80%);
         border-left: 5px solid #dc2626;
+        border-bottom: 1.5px solid #dc2626;
+        border-top: 1.5px solid #dc2626;
       }
       .pdf-cell.ao.empty {
-        background: linear-gradient(to right, #dbeafe 0%, #ffffff 50%);
-        border: 2px solid #93c5fd;
+        background: linear-gradient(to right, #dbeafe 0%, #ffffff 80%);
         border-left: 5px solid #2563eb;
+        border-bottom: 1.5px solid #2563eb;
+        border-top: 1.5px solid #2563eb;
       }
       
       .pdf-name { 
-        font-size: 15px; font-weight: 700; color: #000; 
-        flex-shrink: 0;
+        font-size: inherit; font-weight: 700; color: #000; 
+        flex-shrink: 1;
         white-space: nowrap; 
-        line-height: ${cellHeight}px; 
+        line-height: 1.2;
       }
       .pdf-club { 
-        font-size: 14px; color: #000; font-weight: 700;
-        flex-shrink: 0;
+        font-size: inherit; color: #000; font-weight: 700;
+        flex-shrink: 1;
         white-space: nowrap;
+        opacity: 0.85;
       }
 
       /* Connectors - In đậm để rõ khi print */
@@ -972,8 +1051,8 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         z-index: 10;
         pointer-events: none;
       }
-      .pdf-v-line { position: absolute; left: 0; width: 2.5px; background: #1e293b; }
-      .pdf-h-mid { position: absolute; left: 0; width: 100%; height: 2.5px; background: #1e293b; }
+      .pdf-v-line { position: absolute; left: 0; width: 1.5px; background: #1e293b; }
+      .pdf-h-mid { position: absolute; left: 0; width: 100%; height: 1.5px; background: #1e293b; }
 
       /* Match Number */
       .pdf-match-number { 
@@ -985,72 +1064,92 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         width: 22px; height: 22px;
         display: flex; align-items: center; justify-content: center;
         z-index: 60;
-        border: 2px solid #ef4444;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+        border: 1.5px solid #ef4444;
+        box-shadow: none;
       }
 
       /* Champion Slot - ABSOLUTE positioning */
       .pdf-champion-slot {
         position: absolute;
-        right: -210px; 
+        /* Dynamic right position set in JS */
         display: flex;
         align-items: center;
         justify-content: flex-start;
         gap: 6px;
         height: ${cellHeight}px;
-        padding: 0 10px;
-        background: linear-gradient(to right, #fef3c7 0%, #ffffff 50%);
-        border: 1px solid #fcd34d;
-        border-left: 4px solid #f59e0b;
-        min-width: 150px;
-        max-width: 200px;
+        padding: 0 6px 0 10px;
+        background: linear-gradient(to right, #fff7ed 0%, #ffffff 80%); 
+        border: none;
+        border-left: 5px solid #f59e0b;
+        border-bottom: 1.5px solid #f59e0b;
+        border-top: 1.5px solid #f59e0b;
+        width: ${cellWidth}px;
         z-index: 100;
-        overflow: visible; /* Trào tự do */
       }
-      .pdf-champion-icon { font-size: 16px; }
+      .pdf-champion-icon { display: none; }
       .pdf-champion-name { 
-        font-size: 15px; font-weight: 700; color: #000;
+        font-size: 15px; font-weight: 700; color: #000; 
         flex-shrink: 0;
         white-space: nowrap; 
         line-height: ${cellHeight}px; 
       }
       .pdf-champion-club {
-        font-size: 14px; font-weight: 700; color: #000; 
-        flex-shrink: 0;
+        font-size: inherit; color: #000; font-weight: 700;
+        flex-shrink: 1;
         white-space: nowrap;
+        opacity: 0.85;
       }
 
       /* Champion Connector */
       .pdf-champion-connector {
         position: absolute;
-        right: -210px; 
-        width: 160px; 
-        height: 2.5px; 
+        width: ${connectorWidth}px; 
+        height: 1.5px; 
         background: #1e293b;
         z-index: 9;
       }
       
-      /* Medal Table */
+      /* Medal Table - FIXED RIGHT */
       .pdf-medal-table { 
-        margin-left: 20px; 
-        min-width: 200px; 
+        position: absolute;
+        top: 130px; 
+        right: 10px;
+        width: 180px; 
         border: 1px solid #000; background: white;
-        align-self: flex-start; margin-top: 0;
         z-index: 200;
+        box-shadow: -2px 2px 5px rgba(0,0,0,0.1);
       }
-      .pdf-medal-header { background: #000; color: white; padding: 8px 10px; font-size: 12px; font-weight: bold; text-align: center; text-transform: uppercase; }
-      .pdf-medal-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #ccc; font-size: 11px; font-weight: 600; }
+      .pdf-medal-header { background: #000; color: white; padding: 6px 10px; font-size: 11px; font-weight: bold; text-align: center; text-transform: uppercase; }
+      .pdf-medal-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid #ccc; font-size: 10px; font-weight: 600; }
       .pdf-medal-row:last-child { border-bottom: none; }
+      .pdf-medal-label { width: 14px; font-weight: bold; }
       
-      /* Referees Box */
-      .pdf-referees-box { position: absolute; bottom: 40px; right: 20px; border: 1px solid #333; width: 300px; }
-      .pdf-ref-header { background: #ccc; font-size: 10px; font-weight: bold; padding: 2px 5px; border-bottom: 1px solid #333; }
+      /* Referees Box - FIXED BOTTOM RIGHT */
+      .pdf-referees-box { 
+        position: absolute;
+        bottom: 25px;
+        right: 15px; 
+        border: 1px solid #333; 
+        width: 320px; 
+        background: white;
+        z-index: 50;
+      }
+      .pdf-ref-header { background: #ccc; font-size: 10px; font-weight: bold; padding: 2px 5px; border-bottom: 1px solid #333; text-align: center; }
       .pdf-ref-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; }
-      .pdf-ref-cell { height: 20px; border-right: 1px solid #333; border-bottom: 1px solid #333; }
+      .pdf-ref-cell { height: 22px; border-right: 1px solid #333; border-bottom: 1px solid #333; }
       .pdf-ref-cell:last-child { border-right: none; }
       
       /* Footer */
-      .pdf-footer { position: absolute; bottom: 5px; left: 0; width: 100%; text-align: center; font-size: 10px; color: #000; font-family: 'Courier New', monospace; }
+      .pdf-footer { 
+        position: absolute; 
+        bottom: 5px; 
+        left: 0; 
+        width: 100%; 
+        text-align: center; 
+        font-size: 10px; 
+        color: #999; 
+        font-family: 'Courier New', monospace; 
+      }
 
     </style>
   `;
@@ -1116,7 +1215,7 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
   html += `<div class="pdf-content"><div class="pdf-bracket-area"><div class="pdf-rounds">`;
 
   // Render Rounds
-  for (let r = 1; r <= numRounds; r++) {
+  for (let r = 1; r <= displayRounds; r++) {
     const roundMatches = matchesByRound[r] || [];
     const roundTitle = roundNames[r - 1] || `Vòng ${r}`;
     const roundIndex = r - 1;
@@ -1143,29 +1242,33 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
       topOffset = prevLineY - CELL_CENTER;
     }
 
-    html += `<div class="pdf-round"><div class="pdf-round-header"><span class="pdf-round-title">${roundTitle}</span></div><div class="pdf-round-body">`;
+    html += `<div class="pdf-round"><div class="pdf-round-body">`;
 
     roundMatches.forEach((match, idx) => {
-      const { athlete1, athlete2, winner, isBye } = match;
+      const { athlete1, athlete2, winner } = match;
       const isWinner1 = winner?.id === athlete1?.id;
       const isWinner2 = winner?.id === athlete2?.id;
       const marginTop = idx === 0 ? topOffset : 0;
+      const isLastRound = r === displayRounds;
       const matchNum = matchNumbers[match.id];
-      const isLastRound = r === numRounds;
-
-      // Wrapper
-      html += `<div class="pdf-match-wrapper ${isBye ? "bye" : ""}" style="margin-top: ${marginTop}px; margin-bottom: ${matchGapValue}px;">`;
+      const isByeMatch = match.isBye || !matchNum;
+      
+      html += `<div class="pdf-match-wrapper ${isByeMatch ? "is-bye" : ""}" style="margin-top: ${marginTop}px; margin-bottom: ${matchGapValue}px;">`;
       
       // Cell 1
-      html += `<div class="pdf-cell aka ${isWinner1 ? "winner" : ""} ${!athlete1 ? "empty" : ""}"><span class="pdf-name">${athlete1?.name || ""}</span>`;
-      if (!isTeamBracket && athlete1?.club) html += `<span class="pdf-club">(${athlete1.club})</span>`;
-      if (isTeamBracket && athlete1?.members) html += `<span class="pdf-club">(${athlete1.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>`;
+      const name1 = athlete1?.name || "";
+      const club1 = !isTeamBracket ? (athlete1?.club || "") : (athlete1?.members?.map(m => m.name.trim().split(/\s+/).pop()).join(', ') || "");
+      html += `<div class="pdf-cell aka ${isWinner1 ? "winner" : ""} ${!athlete1 ? "empty" : ""}" style="font-size: ${getFontSize(name1, "name")};">`;
+      html += `<span class="pdf-name">${name1}</span>`;
+      if (club1) html += `<span class="pdf-club" style="font-size: ${getFontSize(club1, "club")};">(${club1})</span>`;
       html += `</div>`;
 
       // Cell 2
-      html += `<div class="pdf-cell ao ${isWinner2 ? "winner" : ""} ${!athlete2 ? "empty" : ""}" style="margin-top: ${athleteGap}px;"><span class="pdf-name">${athlete2?.name || ""}</span>`;
-      if (!isTeamBracket && athlete2?.club) html += `<span class="pdf-club">(${athlete2.club})</span>`;
-      if (isTeamBracket && athlete2?.members) html += `<span class="pdf-club">(${athlete2.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>`;
+      const name2 = athlete2?.name || "";
+      const club2 = !isTeamBracket ? (athlete2?.club || "") : (athlete2?.members?.map(m => m.name.trim().split(/\s+/).pop()).join(', ') || "");
+      html += `<div class="pdf-cell ao ${isWinner2 ? "winner" : ""} ${!athlete2 ? "empty" : ""}" style="margin-top: ${athleteGap}px; font-size: ${getFontSize(name2, "name")};">`;
+      html += `<span class="pdf-name">${name2}</span>`;
+      if (club2) html += `<span class="pdf-club" style="font-size: ${getFontSize(club2, "club")};">(${club2})</span>`;
       html += `</div>`;
 
       // Connectors
@@ -1184,14 +1287,16 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         html += `<div class="pdf-match-number" style="top: ${lineCenter}px;">${matchNum}</div>`;
       }
 
-      // Champion Slot (Absolute)
+      // Champion Slot (Dynamic Positioning)
       if (isLastRound) {
-        html += `<div class="pdf-champion-connector" style="top: ${lineCenter}px; right: -210px;"></div>`;
-        html += `<div class="pdf-champion-slot" style="top: ${lineCenter - cellHeight / 2}px; right: -210px;">`;
-        html += `<span class="pdf-champion-icon">🥇</span>`;
-        html += `<span class="pdf-champion-name">${winner?.name || ""}</span>`;
-        if (!isTeamBracket && winner?.club) html += `<span class="pdf-champion-club">(${winner.club})</span>`;
-        if (isTeamBracket && winner?.members) html += `<span class="pdf-champion-club">(${winner.members.map(m => m.name.trim().split(/\s+/).pop()).join(', ')})</span>`;
+        const champOffset = -(connectorWidth + 5);
+        const champName = winner?.name || "";
+        const champClub = !isTeamBracket ? (winner?.club || "") : (winner?.members?.map(m => m.name.trim().split(/\s+/).pop()).join(', ') || "");
+        
+        html += `<div class="pdf-champion-connector" style="top: ${lineCenter}px; right: ${champOffset}px;"></div>`;
+        html += `<div class="pdf-champion-slot" style="top: ${lineCenter - cellHeight / 2}px; right: ${champOffset}px; font-size: ${getFontSize(champName, "name")};">`;
+        html += `<span class="pdf-champion-name">${champName}</span>`;
+        if (champClub) html += `<span class="pdf-champion-club" style="font-size: ${getFontSize(champClub, "club")};">(${champClub})</span>`;
         html += `</div>`;
       }
 

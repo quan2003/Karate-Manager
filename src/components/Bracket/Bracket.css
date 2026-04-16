@@ -5,7 +5,7 @@
 .bracket-container {
   width: 100%;
   overflow-x: auto;
-  padding: 16px;
+  padding: 16px 16px 32px 16px;
   background: #f8fafc;
   border-radius: 8px;
 }

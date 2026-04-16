@@ -395,10 +395,11 @@ function updateUI() {
 
   // Update penalties
   ["C1", "C2", "C3", "HC", "H"].forEach((penalty) => {
-    document.getElementById(`aka${penalty}`).checked =
-      state.akaPenalties[penalty];
-    document.getElementById(`ao${penalty}`).checked =
-      state.aoPenalties[penalty];
+    const akaCheck = document.getElementById(`aka${penalty}`);
+    if (akaCheck) akaCheck.checked = state.akaPenalties[penalty];
+    
+    const aoCheck = document.getElementById(`ao${penalty}`);
+    if (aoCheck) aoCheck.checked = state.aoPenalties[penalty];
   });
 
   // Update seconds input
@@ -743,12 +744,18 @@ function triggerFullscreenDisplay(
     timestamp: Date.now(),
   };
   saveState();
+
+  // Clear this after 2 seconds to prevent phantom re-triggers on unrelated state updates (like clicking START)
+  setTimeout(() => {
+    if (state.fullscreenDisplay && state.fullscreenDisplay.timestamp === state.fullscreenDisplay.timestamp) {
+      state.fullscreenDisplay = null;
+      saveState();
+    }
+  }, 2000);
 }
 
 // Reset functions
 function resetAll() {
-  state.akaName = "AKA";
-  state.aoName = "AO";
   state.akaScore = 0;
   state.aoScore = 0;
   state.akaPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
@@ -756,18 +763,11 @@ function resetAll() {
   state.akaSenshu = false;
   state.aoSenshu = false;
   state.winnerFlash = null; // Reset winner flash
-
-  // Reset dropdown UI
-  if (document.getElementById("redAthleteSelect")) document.getElementById("redAthleteSelect").selectedIndex = 0;
-  if (document.getElementById("blueAthleteSelect")) document.getElementById("blueAthleteSelect").selectedIndex = 0;
-  if (document.getElementById("redAthleteSearch")) {
-    document.getElementById("redAthleteSearch").value = "";
-    document.getElementById("redAthleteSearch").style.borderColor = "";
-  }
-  if (document.getElementById("blueAthleteSearch")) {
-    document.getElementById("blueAthleteSearch").value = "";
-    document.getElementById("blueAthleteSearch").style.borderColor = "";
-  }
+  state.fullscreenDisplay = null; // Clear any pending overlays
+  
+  // Clear pending match data to ensure next match is fresh
+  pendingMatchData = null;
+  localStorage.removeItem(PENDING_MATCH_KEY);
 
   // Reset team mode if active
   if (state.mode === "team") {
@@ -915,6 +915,16 @@ function selectAthlete(side) {
 
   // Set name to: "NAME - UNIT" (uppercase, single line with dash)
   nameInput.value = `${athlete.name.toUpperCase()} - ${athlete.unit.toUpperCase()}`;
+
+  // Tự động reset điểm và lỗi khi chọn VĐV mới để tránh dính dữ liệu trận cũ
+  state.akaScore = 0;
+  state.aoScore = 0;
+  state.akaPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
+  state.aoPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
+  state.akaSenshu = false;
+  state.aoSenshu = false;
+  state.winnerFlash = null;
+  resetTimer();
 
   updateNames();
 }
@@ -1318,6 +1328,9 @@ function checkForPendingMatch() {
     if (data) {
       pendingMatchData = JSON.parse(data);
       
+      // Clear the trigger immediately so it doesn't fire again
+      localStorage.removeItem(PENDING_MATCH_KEY);
+      
       // Chỉ load nếu là trận kumite
       if (pendingMatchData.categoryType === 'kumite') {
         loadPendingMatch();
@@ -1440,27 +1453,83 @@ function loadPendingMatch() {
     if (eventInput) eventInput.value = state.eventTitle;
   }
 
-  // Load sponsor logos (ALWAYS update to reflect bracket settings, even if null/empty)
-  state.sponsorLogos = pendingMatchData.sponsorLogos || null;
+  // KILL TIMER COMPLETELY
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+
+  // RE-INITIALIZE STATE TO DEFAULTS
+  const currentTournamentTitle = state.tournamentTitle;
+  const currentEventTitle = state.eventTitle;
+  const currentSponsorText = state.sponsorText;
+  const currentFontScale = state.fontScale;
+
+  state = {
+    mode: isTeam ? "team" : "individual",
+    category: pendingMatchData.categoryName || "PENALTY",
+    akaName: "",
+    aoName: "",
+    akaScore: 0,
+    aoScore: 0,
+    akaPenalties: { C1: false, C2: false, C3: false, HC: false, H: false },
+    aoPenalties: { C1: false, C2: false, C3: false, HC: false, H: false },
+    akaSenshu: false,
+    aoSenshu: false,
+    timer: {
+      minutes: 3,
+      seconds: 0,
+      deciseconds: 0,
+      isRunning: false,
+    },
+    errorNames: { C1: "C1", C2: "C2", C3: "C3", HC: "HC", H: "H" },
+    pointNames: {
+      Senshu: "Senshu",
+      Ippon: "Ippon",
+      WazaAri: "Waza-ari",
+      Yuko: "Yuko",
+    },
+    fontScale: currentFontScale || 100,
+    winnerFlash: null,
+    fullscreenDisplay: null,
+    tournamentTitle: currentTournamentTitle,
+    eventTitle: currentEventTitle,
+    sponsorText: currentSponsorText,
+    sponsorLogos: pendingMatchData.sponsorLogos || null,
+    swapPositions: false,
+    matchId: pendingMatchData.matchId || null,
+    timerSpeed: 1,
+    teamMode: isTeam ? {
+      currentRound: 1,
+      maxRounds: 5,
+      akaWins: 0,
+      aoWins: 0,
+      roundHistory: [],
+    } : null
+  };
+
+  // Clear search inputs
+  if (document.getElementById("redAthleteSearch")) document.getElementById("redAthleteSearch").value = "";
+  if (document.getElementById("blueAthleteSearch")) document.getElementById("blueAthleteSearch").value = "";
+
+  // Reset timer to default from UI
+  const totalSeconds = parseInt(document.getElementById("secondsInput")?.value) || 180;
+  state.timer.minutes = Math.floor(totalSeconds / 60);
+  state.timer.seconds = totalSeconds % 60;
+  state.timer.deciseconds = 0;
+  state.timer.isRunning = false;
   
-  // Load existing scores if match has data (for re-editing)
-  if (pendingMatchData.score1 !== undefined) {
-    state.akaScore = pendingMatchData.score1;
+  // ONLY load existing scores if match is already FINISHED (has winner)
+  // Otherwise, always start at 0-0 for a fresh match
+  if (pendingMatchData.hasWinner) {
+    state.akaScore = Number(pendingMatchData.score1) || 0;
+    state.aoScore = Number(pendingMatchData.score2) || 0;
   } else {
     state.akaScore = 0;
-  }
-  if (pendingMatchData.score2 !== undefined) {
-    state.aoScore = pendingMatchData.score2;
-  } else {
     state.aoScore = 0;
   }
-  state.akaPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
-  state.aoPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
-  state.akaSenshu = false;
-  state.aoSenshu = false;
-  state.winnerFlash = null;
-  
-  // Reset timer
+
+  // Reset timer to default
   resetTimer();
   
   saveState();
@@ -1557,6 +1626,17 @@ document.addEventListener("DOMContentLoaded", function () {
   
   // Tự động kiểm tra và load VĐV từ bracket
   checkForPendingMatch();
+
+  // Listen for storage changes to update match data when switching matches in bracket
+  window.addEventListener("storage", function (e) {
+    if (e.key === PENDING_MATCH_KEY && e.newValue) {
+      checkForPendingMatch();
+    }
+    // Also sync state if changed in another window
+    if (e.key === STORAGE_KEY) {
+      loadState();
+    }
+  });
 });
 
 // Keyboard shortcuts

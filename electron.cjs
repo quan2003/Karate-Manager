@@ -609,31 +609,48 @@ ipcMain.handle('pdf:printBracket', async (event, { htmlContent, widthMM, heightM
 
     // Measure ACTUAL content size inside the hidden window (in CSS px)
     const measured = await printWin.webContents.executeJavaScript(`
-      JSON.stringify({
-        width: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
-        height: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)
-      })
+      (function() {
+        var el = document.querySelector('.pdf-bracket');
+        if (!el) return JSON.stringify({ width: document.body.scrollWidth, height: document.body.scrollHeight });
+        return JSON.stringify({
+          width: el.offsetWidth,
+          height: el.offsetHeight
+        });
+      })()
     `);
     const contentSize = JSON.parse(measured);
 
-    // Convert CSS px to inches (96 CSS px = 1 inch for print)
-    // Add small margin (0.1 inch) to avoid clipping
-    const pageWidthInches = (contentSize.width / 96) + 0.1;
-    const pageHeightInches = (contentSize.height / 96) + 0.1;
+    // A3 landscape: 420x297mm
+    const A3_W_IN = 420 / 25.4;
+    const A3_H_IN = 297 / 25.4;
+    const MARGIN_IN = 0.15;
+    const printableW_px = (A3_W_IN - MARGIN_IN * 2) * 96;
+    const printableH_px = (A3_H_IN - MARGIN_IN * 2) * 96;
 
-    // Print to PDF — page size matches content exactly
+    // Compute zoom to fit content into A3 (scale uniformly, no 2nd blank page)
+    const zoomX = printableW_px / contentSize.width;
+    const zoomY = printableH_px / contentSize.height;
+    const zoom = Math.min(zoomX, zoomY);
+    const zoomPct = (zoom * 100).toFixed(3) + '%';
+
+    // Apply CSS zoom + overflow:hidden to enforce single-page
+    await printWin.webContents.executeJavaScript(`
+      (function() {
+        var el = document.querySelector('.pdf-bracket') || document.body.firstElementChild;
+        if (el) el.style.zoom = '${zoomPct}';
+        document.body.style.overflow = 'hidden';
+        document.body.style.margin = '0';
+        document.body.style.padding = '0';
+        document.documentElement.style.overflow = 'hidden';
+      })()
+    `);
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    // Always output single A3 landscape page
     const pdfBuffer = await printWin.webContents.printToPDF({
       printBackground: true,
-      pageSize: {
-        width: pageWidthInches,
-        height: pageHeightInches,
-      },
-      margins: {
-        top: 0,
-        bottom: 0,
-        left: 0,
-        right: 0,
-      },
+      pageSize: { width: A3_W_IN, height: A3_H_IN },
+      margins: { top: MARGIN_IN, bottom: MARGIN_IN, left: MARGIN_IN, right: MARGIN_IN },
       scale: 1,
     });
 
@@ -669,6 +686,13 @@ ipcMain.handle('pdf:printBracketMulti', async (event, { pages, filename }) => {
     // Merge all pages into one PDF using pdf-lib
     const mergedPdf = await PDFDocument.create();
 
+    // A3 landscape constants
+    const A3_W_IN = 420 / 25.4;
+    const A3_H_IN = 297 / 25.4;
+    const MARGIN_IN = 0.2;
+    const printableW_px = (A3_W_IN - MARGIN_IN * 2) * 96;
+    const printableH_px = (A3_H_IN - MARGIN_IN * 2) * 96;
+
     for (let i = 0; i < pages.length; i++) {
       const { htmlContent } = pages[i];
 
@@ -688,30 +712,42 @@ ipcMain.handle('pdf:printBracketMulti', async (event, { pages, filename }) => {
       await printWin.loadFile(tmpFile);
       await new Promise(resolve => setTimeout(resolve, 1200));
 
-      // Measure ACTUAL content size inside the hidden window
+      // Measure content size
       const measured = await printWin.webContents.executeJavaScript(`
-        JSON.stringify({
-          width: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
-          height: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)
-        })
+        (function() {
+          var el = document.querySelector('.pdf-bracket');
+          if (!el) return JSON.stringify({ width: document.body.scrollWidth, height: document.body.scrollHeight });
+          return JSON.stringify({
+            width: el.offsetWidth,
+            height: el.offsetHeight
+          });
+        })()
       `);
       const contentSize = JSON.parse(measured);
 
-      const pageWidthInches = (contentSize.width / 96) + 0.1;
-      const pageHeightInches = (contentSize.height / 96) + 0.1;
+      // Compute zoom to fit content into A3 (scale uniformly, no 2nd blank page)
+      const zoomX = printableW_px / contentSize.width;
+      const zoomY = printableH_px / contentSize.height;
+      const zoom = Math.min(zoomX, zoomY);
+      const zoomPct = (zoom * 100).toFixed(3) + '%';
+
+      // Apply CSS zoom + overflow:hidden to enforce single-page output
+      await printWin.webContents.executeJavaScript(`
+        (function() {
+          var el = document.querySelector('.pdf-bracket') || document.body.firstElementChild;
+          if (el) el.style.zoom = '${zoomPct}';
+          document.body.style.overflow = 'hidden';
+          document.body.style.margin = '0';
+          document.body.style.padding = '0';
+          document.documentElement.style.overflow = 'hidden';
+        })()
+      `);
+      await new Promise(resolve => setTimeout(resolve, 400));
 
       const pdfBuffer = await printWin.webContents.printToPDF({
         printBackground: true,
-        pageSize: {
-          width: pageWidthInches,
-          height: pageHeightInches,
-        },
-        margins: {
-          top: 0,
-          bottom: 0,
-          left: 0,
-          right: 0,
-        },
+        pageSize: { width: A3_W_IN, height: A3_H_IN },
+        margins: { top: MARGIN_IN, bottom: MARGIN_IN, left: MARGIN_IN, right: MARGIN_IN },
         scale: 1,
       });
 

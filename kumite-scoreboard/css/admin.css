@@ -373,6 +373,12 @@ body {
   line-height: 1;
 }
 
+.mini-senshu-indicator.ao-text,
+.mini-senshu-indicator.aka-text {
+  right: auto;
+  left: -12px;
+}
+
 .mini-penalties {
   display: flex;
   gap: 5px;

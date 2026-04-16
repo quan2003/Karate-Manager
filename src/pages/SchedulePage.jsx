@@ -135,7 +135,42 @@ export default function SchedulePage() {
 
   const mats = useMemo(() => generateDefaultMats(matCount), [matCount]);
 
-  const categories = tournament?.categories || [];
+  const categories = useMemo(() => {
+    if (!tournament) return [];
+    const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
+    const items = [];
+    
+    // We need getSplitCount logic here but let's simple re-implement for now or export it
+    // Threshold and enabled check
+    const getCount = (cat) => {
+      const athleteCount = cat.athletes?.length || 0;
+      const threshold = splitSettings.threshold || 20;
+      if (cat.sigmaSplitEnabled === false) return 1;
+      if (cat.sigmaSplitEnabled === true) return Math.max(2, Math.floor(athleteCount / threshold)) || 2;
+      if (!splitSettings.enabled || athleteCount <= threshold) return 1;
+      return Math.max(2, Math.floor(athleteCount / threshold));
+    };
+
+    tournament.categories.forEach(cat => {
+      const numSplits = getCount(cat);
+      if (numSplits > 1) {
+        for (let i = 0; i < numSplits; i++) {
+          items.push({
+            ...cat,
+            id: `${cat.id}_split${i}`,
+            baseId: cat.id,
+            name: `${cat.name} - Trận ${i + 1}/${numSplits}`,
+            isSplit: true,
+            splitIndex: i,
+            totalSplits: numSplits
+          });
+        }
+      } else {
+        items.push(cat);
+      }
+    });
+    return items;
+  }, [tournament]);
 
   const setupEstimations = useMemo(() => {
     if (!showSetupModal || !categories) return null;

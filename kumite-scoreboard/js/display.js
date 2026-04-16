@@ -68,48 +68,95 @@ function updateDisplay() {
       state.eventTitle || "THẢM 1";
   } 
   
-  // Update sponsor text/logos
+  // Update sponsor text/logos - Enhanced logic to check multiple storage locations
   const logoContainer = document.getElementById("logoContainer");
   if (logoContainer) {
-    if (state.sponsorLogos && (state.sponsorLogos.systemLogo || (state.sponsorLogos.sponsors && state.sponsorLogos.sponsors.length > 0))) {
-      logoContainer.innerHTML = ""; // Clear existing text/logos only if we have image logos to show
-      logoContainer.style.display = "flex";
-      
-      // System logo first (bắt buộc)
-      if (state.sponsorLogos.systemLogo) {
-        const sysImg = document.createElement("img");
-        sysImg.src = state.sponsorLogos.systemLogo;
-        sysImg.style.cssText = "height: 80px; max-width: 200px; object-fit: contain; margin-right: 15px;";
-        logoContainer.appendChild(sysImg);
-      }
-      
-      // Sponsor logos
-      if (state.sponsorLogos.sponsors && state.sponsorLogos.sponsors.length > 0) {
-        state.sponsorLogos.sponsors.forEach(logoUrl => {
-          const spImg = document.createElement("img");
-          spImg.src = logoUrl;
-          spImg.style.cssText = "height: 80px; max-width: 200px; object-fit: contain;";
-          logoContainer.appendChild(spImg);
-        });
-      }
-    } else {
-      // Fallback
-      logoContainer.innerHTML = '<div class="sponsor-text" id="sponsorText">NHÀ TÀI TRỢ</div>';
-      const spText = document.getElementById("sponsorText");
-      if (spText) {
-        spText.textContent = state.sponsorText && state.sponsorText.trim() !== "" ? state.sponsorText : "NHÀ TÀI TRỢ";
+    // 1. Try Kumite-specific state first
+    let sLogos = state.sponsorLogos;
+    
+    // 2. If not found, try main tournament storage (karate_tournament_data)
+    if (!sLogos || ((!sLogos.systemLogo && !sLogos.tournamentLogos) && (!sLogos.sponsors || sLogos.sponsors.length === 0))) {
+      try {
+        const rawData = localStorage.getItem('karate_tournament_data');
+        if (rawData) {
+          const mainData = JSON.parse(rawData);
+          if (mainData && mainData.tournaments) {
+            // Priority: Find a tournament that matches the current title
+            const currentTitle = (state.tournamentTitle || "").trim().toLowerCase();
+            let tMatched = mainData.tournaments.find(t => (t.name || "").trim().toLowerCase() === currentTitle);
+            
+            // Fallback: Just the first one with any logos
+            if (!tMatched) {
+              tMatched = mainData.tournaments.find(t => 
+                t.sponsorLogos && (t.sponsorLogos.systemLogo || t.sponsorLogos.tournamentLogos || (t.sponsorLogos.sponsors && t.sponsorLogos.sponsors.length > 0))
+              );
+            }
+
+            if (tMatched && tMatched.sponsorLogos) {
+              sLogos = tMatched.sponsorLogos;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Could not read main tournament data:", e);
       }
     }
-  } else if (document.getElementById("sponsorText")) {
-    document.getElementById("sponsorText").textContent =
-      state.sponsorText && state.sponsorText.trim() !== ""
-        ? state.sponsorText
-        : "NHÀ TÀI TRỢ";
+
+    // 3. Last resort: Try Kata scoreboard state
+    if (!sLogos || ((!sLogos.systemLogo && !sLogos.tournamentLogos) && (!sLogos.sponsors || sLogos.sponsors.length === 0))) {
+      try {
+        const kataState = JSON.parse(localStorage.getItem('karate_scoreboard'));
+        if (kataState && kataState.sponsorLogos) {
+          sLogos = kataState.sponsorLogos;
+        }
+      } catch (e) {
+        console.warn("Could not read Kata state:", e);
+      }
+    }
+
+    const hasImageLogos = sLogos && (sLogos.systemLogo || sLogos.tournamentLogos || (sLogos.sponsors && sLogos.sponsors.length > 0));
+    
+    // Updated logic: Only show sponsors if they exist, otherwise fallback to icon.png
+    const sponsors = sLogos && sLogos.sponsors && sLogos.sponsors.length > 0 ? sLogos.sponsors : [];
+    
+    logoContainer.innerHTML = "";
+    logoContainer.style.display = "flex";
+
+    if (sponsors.length > 0) {
+      // Show ONLY sponsor logos if configured
+      sponsors.forEach(src => {
+        const img = document.createElement("img");
+        img.src = src;
+        img.className = "sponsor-logo-img";
+        logoContainer.appendChild(img);
+      });
+    } else {
+      // Fallback to app icon ONLY if no sponsors are configured
+      const appImg = document.createElement("img");
+      appImg.src = "../public/Logo_den.png"; // Changed to Logo_den.png as requested
+      appImg.className = "sponsor-logo-img";
+      logoContainer.appendChild(appImg);
+    }
   }
 
-  // Update names
-  document.getElementById("akaName").textContent = state.akaName;
-  document.getElementById("aoName").textContent = state.aoName;
+  // Update names - Split into Name and Unit
+  const updateCompetitorName = (side) => {
+    const fullName = state[`${side}Name`] || "";
+    const nameEl = document.getElementById(`${side}Name`);
+    const unitEl = document.getElementById(`${side}Unit`);
+    
+    if (fullName.includes(" - ")) {
+      const parts = fullName.split(" - ");
+      if (nameEl) nameEl.textContent = parts[0];
+      if (unitEl) unitEl.textContent = parts[1];
+    } else {
+      if (nameEl) nameEl.textContent = fullName;
+      if (unitEl) unitEl.textContent = "";
+    }
+  };
+
+  updateCompetitorName("aka");
+  updateCompetitorName("ao");
 
   // Update Senshu indicators (above scores)
   const akaSenshuIndicator = document.getElementById("akaSenshuIndicator");
@@ -375,7 +422,7 @@ function showFullscreenDisplay(displayData) {
   // Show overlay
   overlay.classList.add("show");
 
-  // Hide after 2 seconds
+  // Hide after 1.2 seconds (faster)
   setTimeout(() => {
     overlay.classList.remove("show");
     // Reset content after animation
@@ -385,8 +432,8 @@ function showFullscreenDisplay(displayData) {
         <div class="fullscreen-action" id="fullscreenAction">YUKO</div>
         <div class="fullscreen-points" id="fullscreenPoints">1 POINT</div>
       `;
-    }, 300);
-  }, 2000);
+    }, 150); // Faster reset
+  }, 1200);
 }
 
 // Poll for changes (backup method) - only update if changed

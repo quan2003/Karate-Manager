@@ -1041,9 +1041,20 @@ function resetAll() {
     state.aka.score = 0;
     state.ao.score = 0;
     state.timer.seconds = 300;
-    state.aka.kataName = "Kata Name";
-    state.ao.kataName = "Kata Name";
+    state.aka.kataName = "";
+    state.ao.kataName = "";
+    state.aka.athlete = "";
+    state.aka.unit = "";
+    state.aka.team = "";
+    state.ao.athlete = "";
+    state.ao.unit = "";
+    state.ao.team = "";
     state.scoringStarted = false; // Reset scoring status
+    
+    // Clear pending match data
+    pendingMatchData = null;
+    localStorage.removeItem(PENDING_MATCH_KEY);
+    
     saveState();
     updateUI();
   }
@@ -1924,10 +1935,15 @@ function loadPendingMatch() {
   // Load sponsor logos (ALWAYS update to reflect bracket settings, even if null/empty)
   state.sponsorLogos = pendingMatchData.sponsorLogos || null;
 
-  // Load existing scores if match has data (for re-editing)
+  // ALWAYS reset match-specific state for a clean start
+  state.swapPositions = false;
+  state.scoringStarted = false;
+
+  // Load existing scores if match has data (for re-editing), otherwise reset to 0
   if (
     (pendingMatchData.score1 && pendingMatchData.score1 > 0) ||
-    (pendingMatchData.score2 && pendingMatchData.score2 > 0)
+    (pendingMatchData.score2 && pendingMatchData.score2 > 0) ||
+    pendingMatchData.hasWinner
   ) {
     state.aka.score = pendingMatchData.score1 || 0;
     state.ao.score = pendingMatchData.score2 || 0;
@@ -1936,6 +1952,14 @@ function loadPendingMatch() {
     state.aka.score = 0;
     state.ao.score = 0;
     state.scoringStarted = false;
+  }
+
+  // Reset timer
+  if (typeof resetTimer === "function") {
+    resetTimer();
+  } else {
+    state.timer.seconds = 300;
+    state.timer.isRunning = false;
   }
 
   // Clear or Set Kata info from previous match
@@ -2070,9 +2094,15 @@ window.addEventListener("DOMContentLoaded", () => {
   loadMatchHistory();
   updateMatchCountDisplay();
 
-  // Listen for storage changes
-  window.addEventListener("storage", () => {
-    loadState();
+  // Listen for storage changes to update match data when switching matches in bracket
+  window.addEventListener("storage", function (e) {
+    if (e.key === PENDING_MATCH_KEY && e.newValue) {
+      checkForPendingMatch();
+    }
+    // Also sync state if changed in another window
+    if (e.key === STORAGE_KEY) {
+      loadState();
+    }
   });
 
   // Tự động kiểm tra và load VĐV từ bracket

@@ -23,6 +23,7 @@ import { generateBracket } from "../utils/drawEngine";
 import DateTimeInput from "../components/common/DateTimeInput";
 import { useToast } from "../components/common/Toast";
 import { useOnboarding } from "../context/OnboardingContext";
+import { publishTournament, unpublishTournament, fetchTournamentById } from "../services/supabaseService";
 import appIcon from "../assets/icon.png";
 import "./TournamentPage.css";
 
@@ -45,6 +46,16 @@ export default function TournamentPage() {
   const [bulkDrawing, setBulkDrawing] = useState(false);
   const fileInputRef = useRef(null);
   const [lanStatus, setLanStatus] = useState({ running: false, ip: '', port: 3000 });
+  const [publishing, setPublishing] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [showExportPDFModal, setShowExportPDFModal] = useState(false);
+  const [exportFilter, setExportFilter] = useState({ type: 'all', format: 'all', gender: 'all' });
+  const [exportSelectedIds, setExportSelectedIds] = useState([]);
+  const [searchQueryExport, setSearchQueryExport] = useState("");
+  const [publishedSlug, setPublishedSlug] = useState("");
+  const [linkStartTime, setLinkStartTime] = useState("");
+  const [linkEndTime, setLinkEndTime] = useState("");
 
   // Tự động cuộn tới phần được highlight khi có gợi ý (Re-enactment)
   useEffect(() => {
@@ -110,6 +121,23 @@ export default function TournamentPage() {
     };
     fetchLanStatus();
   }, [id, dispatch]);
+
+  // Fetch published config if exists when opening the modal
+  useEffect(() => {
+    if (showLinkModal && id) {
+      const checkPublished = async () => {
+        const result = await fetchTournamentById(id);
+        if (result.success) {
+          setPublishedSlug(result.slug);
+          if (result.data) {
+            setLinkStartTime(result.data.startTime || "");
+            setLinkEndTime(result.data.endTime || "");
+          }
+        }
+      };
+      checkPublished();
+    }
+  }, [showLinkModal, id]);
 
   const tournament = currentTournament || tournaments.find((t) => t.id === id);
 
@@ -285,12 +313,15 @@ export default function TournamentPage() {
       
       // Calculate how many sets of medals are awarded (accounts for Sigma splits)
       let setsCount = 1;
-      if (splitSettings.enabled) {
-        const threshold = splitSettings.threshold || 20;
-        const athleteCount = cat.athletes?.length || 0;
-        if (athleteCount > threshold) {
-          setsCount = Math.ceil(athleteCount / Math.ceil(threshold / 2));
-        }
+      const threshold = splitSettings.threshold || 20;
+      const athleteCount = cat.athletes?.length || 0;
+
+      if (cat.sigmaSplitEnabled === false) {
+        setsCount = 1;
+      } else if (cat.sigmaSplitEnabled === true) {
+        setsCount = athleteCount > 1 ? Math.max(2, Math.floor(athleteCount / threshold)) : 1;
+      } else if (splitSettings.enabled && athleteCount > threshold) {
+        setsCount = Math.max(2, Math.floor(athleteCount / threshold));
       }
 
       if (isTeamCategory) {
@@ -464,16 +495,45 @@ export default function TournamentPage() {
   };
 
   const handleExportAllPDF = async () => {
-    const categoriesWithBracket = tournament.categories.filter(
-      (c) => c.bracket
-    );
+    const categoriesWithBracket = tournament.categories.filter((c) => c.bracket);
     if (categoriesWithBracket.length === 0) {
       alert("Chưa có hạng mục nào đã bốc thăm!");
       return;
     }
+    setExportSelectedIds(categoriesWithBracket.map(c => c.id));
+    setShowExportPDFModal(true);
+  };
+
+  const handleExportSelectedPDF = async () => {
+    const categoriesToExport = tournament.categories.filter(c => exportSelectedIds.includes(c.id) && c.bracket);
+    if (categoriesToExport.length === 0) {
+      alert("Vui lòng chọn ít nhất một hạng mục đã bốc thăm!");
+      return;
+    }
+    
     const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
     const sponsorLogos = tournament.sponsorLogos || null;
-    await exportAllBracketsToPDF(tournament.categories, tournament.name, null, tournament.schedule || null, splitSettings, sponsorLogos);
+    
+    // Sort logic to make the PDF organized: Type -> Format -> Name
+    const sorted = [...categoriesToExport].sort((a, b) => {
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      return a.name.localeCompare(b.name);
+    });
+
+    await exportAllBracketsToPDF(sorted, tournament.name, null, tournament.schedule || null, splitSettings, sponsorLogos);
+    setShowExportPDFModal(false);
+  };
+
+  const applyBulkFilter = (filters) => {
+    const filtered = tournament.categories.filter(c => {
+      if (!c.bracket) return false;
+      const matchesType = filters.type === 'all' || c.type === filters.type;
+      const isTeam = c.isTeam || c.name.toLowerCase().includes('đồng đội') || c.name.toLowerCase().includes('hỗn hợp');
+      const matchesFormat = filters.format === 'all' || (filters.format === 'team' ? isTeam : !isTeam);
+      const matchesGender = filters.gender === 'all' || c.gender === filters.gender;
+      return matchesType && matchesFormat && matchesGender;
+    });
+    setExportSelectedIds(filtered.map(f => f.id));
   };
 
   const handleImportCategories = async (e) => {
@@ -764,6 +824,44 @@ export default function TournamentPage() {
         : (c.athletes?.length || 0) >= 3
     );
   }).length;
+  const handlePublishTournament = async () => {
+    setPublishing(true);
+    try {
+      const result = await publishTournament(tournament, linkStartTime, linkEndTime);
+      if (result.success) {
+        setPublishedSlug(result.slug);
+        setShowLinkModal(true);
+        toast.success("Đã cài đặt link đăng ký trực tiếp!");
+      } else {
+        toast.error("Lỗi: " + result.message);
+      }
+    } catch (err) {
+      toast.error("Lỗi xuất bản: " + err.message);
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handleUnpublishTournament = async () => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa link đăng ký này? Link sẽ không còn truy cập được nữa.")) return;
+    
+    setPublishing(true);
+    try {
+      const result = await unpublishTournament(tournament.id);
+      if (result.success) {
+        setPublishedSlug("");
+        setShowLinkModal(false);
+        toast.success("Đã xóa link đăng ký!");
+      } else {
+        toast.error("Lỗi: " + result.message);
+      }
+    } catch (err) {
+      toast.error("Lỗi xóa link: " + err.message);
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const alreadyDrawnCount = tournament.categories.filter(c => c.bracket).length;
   return (
     <div className="page tournament-page">
@@ -932,6 +1030,19 @@ export default function TournamentPage() {
           >
             <span className="action-icon">🏷️</span>
             <span className="action-label">Logo &<br/>Tài trợ</span>
+          </button>
+
+          <button
+            className={`tournament-action-btn action-link ${activeHint === "direct_link" ? "hint-pulse" : ""}`}
+            onClick={() => {
+              clearHint();
+              handlePublishTournament();
+            }}
+            disabled={publishing}
+            title="Tạo link gửi cho HLV đăng ký trực tuyến"
+          >
+            <span className="action-icon">🔗</span>
+            <span className="action-label">Link trực<br/>tiếp</span>
           </button>
         </div>
 
@@ -1109,6 +1220,20 @@ export default function TournamentPage() {
               <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
                 💡 Nội dung trên {tournament.splitSettings?.threshold || 20} VĐV sẽ tự động chia thành nhiều sigma (PDF, Bracket, Thư ký)
               </span>
+
+              <button 
+                className="btn btn-secondary btn-sm" 
+                style={{ marginLeft: 'auto', background: '#fff', border: '1px solid #7c3aed', color: '#7c3aed', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
+                onClick={() => setShowSplitModal(true)}
+              >
+                📋 Chọn nội dung chia ({tournament.categories.filter(c => {
+                   const threshold = tournament.splitSettings?.threshold || 20;
+                   const athleteCount = c.athletes?.length || 0;
+                   if (c.sigmaSplitEnabled === false) return false;
+                   if (c.sigmaSplitEnabled === true) return true;
+                   return (tournament.splitSettings?.enabled && athleteCount > threshold);
+                }).length})
+              </button>
             </>
           )}
         </div>
@@ -1523,6 +1648,29 @@ export default function TournamentPage() {
                     {category.type === "kumite" ? "⚔️ Kumite" : "🥋 Kata"}
                   </span>
                   <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      className="edit-btn"
+                      onClick={() => {
+                        const nextValue = category.sigmaSplitEnabled === undefined ? true : (category.sigmaSplitEnabled === true ? false : undefined);
+                        dispatch({
+                          type: ACTIONS.UPDATE_CATEGORY,
+                          payload: { id: category.id, sigmaSplitEnabled: nextValue }
+                        });
+                        if (nextValue === true) toast.success(`Đã ép buộc chia Sigma cho: ${category.name}`);
+                        else if (nextValue === false) toast.success(`Đã tắt chia Sigma cho: ${category.name}`);
+                        else toast.info(`Đã đặt lại Sigma mặc định cho: ${category.name}`);
+                      }}
+                      title={category.sigmaSplitEnabled === true ? "Đang ép buộc chia Sigma" : (category.sigmaSplitEnabled === false ? "Đang tắt chia Sigma" : "Chia Sigma theo cài đặt chung")}
+                      style={{
+                        background: category.sigmaSplitEnabled === true ? '#7c3aed' : (category.sigmaSplitEnabled === false ? '#94a3b8' : 'transparent'),
+                        color: category.sigmaSplitEnabled !== undefined ? '#fff' : '#475569',
+                        padding: '4px',
+                        border: category.sigmaSplitEnabled !== undefined ? 'none' : '1px solid #e2e8f0',
+                        fontSize: '12px'
+                      }}
+                    >
+                      {category.sigmaSplitEnabled === false ? "🚫" : "✂️"}
+                    </button>
                     <button
                       className="edit-btn"
                       onClick={() => handleEditCategory(category)}
@@ -2165,6 +2313,457 @@ export default function TournamentPage() {
                 </div>
               </>
             )}
+          </div>
+        </Modal>
+
+        {/* Link Modal */}
+        <Modal
+          isOpen={showLinkModal}
+          onClose={() => setShowLinkModal(false)}
+          title="🔗 Link đăng ký trực tiếp"
+        >
+        <div style={{ padding: "20px" }}>
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#64748b",
+              marginBottom: "16px",
+              lineHeight: 1.5,
+            }}
+          >
+            HLV chỉ cần mở link này là có thể nhập danh sách VĐV ngay lập tức mà
+            không cần tải file .krt:
+          </p>
+          
+          <div className="link-time-settings" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div className="input-group">
+              <label className="input-label" style={{ marginBottom: '4px', display: 'block' }}>Thời gian bắt đầu nhập</label>
+              <DateTimeInput
+                value={linkStartTime}
+                onChange={(e) => setLinkStartTime(e.target.value)}
+              />
+            </div>
+            <div className="input-group">
+              <label className="input-label" style={{ marginBottom: '4px', display: 'block' }}>Thời gian kết thúc nhập</label>
+              <DateTimeInput
+                value={linkEndTime}
+                onChange={(e) => setLinkEndTime(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: "#f1f5f9",
+              padding: "12px",
+              borderRadius: "8px",
+              border: "1px solid #e2e8f0",
+              wordBreak: "break-all",
+              fontFamily: "monospace",
+              fontSize: "13px",
+              color: "#0f172a",
+              marginBottom: "20px",
+            }}
+          >
+            {`https://dang-ky-vdv.pages.dev/${publishedSlug || '...'}`}
+          </div>
+          <div className="modal-actions" style={{ flexDirection: 'column', gap: '8px' }}>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                const url = `https://dang-ky-vdv.pages.dev/${publishedSlug}`;
+                navigator.clipboard.writeText(url);
+                toast.success("Đã sao chép link!");
+              }}
+              style={{ width: "100%" }}
+              disabled={!publishedSlug}
+            >
+              📋 Sao chép Link
+            </button>
+            <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={handlePublishTournament}
+                style={{ flex: 1 }}
+                disabled={publishing}
+              >
+                {publishedSlug ? "🔄 Cập nhật" : "🚀 Tạo Link"}
+              </button>
+              {publishedSlug && (
+                <button
+                  className="btn btn-danger"
+                  onClick={handleUnpublishTournament}
+                  style={{ flex: 1 }}
+                  disabled={publishing}
+                >
+                  🗑️ Xóa link
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        </Modal>
+
+        {/* Modal chọn nội dung chia Sigma */}
+        <Modal
+          isOpen={showSplitModal}
+          onClose={() => setShowSplitModal(false)}
+          title="Chọn nội dung áp dụng Sigma"
+        >
+          <div className="split-selection-modal" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+            <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '16px' }}>
+              Dưới đây là danh sách các nội dung. Bạn có thể ép buộc chia nhánh (✂️) hoặc tắt chia nhánh (🚫) cho từng hạng mục.
+              Nhánh Sigma giúp chia các bảng đông người thành nhiều phần để thi đấu song song.
+            </p>
+            
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+               <button className="btn btn-sm btn-secondary" onClick={() => {
+                 tournament.categories.forEach(c => {
+                   dispatch({ type: ACTIONS.UPDATE_CATEGORY, payload: { id: c.id, sigmaSplitEnabled: undefined } });
+                 });
+                 toast.info("Đã đặt lại tất cả về mặc định");
+               }} style={{ padding: '4px 12px', fontSize: '12px' }}>Đặt lại tất cả</button>
+               <button className="btn btn-sm btn-secondary" onClick={() => {
+                 tournament.categories.filter(c => c.type === 'kata').forEach(c => {
+                   dispatch({ type: ACTIONS.UPDATE_CATEGORY, payload: { id: c.id, sigmaSplitEnabled: true } });
+                 });
+                 toast.success("Đã bật Sigma cho toàn bộ Kata");
+               }} style={{ padding: '4px 12px', fontSize: '12px' }}>Bật toàn bộ Kata</button>
+               <button className="btn btn-sm btn-secondary" onClick={() => {
+                 tournament.categories.filter(c => c.type === 'kumite').forEach(c => {
+                   dispatch({ type: ACTIONS.UPDATE_CATEGORY, payload: { id: c.id, sigmaSplitEnabled: true } });
+                 });
+                 toast.success("Đã bật Sigma cho toàn bộ Kumite");
+               }} style={{ padding: '4px 12px', fontSize: '12px' }}>Bật toàn bộ Kumite</button>
+            </div>
+
+            <table className="table table-compact" style={{ width: '100%', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', background: '#f8fafc' }}>
+                  <th style={{ padding: '8px' }}>Hạng mục</th>
+                  <th style={{ padding: '8px', textAlign: 'center' }}>VĐV</th>
+                  <th style={{ padding: '8px', textAlign: 'center' }}>Trạng thái</th>
+                  <th style={{ padding: '8px', textAlign: 'center' }}>Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tournament.categories.map(cat => {
+                  const threshold = tournament.splitSettings?.threshold || 20;
+                  const athleteCount = cat.athletes?.length || 0;
+                  const isSplitting = cat.sigmaSplitEnabled === true || (cat.sigmaSplitEnabled !== false && tournament.splitSettings?.enabled && athleteCount > threshold);
+                  
+                  return (
+                    <tr key={cat.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '8px' }}>
+                        <div style={{ fontWeight: 600 }}>{cat.name}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                          {cat.type === 'kata' ? '🥋 Kata' : '⚔️ Kumite'} • {cat.gender === 'male' ? 'Nam' : 'Nữ'}
+                        </div>
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'center' }}>{athleteCount}</td>
+                      <td style={{ padding: '8px', textAlign: 'center' }}>
+                        {isSplitting ? (
+                          <span style={{ color: '#059669', fontWeight: 600 }}>✅ Sẽ chia</span>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>Không chia</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'center' }}>
+                         <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                            <button 
+                              onClick={() => dispatch({ type: ACTIONS.UPDATE_CATEGORY, payload: { id: cat.id, sigmaSplitEnabled: true } })}
+                              title="Bắt buộc chia"
+                              style={{ 
+                                padding: '4px 8px', borderRadius: '4px', border: '1px solid #7c3aed', 
+                                background: cat.sigmaSplitEnabled === true ? '#7c3aed' : '#fff',
+                                color: cat.sigmaSplitEnabled === true ? '#fff' : '#7c3aed',
+                                cursor: 'pointer', fontSize: '12px'
+                              }}
+                            >✂️</button>
+                            <button 
+                              onClick={() => dispatch({ type: ACTIONS.UPDATE_CATEGORY, payload: { id: cat.id, sigmaSplitEnabled: false } })}
+                              title="Tắt chia"
+                              style={{ 
+                                padding: '4px 8px', borderRadius: '4px', border: '1px solid #94a3b8',
+                                background: cat.sigmaSplitEnabled === false ? '#64748b' : '#fff',
+                                color: cat.sigmaSplitEnabled === false ? '#fff' : '#64748b',
+                                cursor: 'pointer', fontSize: '12px'
+                              }}
+                            >🚫</button>
+                            <button 
+                              onClick={() => dispatch({ type: ACTIONS.UPDATE_CATEGORY, payload: { id: cat.id, sigmaSplitEnabled: undefined } })}
+                              title="Theo cài đặt chung"
+                              style={{ 
+                                padding: '4px 8px', borderRadius: '4px', border: '1px solid #e2e8f0',
+                                background: cat.sigmaSplitEnabled === undefined ? '#f1f5f9' : '#fff',
+                                color: '#475569',
+                                cursor: 'pointer', fontSize: '12px'
+                              }}
+                            >⚙️</button>
+                         </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="modal-actions" style={{ marginTop: '20px' }}>
+            <button className="btn btn-primary" onClick={() => setShowSplitModal(false)} style={{ width: '100%' }}>Đóng</button>
+          </div>
+        </Modal>
+
+        {/* Modal xuất PDF chọn lọc - Giao diện nâng cấp đầy đủ */}
+        <Modal
+          isOpen={showExportPDFModal}
+          onClose={() => setShowExportPDFModal(false)}
+          title="Tùy chọn xuất PDF tất cả sơ đồ"
+        >
+          <div className="export-pdf-selection" style={{ padding: '4px' }}>
+            <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px', lineHeight: '1.5' }}>
+              Hệ thống sẽ tổng hợp các sơ đồ đã chọn vào một file PDF vector chất lượng cao, giúp bạn in ấn hàng loạt nhanh chóng.
+            </p>
+
+            {/* Bộ lọc Dimension - Sửa lỗi tràn ngang bằng cách xếp chồng dọc */}
+            <div style={{ 
+              background: '#f8fafc', 
+              padding: '16px 20px', 
+              borderRadius: '16px', 
+              border: '1px solid #e2e8f0',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+              marginBottom: '20px'
+            }}>
+              {/* Thể thức */}
+              <div className="filter-group">
+                <label style={{ fontSize: '12px', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  🥋 Thể thức
+                </label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {[
+                    { id: 'all', label: 'Tất cả', color: '#7c3aed' },
+                    { id: 'kata', label: 'KATA', color: '#7c3aed' },
+                    { id: 'kumite', label: 'KUMITE', color: '#7c3aed' }
+                  ].map(t => (
+                    <button 
+                      key={t.id}
+                      onClick={() => {
+                        const nextFilter = { ...exportFilter, type: t.id };
+                        setExportFilter(nextFilter);
+                        applyBulkFilter(nextFilter);
+                      }}
+                      style={{ 
+                        padding: '8px 16px', fontSize: '11px', borderRadius: '10px', cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        border: exportFilter.type === t.id ? `2px solid ${t.color}` : '2px solid #e2e8f0',
+                        background: exportFilter.type === t.id ? t.color : '#fff',
+                        color: exportFilter.type === t.id ? '#fff' : '#64748b',
+                        fontWeight: 700,
+                        minWidth: '80px'
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tính chất */}
+              <div className="filter-group">
+                <label style={{ fontSize: '12px', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  👥 Tính chất
+                </label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {[
+                    { id: 'all', label: 'Tất cả', color: '#2563eb' },
+                    { id: 'individual', label: 'Cá nhân', color: '#2563eb' },
+                    { id: 'team', label: 'Đồng đội', color: '#2563eb' }
+                  ].map(f => (
+                    <button 
+                      key={f.id}
+                      onClick={() => {
+                        const nextFilter = { ...exportFilter, format: f.id };
+                        setExportFilter(nextFilter);
+                        applyBulkFilter(nextFilter);
+                      }}
+                      style={{ 
+                        padding: '8px 16px', fontSize: '11px', borderRadius: '10px', cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        border: exportFilter.format === f.id ? `2px solid ${f.color}` : '2px solid #e2e8f0',
+                        background: exportFilter.format === f.id ? f.color : '#fff',
+                        color: exportFilter.format === f.id ? '#fff' : '#64748b',
+                        fontWeight: 700,
+                        minWidth: '80px'
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Giới tính */}
+              <div className="filter-group">
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    ⚤ Giới tính
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {[
+                      { id: 'all', label: 'Tất cả', color: '#059669' },
+                      { id: 'male', label: '♂ NAM', color: '#3b82f6' },
+                      { id: 'female', label: '♀ NỮ', color: '#ec4899' }
+                    ].map(g => (
+                      <button 
+                        key={g.id}
+                        onClick={() => {
+                          const nextFilter = { ...exportFilter, gender: g.id };
+                          setExportFilter(nextFilter);
+                          applyBulkFilter(nextFilter);
+                        }}
+                        style={{ 
+                          padding: '8px 16px', fontSize: '11px', borderRadius: '10px', cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          border: exportFilter.gender === g.id ? `2px solid ${g.color}` : '2px solid #e2e8f0',
+                          background: exportFilter.gender === g.id ? g.color : '#fff',
+                          color: exportFilter.gender === g.id ? '#fff' : '#64748b',
+                          fontWeight: 700,
+                          minWidth: '80px'
+                        }}
+                      >
+                        {g.label}
+                      </button>
+                    ))}
+                  </div>
+              </div>
+            </div>
+
+            {/* Search & Actions */}
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <input 
+                    type="text" 
+                    placeholder="Tìm tên nội dung..." 
+                    value={searchQueryExport}
+                    onChange={(e) => setSearchQueryExport(e.target.value)}
+                    style={{ 
+                      width: '100%', padding: '10px 12px 10px 36px', borderRadius: '10px', 
+                      border: '1px solid #e2e8f0', fontSize: '14px', outline: 'none' 
+                    }}
+                  />
+                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', grayscale: 1 }}>🔍</span>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                   <button 
+                     className="btn btn-secondary btn-sm"
+                     onClick={() => setExportSelectedIds(tournament.categories.filter(c => c.bracket).map(c => c.id))}
+                     style={{ borderRadius: '10px', fontWeight: 600 }}
+                   >Chọn hết</button>
+                   <button 
+                     className="btn btn-secondary btn-sm"
+                     onClick={() => setExportSelectedIds([])}
+                     style={{ borderRadius: '10px', fontWeight: 600, color: '#ef4444' }}
+                   >Bỏ chọn</button>
+                </div>
+            </div>
+
+            {/* Category List */}
+            <div style={{ 
+              maxHeight: '400px', 
+              overflowY: 'auto', 
+              border: '1px solid #e2e8f0', 
+              borderRadius: '16px',
+              background: '#fff'
+            }}>
+              {tournament.categories
+                .filter(c => c.bracket)
+                .filter(c => {
+                   if (!searchQueryExport) return true;
+                   return c.name.toLowerCase().includes(searchQueryExport.toLowerCase());
+                })
+                .map((cat, idx) => {
+                 const isChecked = exportSelectedIds.includes(cat.id);
+                 const isTeam = cat.isTeam || cat.name.toLowerCase().includes('đồng đội') || cat.name.toLowerCase().includes('hỗn hợp');
+                 
+                 return (
+                   <label 
+                     key={cat.id} 
+                     style={{ 
+                       display: 'flex', alignItems: 'center', gap: '16px', padding: '12px 16px', 
+                       background: isChecked ? 'linear-gradient(to right, #f5f3ff, #ede9fe)' : (idx % 2 === 0 ? '#fff' : '#f8fafc'), 
+                       borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
+                       transition: 'background 0.2s'
+                     }}
+                   >
+                     <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                       <input 
+                         type="checkbox" 
+                         checked={isChecked} 
+                         onChange={() => {
+                           if (isChecked) {
+                             setExportSelectedIds(prev => prev.filter(id => id !== cat.id));
+                           } else {
+                             setExportSelectedIds(prev => [...prev, cat.id]);
+                           }
+                         }}
+                         style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#7c3aed' }}
+                       />
+                     </div>
+                     <div style={{ flex: 1 }}>
+                        <div style={{ 
+                          fontSize: '14px', 
+                          fontWeight: 700, 
+                          color: isChecked ? '#5b21b6' : '#1e293b',
+                          marginBottom: '2px'
+                        }}>
+                          {cat.name}
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                          <span style={{ 
+                            fontSize: '10px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
+                            background: cat.type === 'kata' ? '#f5f3ff' : '#fff1f2',
+                            color: cat.type === 'kata' ? '#7c3aed' : '#e11d48',
+                            border: `1px solid ${cat.type === 'kata' ? '#ddd6fe' : '#fecdd3'}`
+                          }}>
+                            {cat.type.toUpperCase()}
+                          </span>
+                          <span style={{ fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {isTeam ? '👥 Nhóm' : '👤 Cá nhân'} • {cat.athletes?.length || 0} VĐV
+                          </span>
+                          {cat.gender === 'male' ? <span style={{color:'#3b82f6'}}>♂️</span> : <span style={{color:'#ec4899'}}>♀️</span>}
+                        </div>
+                     </div>
+                     {isChecked && <span style={{ color: '#7c3aed', fontWeight: 900 }}>✓</span>}
+                   </label>
+                 );
+              })}
+            </div>
+            
+            <div style={{ marginTop: '12px', textAlign: 'right', fontSize: '13px', color: '#64748b', fontWeight: 600 }}>
+               Đã chọn <span style={{ color: '#7c3aed', fontSize: '16px' }}>{exportSelectedIds.length}</span> sơ đồ
+            </div>
+          </div>
+          
+          <div className="modal-actions" style={{ marginTop: '12px', gap: '12px' }}>
+             <button 
+               className="btn btn-primary" 
+               style={{ 
+                 flex: 2, background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', 
+                 padding: '14px', borderRadius: '12px', fontSize: '14px', fontWeight: 700,
+                 boxShadow: '0 4px 15px -1px rgba(124, 58, 237, 0.4)'
+               }}
+               onClick={handleExportSelectedPDF}
+               disabled={exportSelectedIds.length === 0}
+             >
+               🚀 XUẤT FILE PDF TỔNG HỢP ({exportSelectedIds.length})
+             </button>
+             <button 
+               className="btn btn-secondary" 
+               onClick={() => setShowExportPDFModal(false)}
+               style={{ flex: 1, padding: '14px', borderRadius: '12px', fontSize: '14px', fontWeight: 600 }}
+             >
+               HUỶ BỎ
+             </button>
           </div>
         </Modal>
       </div>

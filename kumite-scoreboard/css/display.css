@@ -1,4 +1,4 @@
-﻿/* Kumite Scoreboard - Display CSS */
+/* Kumite Scoreboard - Display CSS */
 
 :root {
   --font-scale: 1;
@@ -28,7 +28,7 @@ body {
 }
 
 .tournament-title {
-  font-size: calc(1.8vw * var(--font-scale));
+  font-size: calc(1.2vw * var(--font-scale));
   font-weight: bold;
   color: #ffd700;
   text-transform: uppercase;
@@ -38,7 +38,7 @@ body {
 }
 
 .category-title {
-  font-size: calc(3.5vw * var(--font-scale));
+  font-size: calc(2.2vw * var(--font-scale));
   font-weight: bold;
   color: white;
   text-transform: uppercase;
@@ -50,8 +50,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.5vh 2vw;
-  height: 22vh;
+  padding: 2vh 4vw;
+  flex: 1; /* Expand to fill space, centering them vertically */
 }
 
 .aka-section {
@@ -63,15 +63,32 @@ body {
 }
 
 .competitor-content {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 1.5vh;
-  flex: 1;
+  justify-content: center;
+  align-items: flex-start;
+  text-align: left;
+  padding-left: 2vw; /* Đẩy sát qua trái hơn theo yêu cầu */
+  position: relative;
+}
+
+.competitor-name-container {
+  display: flex;
+  align-items: center;
+  gap: 1.5vw;
 }
 
 .competitor-name {
-  font-size: calc(2.8vw * var(--font-scale));
-  font-weight: bold;
+  font-size: 7.5vh;
+  font-weight: 700; /* Mảnh hơn như yêu cầu */
+  text-shadow: none;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.unit-name {
+  display: none; /* Dùng competitor-unit thay thế theo HTML thực tế */
 }
 
 .aka-name {
@@ -80,6 +97,22 @@ body {
 
 .ao-name {
   color: #00bfff;
+}
+
+.competitor-unit {
+  font-size: 4.3vh; /* To lên một chút theo yêu cầu */
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-top: 1.2vh;
+  margin-bottom: 3.5vh;
+}
+
+.aka-unit {
+  color: rgba(255, 0, 0, 0.7);
+}
+
+.ao-unit {
+  color: rgba(0, 191, 255, 0.7);
 }
 
 /* Penalty Row */
@@ -183,10 +216,14 @@ body {
 
 .aka-senshu {
   color: #ff0000;
+  right: auto;
+  left: -2vw;
 }
 
 .ao-senshu {
   color: #00bfff;
+  right: auto;
+  left: -2vw;
 }
 
 /* Timer Section - Logo BEN TRAI */
@@ -476,23 +513,23 @@ body {
 }
 
 .fullscreen-overlay.aka-bg {
-  background: rgba(255, 0, 0, 0.95);
+  background: rgba(255, 0, 0, 1);
 }
 
 .fullscreen-overlay.ao-bg {
-  background: rgba(0, 100, 255, 0.95);
+  background: rgba(0, 100, 255, 1);
 }
 
 .fullscreen-overlay.warning-bg {
-  background: rgba(255, 215, 0, 0.95);
+  background: rgba(255, 215, 0, 1);
 }
 
 .fullscreen-overlay.senshu-aka-bg {
-  background: rgba(255, 0, 0, 0.95);
+  background: rgba(255, 0, 0, 1);
 }
 
 .fullscreen-overlay.senshu-ao-bg {
-  background: rgba(0, 100, 255, 0.95);
+  background: rgba(0, 100, 255, 1);
 }
 
 .fullscreen-content {
@@ -571,4 +608,21 @@ body {
   to {
     opacity: 0;
   }
+}
+
+.sponsor-logo-img {
+  height: 28vh; /* Phóng to cực đại theo yêu cầu */
+  width: auto;
+  max-width: 45vw;
+  object-fit: contain;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 1.5vw;
 }

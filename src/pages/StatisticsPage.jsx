@@ -382,12 +382,15 @@ export default function StatisticsPage() {
       
       // Calculate how many sets of medals are awarded (accounts for Sigma splits)
       let setsCount = 1;
-      if (splitSettings.enabled) {
-        const threshold = splitSettings.threshold || 20;
-        const athleteCount = cat.athletes?.length || 0;
-        if (athleteCount > threshold) {
-          setsCount = Math.ceil(athleteCount / Math.ceil(threshold / 2));
-        }
+      const threshold = splitSettings.threshold || 20;
+      const athleteCount = cat.athletes?.length || 0;
+
+      if (cat.sigmaSplitEnabled === false) {
+        setsCount = 1;
+      } else if (cat.sigmaSplitEnabled === true) {
+        setsCount = athleteCount > 1 ? Math.max(2, Math.floor(athleteCount / threshold)) : 1;
+      } else if (splitSettings.enabled && athleteCount > threshold) {
+        setsCount = Math.max(2, Math.floor(athleteCount / threshold));
       }
 
       if (isTeamCategory) {

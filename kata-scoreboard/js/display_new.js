@@ -1,8 +1,10 @@
 // Shared storage key
 const STORAGE_KEY = "karate_scoreboard";
 
-// State
+// State and Tracking
 let state = null;
+let currentWinnerSide = null; // Tracks which side is currently winning
+let announcementShownForWinner = null; // Tracks who we already showed the big announcement for
 
 // Load state from localStorage
 function loadState() {
@@ -17,204 +19,175 @@ function loadState() {
 function updateDisplay() {
   if (!state) return;
 
-  // Apply global font scale (admin slider)
-  const scalePercent = state.globalFontScale || 100;
-  if (document.body) {
-    try {
-      // Use CSS zoom for scaling
-      document.body.style.zoom = scalePercent + "%";
-    } catch (e) {
-      // Fallback: transform
-      try {
-        const scale = scalePercent / 100;
-        document.body.style.transformOrigin = "0 0";
-        document.body.style.transform = `scale(${scale})`;
-      } catch (err) {
-        // ignore
-      }
-    }
-  } // Update header
+  // Header update
   if (document.getElementById("tournamentTitle")) {
-    document.getElementById("tournamentTitle").textContent =
-      state.tournamentTitle ||
-      "GIẢI KARATE-DO SINH VIÊN TRƯỜNG ĐẠI HỌC CNTT VÀ TT VIỆT-HÀN MỞ RỘNG LẦN THỨ I - 2025";
+    document.getElementById("tournamentTitle").textContent = state.tournamentTitle || "";
   }
   if (document.getElementById("eventTitle")) {
-    document.getElementById("eventTitle").textContent =
-      state.eventTitle || "THẢM 1";
+    document.getElementById("eventTitle").textContent = state.eventTitle || "THẢM 1";
   }
-  document.getElementById("matchInfo").textContent =
-    state.matchInfo || "KATA CÁ NHÂN NAM LỨA TUỔI 10 TUỔI ĐẾN 11 TUỔI";
+  if (document.getElementById("matchInfo")) {
+    document.getElementById("matchInfo").textContent = state.matchInfo || "KATA";
+  }
 
-  // Update sponsor text/logos
+  // Logos/Sponsors
   const logoContainer = document.getElementById("logoContainer");
   if (logoContainer) {
-    if (state.sponsorLogos && (state.sponsorLogos.systemLogo || (state.sponsorLogos.sponsors && state.sponsorLogos.sponsors.length > 0))) {
-      logoContainer.innerHTML = ""; // Clear existing text/logos only if we have image logos to show
-      logoContainer.style.display = "flex";
-      
-      // System logo first (bắt buộc)
+    const hasSponsorLogos = state.sponsorLogos && (state.sponsorLogos.systemLogo || (state.sponsorLogos.sponsors && state.sponsorLogos.sponsors.length > 0));
+    
+    logoContainer.innerHTML = "";
+    
+    if (hasSponsorLogos) {
       if (state.sponsorLogos.systemLogo) {
-        const sysImg = document.createElement("img");
-        sysImg.src = state.sponsorLogos.systemLogo;
-        sysImg.style.cssText = "height: 80px; max-width: 200px; object-fit: contain; margin-right: 15px;";
-        logoContainer.appendChild(sysImg);
+        const img = document.createElement("img");
+        img.src = state.sponsorLogos.systemLogo;
+        img.style.height = "12vh";
+        img.style.width = "auto";
+        img.style.objectFit = "contain";
+        logoContainer.appendChild(img);
       }
-      
-      // Sponsor logos
-      if (state.sponsorLogos.sponsors && state.sponsorLogos.sponsors.length > 0) {
-        state.sponsorLogos.sponsors.forEach(logoUrl => {
-          const spImg = document.createElement("img");
-          spImg.src = logoUrl;
-          spImg.style.cssText = "height: 80px; max-width: 200px; object-fit: contain;";
-          logoContainer.appendChild(spImg);
+      if (state.sponsorLogos.sponsors) {
+        state.sponsorLogos.sponsors.forEach(src => {
+          const img = document.createElement("img");
+          img.src = src;
+          img.style.height = "12vh";
+          img.style.width = "auto";
+          img.style.objectFit = "contain";
+          logoContainer.appendChild(img);
         });
       }
     } else {
-      // Fallback
-      logoContainer.innerHTML = '<div class="sponsor-text" id="sponsorText">NHÀ TÀI TRỢ</div>';
-      const spText = document.getElementById("sponsorText");
-      if (spText) {
-        spText.textContent = state.sponsorText && state.sponsorText.trim() !== "" ? state.sponsorText : "NHÀ TÀI TRỢ";
-      }
+      // Fallback to Logo_den.png if no sponsors
+      const img = document.createElement("img");
+      img.src = "../public/Logo_den.png";
+      img.style.height = "12vh"; // Increased from 70px to 12vh for better visibility
+      img.style.width = "auto";
+      img.style.objectFit = "contain";
+      logoContainer.appendChild(img);
     }
-  } else if (document.getElementById("sponsorText")) {
-    document.getElementById("sponsorText").textContent =
-      state.sponsorText && state.sponsorText.trim() !== ""
-        ? state.sponsorText
-        : "NHÀ TÀI TRỢ";
   }
 
-  // Check if positions are swapped
   const isSwapped = state.swapPositions || false;
-
-  // Determine which data to show where
   const topData = isSwapped ? state.ao : state.aka;
   const bottomData = isSwapped ? state.aka : state.ao;
 
-  // Update AKA row (top)
-  if (state.contentType === "individual") {
-    document.getElementById("akaAthlete").textContent =
-      topData.athlete || "TÊN VĐV";
-    document.getElementById("akaUnit").textContent = topData.unit || "ĐƠN VỊ";
-  } else {
-    document.getElementById("akaAthlete").textContent = topData.athlete || "";
-    document.getElementById("akaUnit").textContent = topData.team || "ĐƠN VỊ";
-  } // Show/hide AKA score
-  const akaScoreEl = document.getElementById("akaScore");
-  const akaScoreVal = Number(topData.score) || 0;
-  if (akaScoreEl) {
-    akaScoreEl.textContent = akaScoreVal;
-    // Show score only if scoring has started
-    if (state.scoringStarted) {
-      akaScoreEl.classList.remove("hidden");
-    } else {
-      akaScoreEl.classList.add("hidden");
-    }
-  }
+  // AKA
+  if (document.getElementById("akaAthlete")) document.getElementById("akaAthlete").textContent = topData.athlete || "";
+  if (document.getElementById("akaUnit")) document.getElementById("akaUnit").textContent = (state.contentType === "individual" ? topData.unit : topData.team) || "";
+  if (document.getElementById("akaScore")) document.getElementById("akaScore").textContent = topData.score || "0";
+  if (state.scoringStarted) document.getElementById("akaScore").classList.remove("hidden");
+  else document.getElementById("akaScore").classList.add("hidden");
+  if (document.getElementById("akaKataDisplay")) document.getElementById("akaKataDisplay").textContent = (topData.kataName || "").toUpperCase();
 
-  // Update AKA kata display
-  const akaKataDisplay = document.getElementById("akaKataDisplay");
-  if (akaKataDisplay) {
-    akaKataDisplay.textContent =
-      topData.kataName && topData.kataName !== "Kata Name"
-        ? topData.kataName.toUpperCase()
-        : "";
-  }
+  // AO
+  if (document.getElementById("aoAthlete")) document.getElementById("aoAthlete").textContent = bottomData.athlete || "";
+  if (document.getElementById("aoUnit")) document.getElementById("aoUnit").textContent = (state.contentType === "individual" ? bottomData.unit : bottomData.team) || "";
+  if (document.getElementById("aoScore")) document.getElementById("aoScore").textContent = bottomData.score || "0";
+  if (state.scoringStarted) document.getElementById("aoScore").classList.remove("hidden");
+  else document.getElementById("aoScore").classList.add("hidden");
+  if (document.getElementById("aoKataDisplay")) document.getElementById("aoKataDisplay").textContent = (bottomData.kataName || "").toUpperCase();
 
-  // Update AO row (bottom)
-  if (state.contentType === "individual") {
-    document.getElementById("aoAthlete").textContent =
-      bottomData.athlete || "TÊN VĐV";
-    document.getElementById("aoUnit").textContent = bottomData.unit || "ĐƠN VỊ";
-  } else {
-    document.getElementById("aoAthlete").textContent = bottomData.athlete || "";
-    document.getElementById("aoUnit").textContent = bottomData.team || "ĐƠN VỊ";
-  }
-  // Show/hide AO score
-  const aoScoreEl = document.getElementById("aoScore");
-  const aoScoreVal = Number(bottomData.score) || 0;
-  if (aoScoreEl) {
-    aoScoreEl.textContent = aoScoreVal;
-    // Show score only if scoring has started
-    if (state.scoringStarted) {
-      aoScoreEl.classList.remove("hidden");
-    } else {
-      aoScoreEl.classList.add("hidden");
-    }
-  }
-
-  // Update AO kata display
-  const aoKataDisplay = document.getElementById("aoKataDisplay");
-  if (aoKataDisplay) {
-    aoKataDisplay.textContent =
-      bottomData.kataName && bottomData.kataName !== "Kata Name"
-        ? bottomData.kataName.toUpperCase()
-        : "";
-  }
-
-  // Winner detection and highlighting
+  // Winner logic
   const akaRow = document.getElementById("akaRow");
   const aoRow = document.getElementById("aoRow");
-
   if (akaRow) akaRow.classList.remove("winner");
   if (aoRow) aoRow.classList.remove("winner");
 
+  const akaScoreVal = Number(topData.score) || 0;
+  const aoScoreVal = Number(bottomData.score) || 0;
+
+  let winnerSide = null;
   if (akaScoreVal > aoScoreVal) {
+    winnerSide = "aka";
     if (akaRow) akaRow.classList.add("winner");
   } else if (aoScoreVal > akaScoreVal) {
+    winnerSide = "ao";
     if (aoRow) aoRow.classList.add("winner");
   }
 
-  // Update timer
+  // Handle Winner Announcement Overlay
+  if (winnerSide && state.scoringStarted) {
+    // Unique ID for this specific win (combination of athlete name and score)
+    const winnerData = winnerSide === "aka" ? topData : bottomData;
+    const winnerId = `${winnerData.athlete}_${winnerData.score}`;
+    
+    if (announcementShownForWinner !== winnerId) {
+      showWinnerAnnouncement(winnerData, winnerSide);
+      announcementShownForWinner = winnerId;
+    }
+  } else {
+    // Reset tracker if scores are even or match reset
+    announcementShownForWinner = null;
+    hideWinnerAnnouncement();
+  }
+
+  // Dynamic scaling
+  autoScale(document.getElementById("akaAthlete"), 4.2, 0.95);
+  autoScale(document.getElementById("aoAthlete"), 4.2, 0.95);
+  autoScale(document.getElementById("akaUnit"), 2.2, 0.7);
+  autoScale(document.getElementById("aoUnit"), 2.2, 0.7);
+  autoScale(document.getElementById("akaKataDisplay"), 3.5, 0.45);
+  autoScale(document.getElementById("aoKataDisplay"), 3.5, 0.45);
+
   updateTimerDisplay();
 }
 
-// Timer display update only
-function updateTimerDisplay() {
-  if (!state) return;
-
-  const timerElement = document.getElementById("timer");
-  const timerOverlay = document.getElementById("timerOverlay");
-
-  if (!timerElement) return;
-
-  const minutes = Math.floor(state.timer.seconds / 60);
-  const seconds = state.timer.seconds % 60;
-  const display = `${minutes}:${seconds.toString().padStart(2, "0")}`;
-  timerElement.textContent = display;
-
-  // Show/hide timer overlay based on running state
-  if (timerOverlay) {
-    if (state.timer.isRunning && state.timer.seconds > 0) {
-      timerOverlay.style.display = "flex";
-    } else {
-      timerOverlay.style.display = "none";
-    }
+function showWinnerAnnouncement(data, side) {
+  const overlay = document.getElementById("winnerAnnouncement");
+  if (!overlay) return;
+  
+  const nameEl = document.getElementById("winnerName");
+  const unitEl = document.getElementById("winnerUnit");
+  const kataEl = document.getElementById("winnerKata");
+  const headerEl = document.getElementById("winnerHeader");
+  
+  if (nameEl) nameEl.textContent = data.athlete || "";
+  if (unitEl) unitEl.textContent = (state.contentType === "individual" ? data.unit : data.team) || "";
+  if (kataEl) kataEl.textContent = (data.kataName || "").toUpperCase();
+  if (headerEl) {
+    headerEl.className = "winner-header " + side;
+    headerEl.textContent = "WINNER";
   }
+  
+  overlay.style.display = "flex";
+  
+  // Auto-hide after 5 seconds
+  setTimeout(() => {
+    overlay.style.display = "none";
+  }, 5000);
+}
 
-  // Add warning class if time is low (less than 30 seconds)
-  const timerContent = timerOverlay?.querySelector(".timer-content");
-  if (state.timer.seconds <= 30 && state.timer.seconds > 0) {
-    timerElement.classList.add("warning");
-    if (timerContent) timerContent.classList.add("warning");
-  } else {
-    timerElement.classList.remove("warning");
-    if (timerContent) timerContent.classList.remove("warning");
+function hideWinnerAnnouncement() {
+  const overlay = document.getElementById("winnerAnnouncement");
+  if (overlay) overlay.style.display = "none";
+}
+
+function autoScale(el, maxVw, factor) {
+  if (!el || !el.textContent) return;
+  el.style.fontSize = maxVw + "vw";
+  const parent = el.offsetParent; 
+  if (!parent) return;
+  let cur = maxVw;
+  const limit = parent.offsetWidth * factor;
+  while (el.scrollWidth > limit && cur > maxVw * 0.4) {
+    cur -= 0.1;
+    el.style.fontSize = cur + "vw";
   }
 }
 
-// Initialize
+function updateTimerDisplay() {
+  if (!state) return;
+  const el = document.getElementById("timer");
+  const overlay = document.getElementById("timerOverlay");
+  if (!el || !overlay) return;
+  const mins = Math.floor(state.timer.seconds / 60);
+  const secs = state.timer.seconds % 60;
+  el.textContent = `${mins}:${secs.toString().padStart(2, "0")}`;
+  overlay.style.display = (state.timer.isRunning && state.timer.seconds > 0) ? "flex" : "none";
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   loadState();
-
-  // Listen for storage changes
-  window.addEventListener("storage", () => {
-    loadState();
-  });
-
-  // Poll for updates (fallback for same-origin storage updates)
-  setInterval(() => {
-    loadState();
-  }, 500);
+  window.addEventListener("storage", loadState);
+  setInterval(loadState, 500);
 });

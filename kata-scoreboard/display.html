@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/png" href="../logo.png" />
+    <link rel="icon" type="image/png" href="../public/icon.png" />
     <title>Karate Scoreboard - Display</title>
     <link rel="stylesheet" href="css/display_new.css" />
   </head>
@@ -26,8 +26,8 @@
       <div class="competitor-info">
         <div class="athlete-name" id="akaAthlete">AKA</div>
         <div class="unit-name" id="akaUnit">ĐƠN VỊ</div>
+        <div class="kata-name-display" id="akaKataDisplay">KATA NAME</div>
       </div>
-      <div class="kata-name-display" id="akaKataDisplay">KATA NAME</div>
     </div>
     <!-- Timer Overlay (Shows when timer is running) -->
     <div class="timer-overlay" id="timerOverlay" style="display: none">
@@ -43,8 +43,8 @@
       <div class="competitor-info">
         <div class="athlete-name" id="aoAthlete">AO</div>
         <div class="unit-name" id="aoUnit">ĐƠN VỊ</div>
+        <div class="kata-name-display" id="aoKataDisplay">KATA NAME</div>
       </div>
-      <div class="kata-name-display" id="aoKataDisplay">KATA NAME</div>
     </div>
     <!-- Footer Section -->
     <div class="footer-section">
@@ -53,6 +53,16 @@
       <!-- Logos Container -->
       <div class="logo-container" id="logoContainer" style="display: flex; align-items: center; gap: 15px;">
         <div class="sponsor-text" id="sponsorText" style="display: none;">NHÀ TÀI TRỢ</div>
+      </div>
+    </div>
+
+    <!-- Winner Announcement Overlay -->
+    <div class="winner-announcement" id="winnerAnnouncement" style="display: none">
+      <div class="winner-header" id="winnerHeader">WINNER</div>
+      <div class="winner-body">
+        <div class="winner-name" id="winnerName">PHẠM HƯNG</div>
+        <div class="winner-unit" id="winnerUnit">VÕ ĐƯỜNG SHO DOJO</div>
+        <div class="winner-kata" id="winnerKata">CHATANYARA KUSANKU</div>
       </div>
     </div>
 

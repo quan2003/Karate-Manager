@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/png" href="../logo.png" />
+    <link rel="icon" type="image/png" href="../public/icon.png" />
     <title>Kumite Scoreboard - Display</title>
     <link rel="stylesheet" href="css/display.css" />
   </head>
@@ -20,46 +20,44 @@
     <div class="competitor-section aka-section">
       <div class="competitor-content">
         <div class="competitor-name aka-name" id="akaName">AKA</div>
+        <div class="competitor-unit aka-unit" id="akaUnit">ĐƠN VỊ</div>
         <div class="penalty-row">
-          <span class="warning-label aka-warning" id="akaWarningLabel"
-            >WARNING</span
-          >
+          <span class="warning-label aka-warning" id="akaWarningLabel">WARNING</span>
           <div class="penalty-buttons">
-            <button class="penalty-btn" id="akaC1">C1</button>
-            <button class="penalty-btn" id="akaC2">C2</button>
-            <button class="penalty-btn" id="akaC3">C3</button>
+            <button class="penalty-btn" id="akaC1">1</button>
+            <button class="penalty-btn" id="akaC2">2</button>
+            <button class="penalty-btn" id="akaC3">3</button>
             <button class="penalty-btn" id="akaHC">HC</button>
             <button class="penalty-btn" id="akaH">H</button>
           </div>
         </div>
       </div>
       <div class="score-container">
-        <div class="score-display aka-score" id="akaScore">0</div>
         <span class="senshu-indicator aka-senshu" id="akaSenshuIndicator"
           >o</span
         >
+        <div class="score-display aka-score" id="akaScore">0</div>
       </div>
     </div>
     <!-- AO (Blue) Section -->
     <div class="competitor-section ao-section">
       <div class="competitor-content">
         <div class="competitor-name ao-name" id="aoName">AO</div>
+        <div class="competitor-unit ao-unit" id="aoUnit">ĐƠN VỊ</div>
         <div class="penalty-row">
-          <span class="warning-label ao-warning" id="aoWarningLabel"
-            >WARNING</span
-          >
+          <span class="warning-label ao-warning" id="aoWarningLabel">WARNING</span>
           <div class="penalty-buttons">
-            <button class="penalty-btn" id="aoC1">C1</button>
-            <button class="penalty-btn" id="aoC2">C2</button>
-            <button class="penalty-btn" id="aoC3">C3</button>
+            <button class="penalty-btn" id="aoC1">1</button>
+            <button class="penalty-btn" id="aoC2">2</button>
+            <button class="penalty-btn" id="aoC3">3</button>
             <button class="penalty-btn" id="aoHC">HC</button>
             <button class="penalty-btn" id="aoH">H</button>
           </div>
         </div>
       </div>
       <div class="score-container">
-        <div class="score-display ao-score" id="aoScore">0</div>
         <span class="senshu-indicator ao-senshu" id="aoSenshuIndicator">o</span>
+        <div class="score-display ao-score" id="aoScore">0</div>
       </div>
     </div>
     <!-- Timer Section -->
