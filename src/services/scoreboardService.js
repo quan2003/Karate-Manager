@@ -40,6 +40,7 @@ export function openScoreboard(match, categoryType, categoryName, tournamentName
     kata1: match.kata1 || '',
     kata2: match.kata2 || '',
     hasWinner: !!match.winner,
+    winnerId: match.winner || null,
     // Schedule info (mat number)
     matNumber: scheduleInfo?.mat || null,
     // Sponsor logos (base64 images)
@@ -120,6 +121,12 @@ export function listenForMatchResult(callback) {
     if (event.data && event.data.type === 'MATCH_RESULT') {
       callback(event.data.result);
       cleanupMatchData();
+    } else if (event.data && event.data.type === 'MATCH_LOG_UPDATE') {
+      // Bắn trực tiếp vào SQLite bằng sessionData IPC
+      if (window.api && window.api.invoke) {
+        window.api.invoke('db:setSessionData', 'GLOBAL', `match_log_${event.data.matchId}`, JSON.stringify(event.data.logs))
+          .catch(err => console.log('Error saving log to SQLite:', err));
+      }
     }
   };
   

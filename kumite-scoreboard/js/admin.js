@@ -607,30 +607,34 @@ function setTimerSpeed(speed) {
 function addPoint(competitor, type) {
   if (type === "senshu") {
     if (competitor === "aka") {
-      // Toggle Senshu - có thể tắt được
       state.akaSenshu = !state.akaSenshu;
       if (state.akaSenshu) {
-        state.aoSenshu = false; // Tắt bên kia nếu bật
-        // Show senshu animation ONLY when clicking Senshu button
+        state.aoSenshu = false;
         triggerFullscreenDisplay(competitor, "senshu", 0);
+        addMatchLog('senshu', 'aka', 'Senshu → AKA');
+      } else {
+        addMatchLog('senshu', 'aka', 'Bỏ Senshu AKA');
       }
     } else {
       state.aoSenshu = !state.aoSenshu;
       if (state.aoSenshu) {
-        state.akaSenshu = false; // Tắt bên kia nếu bật
-        // Show senshu animation ONLY when clicking Senshu button
+        state.akaSenshu = false;
         triggerFullscreenDisplay(competitor, "senshu", 0);
+        addMatchLog('senshu', 'ao', 'Senshu → AO');
+      } else {
+        addMatchLog('senshu', 'ao', 'Bỏ Senshu AO');
       }
     }
   } else {
     const points = POINT_VALUES[type];
+    const typeName = type === 'wazaari' ? 'Waza-ari' : type.charAt(0).toUpperCase() + type.slice(1);
     if (competitor === "aka") {
       state.akaScore += points;
+      addMatchLog('point', 'aka', `+${typeName} (+${points}đ)`);
     } else {
       state.aoScore += points;
+      addMatchLog('point', 'ao', `+${typeName} (+${points}đ)`);
     }
-
-    // Trigger fullscreen display for points ONLY (no auto-senshu display)
     triggerFullscreenDisplay(competitor, type, points);
   }
   saveState();
@@ -638,39 +642,56 @@ function addPoint(competitor, type) {
 
 function removePoint(competitor, type) {
   const points = POINT_VALUES[type];
+  const typeName = type === 'wazaari' ? 'Waza-ari' : type.charAt(0).toUpperCase() + type.slice(1);
   if (competitor === "aka") {
     state.akaScore = Math.max(0, state.akaScore - points);
+    addMatchLog('remove', 'aka', `-${typeName} (-${points}đ)`);
   } else {
     state.aoScore = Math.max(0, state.aoScore - points);
+    addMatchLog('remove', 'ao', `-${typeName} (-${points}đ)`);
   }
   saveState();
 }
 
 function redWins() {
-  // Trigger winner flash animation in display (infinite)
   state.winnerFlash = "aka";
+  addMatchLog('win', 'aka', '🏆 AKA THẮNG');
   saveState();
+  
+  // Tự động Gửi kết quả về sơ đồ thi đấu (nếu trận được load từ bracket)
+  if (pendingMatchData || state.matchId) {
+    setTimeout(() => finishMatch(true), 1500); // Đợi 1.5s để người xem thấy ai thắng rồi tự đóng
+  }
 }
 
 function blueWins() {
-  // Trigger winner flash animation in display (infinite)
   state.winnerFlash = "ao";
+  addMatchLog('win', 'ao', '🏆 AO THẮNG');
   saveState();
+
+  // Tự động Gửi kết quả về sơ đồ thi đấu (nếu trận được load từ bracket)
+  if (pendingMatchData || state.matchId) {
+    setTimeout(() => finishMatch(true), 1500); // Đợi 1.5s để người xem thấy ai thắng rồi tự đóng
+  }
 }
 
 // Penalty functions
 function togglePenalty(competitor, type) {
   if (competitor === "aka") {
     state.akaPenalties[type] = !state.akaPenalties[type];
-    // Show warning animation if turned ON
     if (state.akaPenalties[type]) {
       triggerFullscreenDisplay(competitor, "warning", 0, type);
+      addMatchLog('penalty', 'aka', `Lỗi ${state.errorNames[type] || type} → AKA`);
+    } else {
+      addMatchLog('penalty', 'aka', `Bỏ lỗi ${state.errorNames[type] || type} AKA`);
     }
   } else {
     state.aoPenalties[type] = !state.aoPenalties[type];
-    // Show warning animation if turned ON
     if (state.aoPenalties[type]) {
       triggerFullscreenDisplay(competitor, "warning", 0, type);
+      addMatchLog('penalty', 'ao', `Lỗi ${state.errorNames[type] || type} → AO`);
+    } else {
+      addMatchLog('penalty', 'ao', `Bỏ lỗi ${state.errorNames[type] || type} AO`);
     }
   }
   saveState();
@@ -773,6 +794,9 @@ function resetAll() {
   if (state.mode === "team") {
     initializeTeamMode();
   }
+
+  // Clear event log for next match
+  clearMatchLog();
 
   resetTimer();
   saveState();
@@ -1252,8 +1276,6 @@ function finishRound() {
 
 // Reset scores only (for next round in team mode)
 function resetScoresOnly() {
-  state.akaName = "AKA";
-  state.aoName = "AO";
   state.akaScore = 0;
   state.aoScore = 0;
   state.akaPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
@@ -1261,18 +1283,7 @@ function resetScoresOnly() {
   state.akaSenshu = false;
   state.aoSenshu = false;
   state.winnerFlash = null;
-
-  // Reset dropdown UI
-  if (document.getElementById("redAthleteSelect")) document.getElementById("redAthleteSelect").selectedIndex = 0;
-  if (document.getElementById("blueAthleteSelect")) document.getElementById("blueAthleteSelect").selectedIndex = 0;
-  if (document.getElementById("redAthleteSearch")) {
-    document.getElementById("redAthleteSearch").value = "";
-    document.getElementById("redAthleteSearch").style.borderColor = "";
-  }
-  if (document.getElementById("blueAthleteSearch")) {
-    document.getElementById("blueAthleteSearch").value = "";
-    document.getElementById("blueAthleteSearch").style.borderColor = "";
-  }
+  // Giữ nguyên Tên Đoàn/VĐV và UI Dropdown (không reset) để người dùng tự chọn VĐV tiếp theo!
 
   resetTimer();
   updateUI();
@@ -1354,104 +1365,47 @@ function loadPendingMatch() {
                  (pendingMatchData.categoryName.toLowerCase().includes('đồng đội') || 
                   pendingMatchData.categoryName.toLowerCase().includes('hỗn hợp'));
 
-  // Clear athletes array to populate with members for team matches
-  if (isTeam && typeof athletes !== 'undefined') {
-    athletes = [];
-  }
+  // Prepare names
+  let akaName = "AKA";
+  let aoName = "AO";
 
-  // Set tên VĐV - IN HOA + CLB
   if (pendingMatchData.athlete1) {
     const name = pendingMatchData.athlete1.name.toUpperCase();
     const club = pendingMatchData.athlete1.club ? pendingMatchData.athlete1.club.toUpperCase() : '';
+    akaName = isTeam ? name : (club ? `${name} - ${club}` : name);
     
-    if (isTeam) {
-      state.akaName = name; // Just team name for team mode
-      if (pendingMatchData.athlete1.members && pendingMatchData.athlete1.members.length > 0 && typeof athletes !== 'undefined') {
+    // Clear athletes array and populate with members for team matches
+    if (isTeam && typeof athletes !== 'undefined') {
+      athletes = []; // Reset athletes list for brand new teams
+      if (pendingMatchData.athlete1.members && pendingMatchData.athlete1.members.length > 0) {
         pendingMatchData.athlete1.members.forEach(m => {
           athletes.push({ name: m.name.toUpperCase(), unit: name, category: pendingMatchData.categoryName });
         });
       }
-    } else {
-      state.akaName = club ? `${name} - ${club}` : name;
     }
-    
-    document.getElementById('redName').value = state.akaName;
   }
+
   if (pendingMatchData.athlete2) {
     const name = pendingMatchData.athlete2.name.toUpperCase();
     const club = pendingMatchData.athlete2.club ? pendingMatchData.athlete2.club.toUpperCase() : '';
+    aoName = isTeam ? name : (club ? `${name} - ${club}` : name);
     
-    if (isTeam) {
-      state.aoName = name; // Just team name
-      if (pendingMatchData.athlete2.members && pendingMatchData.athlete2.members.length > 0 && typeof athletes !== 'undefined') {
-        pendingMatchData.athlete2.members.forEach(m => {
-          athletes.push({ name: m.name.toUpperCase(), unit: name, category: pendingMatchData.categoryName });
-        });
-      }
-    } else {
-      state.aoName = club ? `${name} - ${club}` : name;
+    if (isTeam && pendingMatchData.athlete2.members && pendingMatchData.athlete2.members.length > 0 && typeof athletes !== 'undefined') {
+      pendingMatchData.athlete2.members.forEach(m => {
+        athletes.push({ name: m.name.toUpperCase(), unit: name, category: pendingMatchData.categoryName });
+      });
     }
-
-    document.getElementById('blueName').value = state.aoName;
   }
   
   if (isTeam && typeof populateAthleteDropdowns === 'function') {
     populateAthleteDropdowns();
   }
   
-  // Set thông tin giải đấu và vòng đấu
-  if (pendingMatchData.tournamentName) {
-    state.tournamentTitle = pendingMatchData.tournamentName;
-    const tournamentInput = document.getElementById('tournamentTitle');
-    if (tournamentInput) tournamentInput.value = pendingMatchData.tournamentName;
-  }
-  
-  if (pendingMatchData.categoryName) {
-    state.category = pendingMatchData.categoryName;
-    document.getElementById('category').value = pendingMatchData.categoryName;
-    
-    // Auto-detect team vs individual mode
-    const lowerName = pendingMatchData.categoryName.toLowerCase();
-    if (lowerName.includes('đồng đội') || lowerName.includes('hỗn hợp')) {
-      if (typeof setMode === 'function') setMode('team');
-    } else {
-      if (typeof setMode === 'function') setMode('individual');
-    }
-  }
-  
-  // Auto-fill vòng đấu từ bracket
-  if (pendingMatchData.roundName) {
-    state.matchRound = pendingMatchData.roundName;
-    const matchRoundSelect = document.getElementById('matchRound');
-    if (matchRoundSelect) {
-      // Try to find matching option
-      const options = matchRoundSelect.options;
-      for (let i = 0; i < options.length; i++) {
-        if (options[i].value === pendingMatchData.roundName || 
-            options[i].text === pendingMatchData.roundName ||
-            pendingMatchData.roundName.includes(options[i].value)) {
-          matchRoundSelect.selectedIndex = i;
-          break;
-        }
-      }
-      // If no match, set the value directly (may need to add custom option)
-      if (matchRoundSelect.value !== pendingMatchData.roundName) {
-        // Add custom option if not exists
-        const customOption = document.createElement('option');
-        customOption.value = pendingMatchData.roundName;
-        customOption.text = pendingMatchData.roundName;
-        matchRoundSelect.add(customOption);
-        matchRoundSelect.value = pendingMatchData.roundName;
-      }
-    }
-  }
-
-  // Load schedule mat number
-  if (pendingMatchData.matNumber) {
-    state.eventTitle = `Thảm ${pendingMatchData.matNumber}`;
-    const eventInput = document.getElementById("eventTitle");
-    if (eventInput) eventInput.value = state.eventTitle;
-  }
+  // Save current UI-only settings that should persist
+  const currentTournamentTitle = pendingMatchData.tournamentName || state.tournamentTitle;
+  const currentEventTitle = pendingMatchData.matNumber ? `Thảm ${pendingMatchData.matNumber}` : state.eventTitle;
+  const currentSponsorText = state.sponsorText;
+  const currentFontScale = state.fontScale;
 
   // KILL TIMER COMPLETELY
   if (timerInterval) {
@@ -1460,16 +1414,12 @@ function loadPendingMatch() {
   }
 
   // RE-INITIALIZE STATE TO DEFAULTS
-  const currentTournamentTitle = state.tournamentTitle;
-  const currentEventTitle = state.eventTitle;
-  const currentSponsorText = state.sponsorText;
-  const currentFontScale = state.fontScale;
-
+  // This is the "nuclear" reset to ensure no data from previous match leaks
   state = {
     mode: isTeam ? "team" : "individual",
     category: pendingMatchData.categoryName || "PENALTY",
-    akaName: "",
-    aoName: "",
+    akaName: akaName,
+    aoName: aoName,
     akaScore: 0,
     aoScore: 0,
     akaPenalties: { C1: false, C2: false, C3: false, HC: false, H: false },
@@ -1495,9 +1445,10 @@ function loadPendingMatch() {
     tournamentTitle: currentTournamentTitle,
     eventTitle: currentEventTitle,
     sponsorText: currentSponsorText,
-    sponsorLogos: pendingMatchData.sponsorLogos || null,
+    sponsorLogos: pendingMatchData.sponsorLogos || state.sponsorLogos,
     swapPositions: false,
     matchId: pendingMatchData.matchId || null,
+    matchRound: pendingMatchData.roundName || "",
     timerSpeed: 1,
     teamMode: isTeam ? {
       currentRound: 1,
@@ -1508,26 +1459,31 @@ function loadPendingMatch() {
     } : null
   };
 
-  // Clear search inputs
-  if (document.getElementById("redAthleteSearch")) document.getElementById("redAthleteSearch").value = "";
-  if (document.getElementById("blueAthleteSearch")) document.getElementById("blueAthleteSearch").value = "";
-
-  // Reset timer to default from UI
-  const totalSeconds = parseInt(document.getElementById("secondsInput")?.value) || 180;
-  state.timer.minutes = Math.floor(totalSeconds / 60);
-  state.timer.seconds = totalSeconds % 60;
-  state.timer.deciseconds = 0;
-  state.timer.isRunning = false;
-  
-  // ONLY load existing scores if match is already FINISHED (has winner)
-  // Otherwise, always start at 0-0 for a fresh match
-  if (pendingMatchData.hasWinner) {
+  // Load existing scores and winner from bracket if available
+  if (pendingMatchData.score1 != null || pendingMatchData.score2 != null) {
     state.akaScore = Number(pendingMatchData.score1) || 0;
     state.aoScore = Number(pendingMatchData.score2) || 0;
-  } else {
-    state.akaScore = 0;
-    state.aoScore = 0;
   }
+  
+  // Restore winner flash if match already has winner
+  if (pendingMatchData.hasWinner && pendingMatchData.winnerId) {
+    if (pendingMatchData.athlete1 && pendingMatchData.winnerId === pendingMatchData.athlete1.id) {
+      state.winnerFlash = "aka";
+    } else if (pendingMatchData.athlete2 && pendingMatchData.winnerId === pendingMatchData.athlete2.id) {
+      state.winnerFlash = "ao";
+    }
+  }
+
+  // Update UI components that are not bound directly to state in updateUI
+  if (document.getElementById('redName')) document.getElementById('redName').value = akaName;
+  if (document.getElementById('blueName')) document.getElementById('blueName').value = aoName;
+  if (document.getElementById('category')) document.getElementById('category').value = state.category;
+  if (document.getElementById('tournamentTitle')) document.getElementById('tournamentTitle').value = state.tournamentTitle;
+  if (document.getElementById('eventTitle')) document.getElementById('eventTitle').value = state.eventTitle;
+  
+  // Reset search inputs
+  if (document.getElementById("redAthleteSearch")) document.getElementById("redAthleteSearch").value = "";
+  if (document.getElementById("blueAthleteSearch")) document.getElementById("blueAthleteSearch").value = "";
 
   // Reset timer to default
   resetTimer();
@@ -1536,16 +1492,53 @@ function loadPendingMatch() {
   updateUI();
   updatePreview();
   
-  // Hiển thị thông báo
   console.log('✅ Đã load VĐV từ sơ đồ thi đấu:', pendingMatchData);
+  
+  // Clear log for fresh match OR fetch old log
+  clearMatchLog();
+  if (pendingMatchData.hasWinner || pendingMatchData.score1 || pendingMatchData.score2) {
+    addMatchLog('system', '', `📋 (Đã xong) Tỉ số cũ: ${state.akaScore}-${state.aoScore}. Xem lại/Sửa điểm.`);
+    // Tải logs từ server (nếu mạng kết nối)
+    if (state.matchId) {
+      try {
+        const key = `kumite_log_${state.matchId}`;
+        const existing = localStorage.getItem(key);
+        if (existing) {
+          const events = JSON.parse(existing);
+          if (events && events.length > 0) {
+            clearMatchLog();
+            addMatchLog('system', '', `📋 (Đã xong) Đã tải lịch sử ${events.length} sự kiện.`);
+            events.forEach(e => {
+               const entry = { ...e };
+               MATCH_LOG_ENTRIES.unshift(entry);
+               renderMatchLogUI(entry);
+            });
+          }
+        }
+      } catch(err) { console.log(err); }
+    }
+  } else {
+    addMatchLog('system', '', `📋 Trận mới: ${akaName} vs ${aoName}`);
+  }
 }
 
 /**
  * Kết thúc trận đấu và gửi kết quả về React app (bracket)
+ * @param {boolean} autoSubmit - Nếu true, bỏ qua confirm box
  */
-function finishMatch() {
+function finishMatch(autoSubmit = false) {
+  // If no actively pending match data from bracket load, but we do have a matchId in state, 
+  // try to reconstruct pendingMatchData so it can submit
+  if (!pendingMatchData && state.matchId) {
+     pendingMatchData = {
+       matchId: state.matchId,
+       athlete1: { id: 'aka', name: state.akaName },
+       athlete2: { id: 'ao', name: state.aoName }
+     };
+  }
+
   if (!pendingMatchData) {
-    alert('Không có trận đấu nào đang chờ từ sơ đồ!');
+    if (!autoSubmit) alert('Không có trận đấu nào đang chờ từ sơ đồ!');
     return;
   }
   
@@ -1554,27 +1547,29 @@ function finishMatch() {
   let winnerName = '';
   
   if (state.winnerFlash === 'aka') {
-    winnerId = pendingMatchData.athlete1?.id;
+    winnerId = pendingMatchData.athlete1?.id || 'aka';
     winnerName = state.akaName;
   } else if (state.winnerFlash === 'ao') {
-    winnerId = pendingMatchData.athlete2?.id;
+    winnerId = pendingMatchData.athlete2?.id || 'ao';
     winnerName = state.aoName;
   } else if (state.akaScore > state.aoScore) {
-    winnerId = pendingMatchData.athlete1?.id;
+    winnerId = pendingMatchData.athlete1?.id || 'aka';
     winnerName = state.akaName;
   } else if (state.aoScore > state.akaScore) {
-    winnerId = pendingMatchData.athlete2?.id;
+    winnerId = pendingMatchData.athlete2?.id || 'ao';
     winnerName = state.aoName;
   }
   
   if (!winnerId) {
-    alert('Chưa có người thắng! Hãy bấm AKA Win hoặc AO Win, hoặc đảm bảo điểm không bằng nhau.');
+    if (!autoSubmit) alert('Chưa có người thắng! Hãy bấm AKA Win hoặc AO Win, hoặc đảm bảo điểm không bằng nhau.');
     return;
   }
   
-  // Confirm
-  if (!confirm(`Xác nhận kết thúc trận?\n\n🏆 Người thắng: ${winnerName}\n📊 Tỉ số: ${state.akaScore} - ${state.aoScore}`)) {
-    return;
+  // Confirm (skip if autoSubmit is true)
+  if (!autoSubmit) {
+    if (!confirm(`Xác nhận kết thúc trận?\n\n🏆 Người thắng: ${winnerName}\n📊 Tỉ số: ${state.akaScore} - ${state.aoScore}`)) {
+      return;
+    }
   }
   
   const result = {
@@ -1606,7 +1601,149 @@ function finishMatch() {
   resetAll();
 }
 
+// ==================== MATCH EVENT LOG ====================
+
+const MATCH_LOG_ENTRIES = []; // in-memory log for current match
+
+/**
+ * Add an event to the match log UI and persist to server DB.
+ * @param {string} type  - 'point' | 'remove' | 'penalty' | 'senshu' | 'win' | 'system'
+ * @param {string} side  - 'aka' | 'ao' | ''
+ * @param {string} label - Human-readable action label
+ * @param {number|null} scoreAfter - score after event (optional)
+ */
+function addMatchLog(type, side, label, scoreAfter = null) {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  // Build timer string
+  const m = String(state.timer.minutes).padStart(2, '0');
+  const s = String(state.timer.seconds).padStart(2, '0');
+  const timerStr = `${m}:${s}`;
+
+  // Nếu đấu đồng đội, thêm prefix Round vào để log rõ ràng
+  let displayLabel = label;
+  if (state.mode === 'team' && state.teamMode && type !== 'system') {
+    displayLabel = `[R${state.teamMode.currentRound}] ${label}`;
+  }
+
+  const entry = {
+    type,
+    side,
+    label: displayLabel,
+    scoreAfter,
+    time: timeStr,
+    timer: timerStr,
+    akaScore: state.akaScore,
+    aoScore: state.aoScore,
+  };
+
+  MATCH_LOG_ENTRIES.unshift(entry); // newest on top
+
+  // Render to UI
+  renderMatchLogUI(entry);
+
+  // Save to server DB (non-blocking, best-effort)
+  const matchId = state.matchId || ('local_' + Date.now());
+  saveMatchLogToServer(matchId, entry);
+}
+
+function renderMatchLogUI(entry) {
+  const logEl = document.getElementById('matchEventLog');
+  if (!logEl) return;
+
+  // Remove placeholder
+  const placeholder = logEl.querySelector('[data-placeholder]');
+  if (placeholder) placeholder.remove();
+  // Also clear first-time placeholder text
+  if (logEl.innerHTML.includes('Chưa có sự kiện')) logEl.innerHTML = '';
+
+  const COLOR_MAP = {
+    aka: '#ff6b6b',
+    ao: '#6b9fff',
+    '': '#aaa',
+  };
+  const TYPE_ICON = {
+    point: '🟢',
+    remove: '🔴',
+    penalty: '⚠️',
+    senshu: '🟡',
+    win: '🏆',
+    system: '⚙️',
+  };
+
+  const sideColor = COLOR_MAP[entry.side] || '#aaa';
+  const icon = TYPE_ICON[entry.type] || '•';
+  const sideLabel = entry.side === 'aka' ? `<span style="color:#ff6b6b">[AKA]</span>` :
+                    entry.side === 'ao'  ? `<span style="color:#6b9fff">[AO]</span>` : '';
+  const scoreStr = `<span style="color:#888">(${entry.akaScore}-${entry.aoScore})</span>`;
+
+  const row = document.createElement('div');
+  row.style.cssText = `
+    display: flex; align-items: baseline; gap: 6px;
+    padding: 3px 6px; border-radius: 4px;
+    background: rgba(255,255,255,0.03);
+    border-left: 3px solid ${sideColor};
+    animation: logFadeIn 0.25s ease;
+  `;
+  row.innerHTML = `
+    <span style="color:#555;flex-shrink:0">${entry.timer}</span>
+    <span>${icon}</span>
+    ${sideLabel}
+    <span style="color:#e2e8f0;flex:1">${entry.label}</span>
+    ${scoreStr}
+  `;
+
+  // Insert as first child (newest on top since flex-direction: column-reverse)
+  logEl.prepend(row);
+}
+
+let _logSaveTimer = null;
+function saveMatchLogToServer(matchId, event) {
+  // 1. Lưu backup cục bộ (localStorage)
+  let logs = [];
+  try {
+    const key = `kumite_log_${matchId}`;
+    const existing = localStorage.getItem(key);
+    if (existing) logs = JSON.parse(existing);
+    
+    event.timestamp = new Date().toISOString();
+    logs.push(event);
+    if (logs.length > 100) logs = logs.slice(logs.length - 100);
+    localStorage.setItem(key, JSON.stringify(logs));
+  } catch (err) {}
+
+  // 2. Gửi lệnh qua postMessage về phần mềm chính để lưu vào SQLite
+  if (window.opener) {
+    window.opener.postMessage({
+      type: 'MATCH_LOG_UPDATE',
+      matchId: matchId,
+      logs: logs
+    }, '*');
+  }
+
+  // Cập nhật UI
+  const statusEl = document.getElementById('logSaveStatus');
+  if (statusEl) {
+    statusEl.textContent = '✓ Đã đồng bộ Database';
+    statusEl.style.color = '#4caf50';
+    clearTimeout(_logSaveTimer);
+    _logSaveTimer = setTimeout(() => { statusEl.textContent = ''; }, 2000);
+  }
+}
+
+function clearMatchLog() {
+  MATCH_LOG_ENTRIES.length = 0;
+  const logEl = document.getElementById('matchEventLog');
+  if (logEl) {
+    logEl.innerHTML = '<div style="color:#555;text-align:center;padding:20px 0" data-placeholder="true">— Chưa có sự kiện —</div>';
+  }
+}
+
+// ==================== END MATCH EVENT LOG ====================
+
 // ==================== END BRACKET INTEGRATION FUNCTIONS ====================
+
 
 // Initialize
 document.addEventListener("DOMContentLoaded", function () {

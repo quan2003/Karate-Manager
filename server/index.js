@@ -12,6 +12,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = 2000;
 const DB_FILE = path.join(__dirname, 'licenses.json');
+const KUMITE_LOG_FILE = path.join(__dirname, 'kumite_logs.json');
 const ADMIN_SECRET = 'admin_secret_key_change_me'; // Bảo mật: Nên thay đổi key này
 
 // Tăng giới hạn payload để nhận HTML lớn
@@ -164,6 +165,75 @@ app.post('/api/license/reset', (req, res) => {
 app.get('/', (req, res) => {
   res.send('K-SPORT - API Server Online');
 });
+
+// --- KUMITE MATCH LOG API ---
+
+function getKumiteLogs() {
+  if (!fs.existsSync(KUMITE_LOG_FILE)) return { matches: [] };
+  try { return JSON.parse(fs.readFileSync(KUMITE_LOG_FILE, 'utf8')); }
+  catch (e) { return { matches: [] }; }
+}
+
+function saveKumiteLogs(data) {
+  fs.writeFileSync(KUMITE_LOG_FILE, JSON.stringify(data, null, 2));
+}
+
+// POST /api/kumite-log — append an event to a match log
+app.post('/api/kumite-log', (req, res) => {
+  try {
+    const { matchId, matchInfo, event } = req.body;
+    if (!matchId || !event) return res.status(400).json({ success: false, message: 'Thiếu matchId hoặc event' });
+
+    const db = getKumiteLogs();
+    let match = db.matches.find(m => m.matchId === matchId);
+
+    if (!match) {
+      match = {
+        matchId,
+        matchInfo: matchInfo || {},
+        events: [],
+        createdAt: new Date().toISOString(),
+      };
+      db.matches.unshift(match);
+      // Keep only last 500 matches
+      if (db.matches.length > 500) db.matches = db.matches.slice(0, 500);
+    }
+
+    match.events.push({ ...event, timestamp: new Date().toISOString() });
+    match.updatedAt = new Date().toISOString();
+
+    saveKumiteLogs(db);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('kumite-log error:', e);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /api/kumite-log?matchId=xxx — get events for a specific match
+app.get('/api/kumite-log', (req, res) => {
+  try {
+    const { matchId } = req.query;
+    const db = getKumiteLogs();
+    if (matchId) {
+      const match = db.matches.find(m => m.matchId === matchId);
+      return res.json({ success: true, match: match || null });
+    }
+    // Return recent 50 matches summary
+    const summary = db.matches.slice(0, 50).map(m => ({
+      matchId: m.matchId,
+      matchInfo: m.matchInfo,
+      eventCount: m.events.length,
+      createdAt: m.createdAt,
+      updatedAt: m.updatedAt,
+    }));
+    res.json({ success: true, matches: summary });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+
 
 // --- PDF EXPORT (Existing) ---
 app.post('/api/export-pdf', async (req, res) => {

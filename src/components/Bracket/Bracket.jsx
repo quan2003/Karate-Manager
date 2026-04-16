@@ -322,6 +322,12 @@ export default function Bracket({
                           ✕
                         </span>
                       )}
+                      {/* Score indicator (only if match finished) */}
+                      {match.winner && match.score1 != null && categoryType !== "kata" && (
+                        <span className="athlete-score" style={{ marginLeft: "auto", marginRight: "4px", padding: "0 6px", fontWeight: "bold", fontSize: "12px", color: match.winner.id === match.athlete1?.id ? "var(--color-primary)" : "#64748b" }}>
+                          {match.score1}
+                        </span>
+                      )}
                       {/* Drag indicator */}
                       {dragEnabled && match.athlete1 && !match.isBye && !printMode && (
                         <span className="drag-indicator" title="Kéo để di chuyển VĐV">⠿</span>
@@ -416,6 +422,12 @@ export default function Bracket({
                           title={match.athlete2.disqualifiedReason || "Loại"}
                         >
                           ✕
+                        </span>
+                      )}
+                      {/* Score indicator (only if match finished) */}
+                      {match.winner && match.score2 != null && categoryType !== "kata" && (
+                        <span className="athlete-score" style={{ marginLeft: "auto", marginRight: "4px", padding: "0 6px", fontWeight: "bold", fontSize: "12px", color: match.winner.id === match.athlete2?.id ? "var(--color-primary)" : "#64748b" }}>
+                          {match.score2}
                         </span>
                       )}
                       {/* Drag indicator */}
