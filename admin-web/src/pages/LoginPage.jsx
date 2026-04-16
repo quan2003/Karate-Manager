@@ -75,7 +75,7 @@ export default function LoginPage() {
         
         <div>
             <h1 className="text-3xl font-bold text-white mb-2">Admin Portal</h1>
-            <p className="text-slate-400">Karate Tournament Manager</p>
+            <p className="text-slate-400">K-SPORT</p>
         </div>
 
         {/* Toast Notification */}

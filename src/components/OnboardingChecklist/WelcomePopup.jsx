@@ -34,7 +34,7 @@ export default function WelcomePopup() {
         <div className="wp-content">
           <h1 id="wp-title" className="wp-title">
             Chào mừng đến với<br />
-            <span className="wp-title--accent">Karate Tournament Manager</span>
+            <span className="wp-title--accent">K-SPORT</span>
           </h1>
           <p className="wp-desc">
             Hệ thống sẽ hướng dẫn bạn qua <strong>12 bước</strong> từ khi tạo giải

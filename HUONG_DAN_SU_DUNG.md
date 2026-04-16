@@ -22,7 +22,7 @@
 
 ## 1. GIỚI THIỆU PHẦN MỀM
 
-**Karate Tournament Manager** là phần mềm quản lý giải đấu Karate chuyên nghiệp, hỗ trợ:
+**K-SPORT** là phần mềm quản lý giải đấu Karate chuyên nghiệp, hỗ trợ:
 
 - ✅ Tạo và quản lý giải đấu
 - ✅ Quản lý danh sách vận động viên (VĐV)
@@ -46,15 +46,15 @@
 
 ### 2.1. Cài đặt
 
-1. Mở file cài đặt `Karate Tournament Manager Setup 1.0.0.exe`
+1. Mở file cài đặt `K-SPORT Setup 1.0.0.exe`
 2. Làm theo hướng dẫn cài đặt trên màn hình
-3. Chọn thư mục cài đặt (mặc định là `C:\Program Files\Karate Tournament Manager`)
+3. Chọn thư mục cài đặt (mặc định là `C:\Program Files\K-SPORT`)
 4. Nhấn **Install** để bắt đầu cài đặt
 5. Sau khi cài xong, nhấn **Finish**
 
 ### 2.2. Khởi động
 
-- Tìm biểu tượng **Karate Tournament Manager** trên Desktop hoặc trong Start Menu
+- Tìm biểu tượng **K-SPORT** trên Desktop hoặc trong Start Menu
 - Nhấp đúp để mở phần mềm
 - Phần mềm sẽ hiển thị **màn hình License** trước, chờ vài giây hoặc nhấn để bỏ qua
 - Sau đó hiển thị **màn hình chọn vai trò**
@@ -441,7 +441,7 @@ Sau khi bấm điểm xong, xuất kết quả để gửi cho Admin:
 
 - **Tác giả:** Trương Lưu Quân
 - **Điện thoại:** 0336.440.523
-- **Phiên bản:** Karate Tournament Manager v1.0.0
+- **Phiên bản:** K-SPORT v1.0.0
 
 ---
 
@@ -449,4 +449,4 @@ Sau khi bấm điểm xong, xuất kết quả để gửi cho Admin:
 
 ---
 
-*© 2026 Karate Tournament Manager. Bản quyền thuộc về tác giả.*
+*© 2026 K-SPORT. Bản quyền thuộc về tác giả.*

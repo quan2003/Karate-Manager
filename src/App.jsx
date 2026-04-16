@@ -172,7 +172,7 @@ function App() {
                           marginRight: 6,
                         }}
                       />
-                      Karate Tournament Manager © 2026
+                      K-SPORT © 2026
                     </p>
                     <p className="footer-note">
                       Tác giả: Trương Lưu Quân - 0336.440.523

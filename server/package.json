@@ -1,7 +1,7 @@
 {
   "name": "karate-license-server",
   "version": "1.0.0",
-  "description": "License Server cho Karate Tournament Manager",
+  "description": "License Server cho K-SPORT",
   "type": "module",
   "main": "index.js",
   "scripts": {

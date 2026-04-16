@@ -90,11 +90,11 @@ function RoleSelectPage() {
           <div className="logo-icon">
             <img
               src={appIcon}
-              alt="Karate Tournament Manager"
+              alt="K-SPORT"
               className="logo-img"
             />
           </div>
-          <h1>Karate Tournament Manager</h1>
+          <h1>K-SPORT</h1>
           <p className="subtitle">Hệ thống quản lý giải đấu Karate</p>
           {licenseStatus?.status === "expired" && (
             <div

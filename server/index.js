@@ -162,7 +162,7 @@ app.post('/api/license/reset', (req, res) => {
 
 // Route gốc
 app.get('/', (req, res) => {
-  res.send('Karate Tournament Manager - API Server Online');
+  res.send('K-SPORT - API Server Online');
 });
 
 // --- PDF EXPORT (Existing) ---

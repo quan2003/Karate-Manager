@@ -1,10 +1,10 @@
 {
-  "name": "karate-tournament-manager",
+  "name": "k-sport",
   "private": true,
   "version": "1.1.6",
   "type": "module",
   "main": "electron.cjs",
-  "author": "Karate Tournament",
+  "author": "K-SPORT",
   "description": "Phần mềm quản lý giải đấu Karate - Bốc thăm tự động",
   "scripts": {
     "dev": "vite",
@@ -52,7 +52,7 @@
   },
   "build": {
     "appId": "com.karate.tournament.manager",
-    "productName": "Karate Tournament Manager",
+    "productName": "K-SPORT",
     "directories": {
       "output": "release"
     },
@@ -76,13 +76,13 @@
     "fileAssociations": [
       {
         "ext": "krt",
-        "name": "Karate Tournament File",
+        "name": "K-SPORT File",
         "description": "File giải đấu Karate cho Huấn luyện viên",
         "role": "Editor"
       },
       {
         "ext": "kmatch",
-        "name": "Karate Match File",
+        "name": "K-SPORT Match File",
         "description": "File chấm điểm Karate cho Thư ký",
         "role": "Editor"
       }
@@ -105,7 +105,7 @@
       "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Karate Tournament",
+      "shortcutName": "K-SPORT",
       "installerIcon": "public/icon.ico",
       "uninstallerIcon": "public/icon.ico"
     },

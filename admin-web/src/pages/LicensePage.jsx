@@ -449,7 +449,7 @@ export default function LicensePage() {
       }`,
       "",
       "--- Hướng dẫn ---",
-      "Mở phần mềm Karate Tournament Manager > Nhập License > Chọn file .lic này để kích hoạt.",
+      "Mở phần mềm K-SPORT > Nhập License > Chọn file .lic này để kích hoạt.",
     ].join("\n");
 
     const blob = new Blob([content], { type: "application/octet-stream" });

@@ -520,7 +520,7 @@ export default function HomePage() {
             </button>
             <h1 className="page-title">
               <img src={appIcon} alt="" className="page-title-logo" />
-              Karate Tournament Manager
+              K-SPORT
             </h1>
             <p className="page-subtitle">
               Hệ thống quản lý & bốc thăm thi đấu Karate (Admin)

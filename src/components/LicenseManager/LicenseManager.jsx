@@ -252,7 +252,7 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
             <span className="lm-header-icon">🛡️</span>
             <div>
               <h3>Quản lý Bản quyền</h3>
-              <div className="lm-header-sub">Karate Tournament Manager</div>
+              <div className="lm-header-sub">K-SPORT</div>
             </div>
           </div>
           <button className="lm-close-btn" onClick={onClose}>

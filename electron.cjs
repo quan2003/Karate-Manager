@@ -101,7 +101,7 @@ ipcMain.handle("krt:save", async (event, content, suggestedName) => {
     const result = await dialog.showSaveDialog(mainWindow, {
       title: "Lưu file giải đấu",
       defaultPath: suggestedName || "tournament.krt",
-      filters: [{ name: "Karate Tournament File", extensions: ["krt"] }],
+      filters: [{ name: "K-SPORT File", extensions: ["krt"] }],
     });
 
     if (result.canceled || !result.filePath) {
@@ -120,7 +120,7 @@ ipcMain.handle("krt:open", async () => {
   try {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "Mở file giải đấu",
-      filters: [{ name: "Karate Tournament File", extensions: ["krt"] }],
+      filters: [{ name: "K-SPORT File", extensions: ["krt"] }],
       properties: ["openFile"],
     });
 
@@ -264,7 +264,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 768,
-    title: "Karate Tournament Manager",
+    title: "K-SPORT",
     icon: path.join(__dirname, "public", "icon.ico"),
     webPreferences: {
       nodeIntegration: false,
