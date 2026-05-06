@@ -58,7 +58,7 @@ apt-get install -y nginx
 cat > /etc/nginx/sites-available/karate-admin << 'NGINX_CONF'
 server {
     listen 80;
-    server_name 103.82.193.133.nip.io 103.82.193.133;
+    server_name admin.luuquancoder.id.vn 103.82.193.133.nip.io 103.82.193.133;
 
     # Serve Admin Web (Static Files from Vite build)
     location / {
@@ -125,7 +125,7 @@ ADMIN_SECRET=b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a
 JWT_SECRET=karate_jwt_secret_2026_change_me
 
 # CORS Configuration
-ALLOWED_ORIGINS=http://103.82.193.133,http://103.82.193.133.nip.io,https://103.82.193.133.nip.io
+ALLOWED_ORIGINS=https://admin.luuquancoder.id.vn,http://admin.luuquancoder.id.vn,http://103.82.193.133,http://103.82.193.133.nip.io,https://103.82.193.133.nip.io
 
 # Rate Limiting
 WINDOW_MS=900000

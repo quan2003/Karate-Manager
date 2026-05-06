@@ -4,7 +4,7 @@
  */
 
 // ĐỊA CHỈ SERVER LICENSE - Cần thay đổi khi deploy lên VPS
-export const SERVER_URL = "https://103.82.193.133.nip.io";
+export const SERVER_URL = "https://admin.luuquancoder.id.vn";
 
 export const LICENSE_TYPES = {
   TRIAL: "trial",
