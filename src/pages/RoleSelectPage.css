@@ -176,6 +176,31 @@
   transition: filter 0.3s ease, transform 0.3s ease;
 }
 
+.role-icon-badge {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.admin-icon {
+  background: linear-gradient(135deg, #1a5f7a, #145374);
+  box-shadow: 0 10px 24px rgba(26, 95, 122, 0.24);
+}
+
+.secretary-icon {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  box-shadow: 0 10px 24px rgba(139, 92, 246, 0.24);
+}
+
+.coach-icon {
+  background: linear-gradient(135deg, #10b981, #059669);
+  box-shadow: 0 10px 24px rgba(16, 185, 129, 0.24);
+}
+
 .role-card:hover .role-icon {
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.22));
   transform: scale(1.08);

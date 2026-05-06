@@ -10,12 +10,13 @@ echo "============================================="
 # --- Configuration ---
 APP_DIR="/root/karate-app/license-server"
 WEB_DIR="/var/www/karate-admin/dist"
-VPS_IP="103.82.194.186"
+VPS_IP="103.82.193.133"
 
 # 1. Update System
 echo ""
 echo "[1/7] Updating system packages..."
 apt-get update && apt-get upgrade -y
+apt-get install -y curl ca-certificates gnupg
 
 # 2. Install Node.js
 if ! command -v node &> /dev/null; then
@@ -43,9 +44,9 @@ systemctl enable postgresql
 
 # Create Database (idempotent)
 echo "Configuring Database..."
-sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'quan2003';"
-sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname = 'karate_license_db'" | grep -q 1 || \
-    sudo -u postgres psql -c "CREATE DATABASE karate_license_db;"
+runuser -u postgres -- psql -c "ALTER USER postgres WITH PASSWORD 'quan2003';"
+runuser -u postgres -- psql -tc "SELECT 1 FROM pg_database WHERE datname = 'karate_license_db'" | grep -q 1 || \
+    runuser -u postgres -- psql -c "CREATE DATABASE karate_license_db;"
 
 echo "PostgreSQL configured."
 
@@ -57,7 +58,7 @@ apt-get install -y nginx
 cat > /etc/nginx/sites-available/karate-admin << 'NGINX_CONF'
 server {
     listen 80;
-    server_name 103.82.194.186.nip.io 103.82.194.186;
+    server_name 103.82.193.133.nip.io 103.82.193.133;
 
     # Serve Admin Web (Static Files from Vite build)
     location / {
@@ -124,11 +125,11 @@ ADMIN_SECRET=b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a
 JWT_SECRET=karate_jwt_secret_2026_change_me
 
 # CORS Configuration
-ALLOWED_ORIGINS=http://103.82.194.186,http://103.82.194.186.nip.io
+ALLOWED_ORIGINS=http://103.82.193.133,http://103.82.193.133.nip.io,https://103.82.193.133.nip.io
 
 # Rate Limiting
 WINDOW_MS=900000
-MAX_REQUESTS=100
+MAX_REQUESTS=5000
 
 # PostgreSQL
 PG_USER=postgres

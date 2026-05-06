@@ -43,6 +43,9 @@ coverage
 # Temp files
 *.tmp
 *.temp
+temp_extract/
+deploy-*.zip
+license-server/check-zip.cjs
 
 # OS generated files
 Thumbs.db

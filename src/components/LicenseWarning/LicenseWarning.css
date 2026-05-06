@@ -114,3 +114,75 @@
 .btn-cancel:hover {
   background-color: #e5e7eb;
 }
+
+.license-toast {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 10050;
+  width: min(360px, calc(100vw - 2rem));
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  box-shadow: 0 20px 55px rgba(15, 23, 42, 0.28);
+  animation: licenseToastIn 0.22s ease-out;
+}
+
+.license-toast-success {
+  background: rgba(6, 95, 70, 0.96);
+}
+
+.license-toast-error {
+  background: rgba(127, 29, 29, 0.96);
+}
+
+.license-toast-icon {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.16);
+  font-weight: 800;
+}
+
+.license-toast-message {
+  flex: 1;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.license-toast-close {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.license-toast-close:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+@keyframes licenseToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -4,6 +4,8 @@ import {
   Key,
   Users,
   MessageSquare,
+  ReceiptText,
+  Settings,
   LogOut,
   Menu,
   X,
@@ -38,6 +40,8 @@ export default function Sidebar() {
   const navItems = [
     { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
     { icon: Key, label: "Licenses", path: "/licenses" },
+    { icon: ReceiptText, label: "Đơn hàng", path: "/payment-orders" },
+    { icon: Settings, label: "VietQR & Gói", path: "/payment-config" },
     { icon: Users, label: "Admin Users", path: "/users" },
     {
       icon: MessageSquare,

@@ -20,6 +20,7 @@ import {
   ChevronUp,
   Download,
   AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -335,6 +336,29 @@ export default function LicensePage() {
     });
   };
 
+  const handleDeleteLicense = async (license) => {
+    setConfirmModal({
+      open: true,
+      title: "Xóa License khỏi database",
+      message:
+        "Bạn chắc chắn muốn xóa vĩnh viễn license này? Thao tác này không thể khôi phục.",
+      icon: Trash2,
+      iconColor: "bg-red-500/20",
+      confirmText: "Xóa vĩnh viễn",
+      confirmColor: "bg-red-700 hover:bg-red-800",
+      onConfirm: async () => {
+        setConfirmModal({ open: false });
+        try {
+          await api.delete(`/license/${license.id}`);
+          fetchLicenses();
+          showNotify("Đã xóa license khỏi database");
+        } catch (e) {
+          showNotify("Lỗi xóa license", "error");
+        }
+      },
+    });
+  };
+
   const handleReset = async (key) => {
     setConfirmModal({
       open: true,
@@ -436,7 +460,7 @@ export default function LicensePage() {
     // Format matches what importLicenseFile() in client expects: "LICENSE KEY: XXXXX..."
     const content = [
       `LICENSE KEY: ${licenseKey}`,
-      `Client: ${license.client_name || "N/A"}`,
+      `Client: ${getLicenseCustomerName(license) || "N/A"}`,
       `Phone: ${license.client_phone || "N/A"}`,
       `Email: ${license.client_email || "N/A"}`,
       `Type: ${license.type || "N/A"}`,
@@ -456,7 +480,7 @@ export default function LicensePage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const safeClientName = (license.client_name || "license")
+    const safeClientName = (getLicenseCustomerName(license) || "license")
       .replace(/[^a-z0-9]/gi, "_")
       .toLowerCase();
     a.download = `License_${safeClientName}.lic`;
@@ -469,6 +493,17 @@ export default function LicensePage() {
 
   const getCopyKey = (license) => {
     return license.raw_key || license.key || "";
+  };
+
+  const getLicenseCustomerName = (license) => {
+    if (license.payment_order_code) {
+      return license.payment_customer_name || "Khách lẻ";
+    }
+    return license.client_name || "";
+  };
+
+  const getLicenseOrderCode = (license) => {
+    return license.payment_order_code || "";
   };
 
   const getStatus = (license) => {
@@ -487,7 +522,8 @@ export default function LicensePage() {
 
   const filteredLicenses = licenses.filter(
     (l) =>
-      l.client_name?.toLowerCase().includes(search.toLowerCase()) ||
+      getLicenseCustomerName(l)?.toLowerCase().includes(search.toLowerCase()) ||
+      getLicenseOrderCode(l)?.toLowerCase().includes(search.toLowerCase()) ||
       l.key?.toLowerCase().includes(search.toLowerCase()) ||
       l.client_email?.toLowerCase().includes(search.toLowerCase())
   );
@@ -540,7 +576,7 @@ export default function LicensePage() {
             />
             <input
               type="text"
-              placeholder="Tìm tên, key, email..."
+              placeholder="Tìm tên, key, email, mã đơn..."
               className="input-field mb-0 pl-10 pr-3 w-full text-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -564,6 +600,7 @@ export default function LicensePage() {
               <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase tracking-wider">
                 <th className="p-4">Trạng thái</th>
                 <th className="p-4">Khách hàng</th>
+                <th className="p-4">Mã đơn</th>
                 <th className="p-4">License Key</th>
                 <th className="p-4">Loại</th>
                 <th className="p-4">Máy</th>
@@ -574,7 +611,7 @@ export default function LicensePage() {
             <tbody className="text-sm">
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-slate-500">
+                  <td colSpan="8" className="p-8 text-center text-slate-500">
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
                       Đang tải...
@@ -583,7 +620,7 @@ export default function LicensePage() {
                 </tr>
               ) : filteredLicenses.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-slate-500">
+                  <td colSpan="8" className="p-8 text-center text-slate-500">
                     Không tìm thấy license nào
                   </td>
                 </tr>
@@ -608,18 +645,22 @@ export default function LicensePage() {
                         <div className="flex items-center gap-2 group">
                           <div>
                             <div className="font-medium text-white">
-                              {license.client_name}
+                              {getLicenseCustomerName(license) || "Khách lẻ"}
                             </div>
-                            {license.client_email && (
+                            {(license.payment_customer_phone ||
+                              license.payment_customer_email ||
+                              license.client_email) && (
                               <div className="text-xs text-slate-500">
-                                {license.client_email}
+                                {license.payment_customer_phone ||
+                                  license.payment_customer_email ||
+                                  license.client_email}
                               </div>
                             )}
                           </div>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              copyToClipboard(license.client_name, "Tên KH");
+                              copyToClipboard(getLicenseCustomerName(license), "Tên KH");
                             }}
                             className="p-1 rounded transition-colors opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 flex-shrink-0"
                             title="Copy tên khách hàng"
@@ -627,6 +668,15 @@ export default function LicensePage() {
                             <Copy size={12} />
                           </button>
                         </div>
+                      </td>
+                      <td className="p-4">
+                        {getLicenseOrderCode(license) ? (
+                          <code className="font-mono text-xs text-blue-300 bg-blue-500/10 px-2 py-1 rounded">
+                            {getLicenseOrderCode(license)}
+                          </code>
+                        ) : (
+                          <span className="text-xs text-slate-600">Tạo thủ công</span>
+                        )}
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-2">
@@ -732,6 +782,13 @@ export default function LicensePage() {
                           >
                             <Ban size={16} />
                           </button>
+                          <button
+                            onClick={() => handleDeleteLicense(license)}
+                            title="Xóa khỏi database"
+                            className="p-2 hover:bg-red-600/20 text-red-300 rounded-lg transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -768,12 +825,12 @@ export default function LicensePage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-1.5">
                       <div className="font-semibold text-white text-base select-text">
-                        {license.client_name}
+                        {getLicenseCustomerName(license) || "Khách lẻ"}
                       </div>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          copyToClipboard(license.client_name, "Tên KH");
+                          copyToClipboard(getLicenseCustomerName(license), "Tên KH");
                         }}
                         className="p-1 text-slate-500 hover:text-blue-400 rounded transition-colors flex-shrink-0"
                         title="Copy tên khách hàng"
@@ -781,9 +838,13 @@ export default function LicensePage() {
                         <Copy size={12} />
                       </button>
                     </div>
-                    {license.client_email && (
+                    {(license.payment_customer_phone ||
+                      license.payment_customer_email ||
+                      license.client_email) && (
                       <div className="text-xs text-slate-500 mt-0.5">
-                        {license.client_email}
+                        {license.payment_customer_phone ||
+                          license.payment_customer_email ||
+                          license.client_email}
                       </div>
                     )}
                   </div>
@@ -794,6 +855,14 @@ export default function LicensePage() {
                   </span>
                 </div>{" "}
                 {/* Key Row */}
+                {getLicenseOrderCode(license) && (
+                  <div className="mb-3 text-xs text-blue-300 bg-blue-500/10 rounded-lg px-2.5 py-2">
+                    Mã đơn:{" "}
+                    <span className="font-mono font-semibold">
+                      {getLicenseOrderCode(license)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 mb-3 bg-slate-800/50 rounded-lg p-2.5">
                   <code className="font-mono text-slate-300 text-xs flex-1 truncate select-text cursor-text">
                     {license.key}
@@ -899,7 +968,7 @@ export default function LicensePage() {
                     )}
 
                     {/* Action Buttons */}
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-4 gap-2">
                       <button
                         onClick={() => handleReset(license.key)}
                         className="flex items-center justify-center gap-1.5 p-2.5 bg-blue-500/10 text-blue-400 rounded-lg text-xs font-medium hover:bg-blue-500/20 transition-colors"
@@ -917,6 +986,12 @@ export default function LicensePage() {
                         className="flex items-center justify-center gap-1.5 p-2.5 bg-red-500/10 text-red-400 rounded-lg text-xs font-medium hover:bg-red-500/20 transition-colors"
                       >
                         <Ban size={14} /> Thu hồi
+                      </button>
+                      <button
+                        onClick={() => handleDeleteLicense(license)}
+                        className="flex items-center justify-center gap-1.5 p-2.5 bg-red-600/10 text-red-300 rounded-lg text-xs font-medium hover:bg-red-600/20 transition-colors"
+                      >
+                        <Trash2 size={14} /> Xóa
                       </button>
                     </div>
                   </div>
@@ -955,18 +1030,24 @@ export default function LicensePage() {
                   </div>
                   <div className="flex items-center gap-1.5">
                     <div className="text-white font-medium select-text">
-                      {showDetail.client_name}
+                      {getLicenseCustomerName(showDetail) || "Khách lẻ"}
                     </div>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        copyToClipboard(showDetail.client_name, "Tên KH");
+                        copyToClipboard(getLicenseCustomerName(showDetail), "Tên KH");
                       }}
                       className="p-1 text-slate-500 hover:text-blue-400 rounded transition-colors flex-shrink-0"
                       title="Copy tên khách hàng"
                     >
                       <Copy size={12} />
                     </button>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500 mb-1">Mã đơn</div>
+                  <div className="text-white font-mono">
+                    {getLicenseOrderCode(showDetail) || "Tạo thủ công"}
                   </div>
                 </div>
                 <div>

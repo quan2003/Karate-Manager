@@ -4,7 +4,7 @@
  */
 
 // ĐỊA CHỈ SERVER LICENSE - Cần thay đổi khi deploy lên VPS
-export const SERVER_URL = "http://103.82.194.186:2000";
+export const SERVER_URL = "https://103.82.193.133.nip.io";
 
 export const LICENSE_TYPES = {
   TRIAL: "trial",
@@ -483,6 +483,57 @@ export async function submitLicenseRequest({
     return await response.json();
   } catch (e) {
     return { success: false, message: "Không thể kết nối server" };
+  }
+}
+
+export async function getPublicPricing() {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/public/pricing`);
+    return await response.json();
+  } catch (e) {
+    return { success: false, message: "Không thể tải bảng giá" };
+  }
+}
+
+export async function createPaymentOrder({
+  planId,
+  machineId,
+  customerName,
+  customerPhone,
+  customerEmail,
+  note,
+}) {
+  try {
+    const response = await fetch(`${SERVER_URL}/api/payment/orders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        planId,
+        machineId,
+        customerName,
+        customerPhone,
+        customerEmail,
+        note,
+      }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, message: "Không thể tạo đơn thanh toán" };
+  }
+}
+
+export async function getPaymentOrderStatus(orderCode, machineId) {
+  try {
+    const params = new URLSearchParams();
+    if (machineId) params.set("machineId", machineId);
+    const response = await fetch(
+      `${SERVER_URL}/api/payment/orders/${encodeURIComponent(
+        orderCode
+      )}?${params.toString()}`
+    );
+    return await response.json();
+  } catch (e) {
+    return { success: false, message: "Không thể kiểm tra đơn thanh toán" };
   }
 }
 

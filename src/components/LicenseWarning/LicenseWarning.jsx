@@ -1,17 +1,510 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   activateLicense,
+  createPaymentOrder,
+  getPaymentOrderStatus,
+  getPublicPricing,
   importLicenseFile,
   generateMachineId,
 } from "../../services/licenseService";
 import "./LicenseWarning.css";
 
-export default function LicenseWarning({ type, onCancel, onSuccess }) {
+function LicenseToast({ toast, onClose }) {
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(onClose, 3200);
+    return () => clearTimeout(timer);
+  }, [toast, onClose]);
+
+  if (!toast) return null;
+
+  return (
+    <div className={`license-toast license-toast-${toast.type || "success"}`}>
+      <div className="license-toast-icon">
+        {toast.type === "error" ? "!" : "✓"}
+      </div>
+      <div className="license-toast-message">{toast.message}</div>
+      <button className="license-toast-close" onClick={onClose}>
+        ×
+      </button>
+    </div>
+  );
+}
+
+function PurchaseDialog({
+  plans,
+  selectedPlanId,
+  setSelectedPlanId,
+  purchaseLoading,
+  buyerInfo,
+  setBuyerInfo,
+  paymentError,
+  handleCreateOrder,
+  paymentOrder,
+  paidLicenseKey,
+  machineId,
+  checkingOrder,
+  handleCheckPayment,
+  handleManualActivate,
+  formatVnd,
+  onClose,
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.72)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 10001,
+        padding: "1rem",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: "min(860px, 100%)",
+          maxHeight: "88vh",
+          overflow: "auto",
+          background: "#ffffff",
+          color: "#0f172a",
+          borderRadius: 12,
+          boxShadow: "0 24px 80px rgba(15, 23, 42, 0.35)",
+          padding: "1.25rem",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "1rem",
+            marginBottom: "1rem",
+          }}
+        >
+          <div>
+            <h3 style={{ margin: 0, fontSize: "1.2rem" }}>
+              Mua License K-SPORT
+            </h3>
+            <p style={{ margin: "0.25rem 0 0", color: "#64748b" }}>
+              Chọn gói, tạo mã QR và chuyển khoản đúng nội dung đơn hàng.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 8,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              cursor: "pointer",
+              fontSize: 20,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {!paymentOrder ? (
+          <>
+            {purchaseLoading && plans.length === 0 ? (
+              <div style={{ color: "#64748b" }}>Đang tải bảng giá...</div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "0.75rem",
+                }}
+              >
+                {plans.map((plan) => (
+                  <button
+                    key={plan.id}
+                    onClick={() => setSelectedPlanId(plan.id)}
+                    style={{
+                      textAlign: "left",
+                      border:
+                        selectedPlanId === plan.id
+                          ? "2px solid #2563eb"
+                          : "1px solid #dbe3ef",
+                      background:
+                        selectedPlanId === plan.id ? "#eff6ff" : "#fff",
+                      borderRadius: 10,
+                      padding: "1rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                      {plan.name}
+                    </div>
+                    <div
+                      style={{
+                        color: "#0d5bd7",
+                        fontWeight: 800,
+                        fontSize: "1.4rem",
+                        marginBottom: 8,
+                      }}
+                    >
+                      {formatVnd(plan.price_vnd)}
+                    </div>
+                    <div style={{ color: "#64748b", fontSize: "0.85rem" }}>
+                      {plan.duration_days} ngày • {plan.max_machines} máy
+                    </div>
+                    <ul
+                      style={{
+                        margin: "0.75rem 0 0",
+                        paddingLeft: "1.1rem",
+                        color: "#334155",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      {(plan.features || []).slice(0, 5).map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "0.75rem",
+                marginTop: "1rem",
+              }}
+            >
+              <input
+                placeholder="Tên khách hàng / CLB"
+                value={buyerInfo.customerName}
+                onChange={(e) =>
+                  setBuyerInfo({ ...buyerInfo, customerName: e.target.value })
+                }
+                style={{
+                  padding: "0.7rem",
+                  borderRadius: 8,
+                  border: "1px solid #cbd5e1",
+                }}
+              />
+              <input
+                placeholder="SĐT / Zalo"
+                value={buyerInfo.customerPhone}
+                onChange={(e) =>
+                  setBuyerInfo({ ...buyerInfo, customerPhone: e.target.value })
+                }
+                style={{
+                  padding: "0.7rem",
+                  borderRadius: 8,
+                  border: "1px solid #cbd5e1",
+                }}
+              />
+              <input
+                placeholder="Email"
+                value={buyerInfo.customerEmail}
+                onChange={(e) =>
+                  setBuyerInfo({ ...buyerInfo, customerEmail: e.target.value })
+                }
+                style={{
+                  padding: "0.7rem",
+                  borderRadius: 8,
+                  border: "1px solid #cbd5e1",
+                }}
+              />
+            </div>
+
+            <div style={{ marginTop: "0.75rem" }}>
+              <label
+                style={{
+                  display: "block",
+                  color: "#64748b",
+                  fontSize: "0.85rem",
+                  marginBottom: "0.35rem",
+                }}
+              >
+                ID Máy tính
+              </label>
+              <input
+                readOnly
+                value={machineId}
+                onClick={(e) => e.target.select()}
+                style={{
+                  width: "100%",
+                  padding: "0.7rem",
+                  borderRadius: 8,
+                  border: "1px solid #cbd5e1",
+                  background: "#f8fafc",
+                  color: "#334155",
+                  fontFamily: "monospace",
+                  fontWeight: 700,
+                  cursor: "text",
+                }}
+              />
+            </div>
+
+            {paymentError && (
+              <div
+                style={{
+                  marginTop: "0.75rem",
+                  color: "#b91c1c",
+                  background: "#fee2e2",
+                  borderRadius: 8,
+                  padding: "0.65rem",
+                }}
+              >
+                {paymentError}
+              </div>
+            )}
+
+            <button
+              onClick={handleCreateOrder}
+              disabled={purchaseLoading || !selectedPlanId}
+              style={{
+                width: "100%",
+                marginTop: "1rem",
+                padding: "0.85rem 1rem",
+                background: "#2563eb",
+                color: "#fff",
+                border: 0,
+                borderRadius: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+                opacity: purchaseLoading ? 0.7 : 1,
+              }}
+            >
+              {purchaseLoading ? "Đang tạo đơn..." : "Tiếp tục"}
+            </button>
+          </>
+        ) : paidLicenseKey ? (
+          <div
+            style={{
+              border: "1px solid #bbf7d0",
+              background: "#f0fdf4",
+              borderRadius: 12,
+              padding: "1rem",
+            }}
+          >
+            <div style={{ fontWeight: 800, color: "#166534" }}>
+              Đơn hàng đã được xác nhận
+            </div>
+            <div style={{ color: "#64748b", fontSize: "0.9rem" }}>
+              Mã đơn {paymentOrder.order.order_code} đã có license.
+            </div>
+            <code
+              style={{
+                display: "block",
+                margin: "0.75rem 0",
+                padding: "0.75rem",
+                background: "#fff",
+                border: "1px solid #dcfce7",
+                borderRadius: 10,
+                wordBreak: "break-all",
+              }}
+            >
+              {paidLicenseKey}
+            </code>
+            <button
+              onClick={handleManualActivate}
+              style={{
+                width: "100%",
+                padding: "0.85rem 1rem",
+                background: "#10b981",
+                color: "#fff",
+                border: 0,
+                borderRadius: 10,
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              Kích hoạt license
+            </button>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(220px, 320px) 1fr",
+              gap: "1rem",
+              alignItems: "start",
+            }}
+          >
+            <div
+              style={{
+                border: "1px solid #dbe3ef",
+                borderRadius: 12,
+                padding: "0.75rem",
+                textAlign: "center",
+              }}
+            >
+              {paymentOrder.qrUrl ? (
+                <img
+                  src={paymentOrder.qrUrl}
+                  alt="VietQR"
+                  style={{ width: "100%", borderRadius: 8 }}
+                />
+              ) : (
+                <div style={{ color: "#b91c1c", padding: "2rem 0" }}>
+                  Admin chưa cấu hình tài khoản VietQR.
+                </div>
+              )}
+            </div>
+            <div>
+              <div style={{ color: "#64748b", fontSize: "0.9rem" }}>
+                Mã đơn hàng
+              </div>
+              <div
+                style={{
+                  fontWeight: 800,
+                  fontSize: "1.5rem",
+                  letterSpacing: 1,
+                  marginBottom: "0.75rem",
+                }}
+              >
+                {paymentOrder.order.order_code}
+              </div>
+              <div style={{ color: "#64748b", fontSize: "0.9rem" }}>
+                Số tiền
+              </div>
+              <div
+                style={{
+                  fontWeight: 800,
+                  color: "#0d5bd7",
+                  fontSize: "1.5rem",
+                  marginBottom: "0.75rem",
+                }}
+              >
+                {formatVnd(paymentOrder.order.amount_vnd)}
+              </div>
+              <div
+                style={{
+                  background: "#f1f5f9",
+                  borderRadius: 10,
+                  padding: "0.75rem",
+                  color: "#334155",
+                  fontSize: "0.9rem",
+                  lineHeight: 1.5,
+                }}
+              >
+                Chuyển khoản đúng số tiền và nội dung{" "}
+                <strong>{paymentOrder.order.order_code}</strong>. Sau khi admin
+                xác nhận, license sẽ được cấp và gửi lại cho bạn.
+              </div>
+              {paymentError && (
+                <div
+                  style={{
+                    marginTop: "0.75rem",
+                    color: "#b91c1c",
+                    background: "#fee2e2",
+                    borderRadius: 8,
+                    padding: "0.65rem",
+                  }}
+                >
+                  {paymentError}
+                </div>
+              )}
+              <button
+                onClick={handleCheckPayment}
+                disabled={checkingOrder}
+                style={{
+                  width: "100%",
+                  marginTop: "0.75rem",
+                  padding: "0.85rem 1rem",
+                  background: "#10b981",
+                  color: "#fff",
+                  border: 0,
+                  borderRadius: 10,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  opacity: checkingOrder ? 0.7 : 1,
+                }}
+              >
+                {checkingOrder ? "Đang kiểm tra..." : "Kiểm tra thanh toán"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function LicenseWarning({
+  type,
+  onCancel,
+  onSuccess,
+  purchaseOnly = false,
+}) {
   const fileInputRef = useRef(null);
   const machineId = generateMachineId();
   const [manualKey, setManualKey] = useState("");
   const [copySuccess, setCopySuccess] = useState(false);
   const machineIdInputRef = useRef(null);
+  const [showPurchase, setShowPurchase] = useState(purchaseOnly);
+  const [plans, setPlans] = useState([]);
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState("");
+  const [buyerInfo, setBuyerInfo] = useState({
+    customerName: "",
+    customerPhone: "",
+    customerEmail: "",
+  });
+  const [paymentOrder, setPaymentOrder] = useState(null);
+  const [paymentError, setPaymentError] = useState("");
+  const [checkingOrder, setCheckingOrder] = useState(false);
+  const [paidLicenseKey, setPaidLicenseKey] = useState("");
+  const [toast, setToast] = useState(null);
+  const pendingPaymentKey = `krt_pending_payment_order_${machineId}`;
+
+  const showToast = (message, toastType = "success") => {
+    setToast({ message, type: toastType, key: Date.now() });
+  };
+
+  const savePendingPayment = (payload) => {
+    localStorage.setItem(
+      pendingPaymentKey,
+      JSON.stringify({ ...payload, savedAt: new Date().toISOString() })
+    );
+  };
+
+  const loadPendingPayment = () => {
+    try {
+      const saved = localStorage.getItem(pendingPaymentKey);
+      return saved ? JSON.parse(saved) : null;
+    } catch (error) {
+      localStorage.removeItem(pendingPaymentKey);
+      return null;
+    }
+  };
+
+  const clearPendingPayment = () => {
+    localStorage.removeItem(pendingPaymentKey);
+  };
+
+  useEffect(() => {
+    if (!showPurchase) return;
+    let mounted = true;
+    setPurchaseLoading(true);
+    getPublicPricing().then((result) => {
+      if (!mounted) return;
+      if (result.success) {
+        const loadedPlans = result.plans || [];
+        setPlans(loadedPlans);
+        setSelectedPlanId(loadedPlans[0]?.id || "");
+      } else {
+        const message = result.message || "Không tải được bảng giá";
+        setPaymentError(message);
+        showToast(message, "error");
+      }
+      setPurchaseLoading(false);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [showPurchase]);
 
   // Copy to clipboard function - works in both Electron and browser
   const handleCopyMachineId = async () => {
@@ -47,16 +540,16 @@ export default function LicenseWarning({ type, onCancel, onSuccess }) {
       // Select text so user can Ctrl+C
       if (machineIdInputRef.current) {
         machineIdInputRef.current.select();
-        alert("Vui lòng nhấn Ctrl+C để copy!");
+        showToast("Vui lòng nhấn Ctrl+C để copy!", "error");
       } else {
-        alert("Không thể copy. Vui lòng copy thủ công.");
+        showToast("Không thể copy. Vui lòng copy thủ công.", "error");
       }
     }
   };
 
   const handleManualActivate = async () => {
     if (!manualKey.trim()) {
-      alert("Vui lòng nhập License Key!");
+      showToast("Vui lòng nhập License Key!", "error");
       return;
     }
 
@@ -64,13 +557,14 @@ export default function LicenseWarning({ type, onCancel, onSuccess }) {
       const result = await activateLicense(manualKey.trim(), machineId);
 
       if (result.valid) {
-        alert("Kích hoạt bản quyền thành công!");
-        if (onSuccess) onSuccess();
+        showToast("Kích hoạt bản quyền thành công!");
+        clearPendingPayment();
+        if (onSuccess) setTimeout(onSuccess, 700);
       } else {
-        alert(`Lỗi kích hoạt: ${result.error || "Key không hợp lệ"}`);
+        showToast(`Lỗi kích hoạt: ${result.error || "Key không hợp lệ"}`, "error");
       }
     } catch (err) {
-      alert(`Lỗi hệ thống: ${err.message}`);
+      showToast(`Lỗi hệ thống: ${err.message}`, "error");
     }
   };
 
@@ -90,13 +584,13 @@ export default function LicenseWarning({ type, onCancel, onSuccess }) {
           // Based on previous view, importLicenseFile calls activateLicense internally and returns result.
           // let's double check importLicenseFile implementation in licenseService.js
           // Yes, importLicenseFile calls activateLicense. So imported IS the result.
-           alert("Cài đặt bản quyền thành công!");
-           if (onSuccess) onSuccess();
+           showToast("Cài đặt bản quyền thành công!");
+           if (onSuccess) setTimeout(onSuccess, 700);
       } else {
-           alert(`Lỗi kích hoạt: ${imported.error}`);
+           showToast(`Lỗi kích hoạt: ${imported.error}`, "error");
       }
     } catch (err) {
-      alert(`Lỗi đọc file: ${err.message}`);
+      showToast(`Lỗi đọc file: ${err.message}`, "error");
     }
 
     // Reset input
@@ -104,7 +598,88 @@ export default function LicenseWarning({ type, onCancel, onSuccess }) {
   };
 
   const handleBuyClick = () => {
-    alert("Vui lòng liên hệ luuquankarate@gmail.com để mua bản quyền.");
+    setShowPurchase(true);
+    setPaymentError("");
+    const saved = loadPendingPayment();
+    if (saved?.paymentOrder) {
+      setPaymentOrder(saved.paymentOrder);
+      if (saved.licenseKey) {
+        setPaidLicenseKey(saved.licenseKey);
+        setManualKey(saved.licenseKey);
+        showToast("Đã có license. Bấm Kích hoạt để hoàn tất.");
+      } else {
+        checkPaymentStatus(saved.paymentOrder, { restored: true });
+      }
+    }
+  };
+
+  const handleCreateOrder = async () => {
+    if (!selectedPlanId) {
+      setPaymentError("Vui lòng chọn gói");
+      showToast("Vui lòng chọn gói", "error");
+      return;
+    }
+    setPaymentError("");
+    setPurchaseLoading(true);
+    const result = await createPaymentOrder({
+      planId: selectedPlanId,
+      machineId,
+      ...buyerInfo,
+    });
+    if (result.success) {
+      setPaymentOrder(result);
+      setPaidLicenseKey("");
+      savePendingPayment({ paymentOrder: result });
+      showToast("Đã tạo mã QR thanh toán");
+    } else {
+      const message = result.message || "Không thể tạo đơn thanh toán";
+      setPaymentError(message);
+      showToast(message, "error");
+    }
+    setPurchaseLoading(false);
+  };
+
+  const formatVnd = (value) =>
+    new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+      maximumFractionDigits: 0,
+    }).format(Number(value || 0));
+
+  const checkPaymentStatus = async (orderPayload, options = {}) => {
+    if (!orderPayload?.order?.order_code) return;
+    setCheckingOrder(true);
+    setPaymentError("");
+    const result = await getPaymentOrderStatus(
+      orderPayload.order.order_code,
+      machineId
+    );
+    if (result.success && result.order?.status === "paid") {
+      const paidKey = result.order.license_key;
+      if (paidKey) {
+        setManualKey(paidKey);
+        setPaidLicenseKey(paidKey);
+        savePendingPayment({ paymentOrder: orderPayload, licenseKey: paidKey });
+        showToast("Đã nhận license. Bấm Kích hoạt để hoàn tất.");
+      } else {
+        const message = "Đơn đã thanh toán nhưng chưa có license key.";
+        setPaymentError(message);
+        showToast(message, "error");
+      }
+    } else if (result.success) {
+      const message = "Đơn chưa được admin xác nhận thanh toán.";
+      setPaymentError(message);
+      if (!options.restored) showToast(message, "error");
+    } else {
+      const message = result.message || "Không kiểm tra được thanh toán";
+      setPaymentError(message);
+      showToast(message, "error");
+    }
+    setCheckingOrder(false);
+  };
+
+  const handleCheckPayment = async () => {
+    await checkPaymentStatus(paymentOrder);
   };
 
   const handleRequestClick = () => {
@@ -121,6 +696,8 @@ export default function LicenseWarning({ type, onCancel, onSuccess }) {
 
   return (
     <div className="license-warning-overlay">
+      <LicenseToast toast={toast} onClose={() => setToast(null)} />
+      {!purchaseOnly && (
       <div className="license-warning-container">
         {/* Header */}
         <div className="license-warning-header">
@@ -311,7 +888,462 @@ export default function LicenseWarning({ type, onCancel, onSuccess }) {
             Để sau
           </button>
         </div>
+
+        {showPurchase && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(15, 23, 42, 0.72)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 10001,
+              padding: "1rem",
+            }}
+            onClick={() => setShowPurchase(false)}
+          >
+            <div
+              style={{
+                width: "min(720px, 100%)",
+                maxHeight: "88vh",
+                overflow: "auto",
+                background: "#ffffff",
+                color: "#0f172a",
+                borderRadius: 12,
+                boxShadow: "0 24px 80px rgba(15, 23, 42, 0.35)",
+                padding: "1.25rem",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "1rem",
+                  marginBottom: "1rem",
+                }}
+              >
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1.2rem" }}>
+                    Mua License K-SPORT
+                  </h3>
+                  <p style={{ margin: "0.25rem 0 0", color: "#64748b" }}>
+                    Chọn gói, tạo mã QR và chuyển khoản đúng nội dung đơn hàng.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowPurchase(false)}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontSize: 20,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              {!paymentOrder ? (
+                <>
+                  {purchaseLoading && plans.length === 0 ? (
+                    <div style={{ color: "#64748b" }}>Đang tải bảng giá...</div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit, minmax(220px, 1fr))",
+                        gap: "0.75rem",
+                      }}
+                    >
+                      {plans.map((plan) => (
+                        <button
+                          key={plan.id}
+                          onClick={() => setSelectedPlanId(plan.id)}
+                          style={{
+                            textAlign: "left",
+                            border:
+                              selectedPlanId === plan.id
+                                ? "2px solid #2563eb"
+                                : "1px solid #dbe3ef",
+                            background:
+                              selectedPlanId === plan.id ? "#eff6ff" : "#fff",
+                            borderRadius: 10,
+                            padding: "1rem",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                            {plan.name}
+                          </div>
+                          <div
+                            style={{
+                              color: "#0d5bd7",
+                              fontWeight: 800,
+                              fontSize: "1.4rem",
+                              marginBottom: 8,
+                            }}
+                          >
+                            {formatVnd(plan.price_vnd)}
+                          </div>
+                          <div style={{ color: "#64748b", fontSize: "0.85rem" }}>
+                            {plan.duration_days} ngày • {plan.max_machines} máy
+                          </div>
+                          <ul
+                            style={{
+                              margin: "0.75rem 0 0",
+                              paddingLeft: "1.1rem",
+                              color: "#334155",
+                              fontSize: "0.85rem",
+                            }}
+                          >
+                            {(plan.features || []).slice(0, 5).map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(180px, 1fr))",
+                      gap: "0.75rem",
+                      marginTop: "1rem",
+                    }}
+                  >
+                    <input
+                      placeholder="Tên khách hàng / CLB"
+                      value={buyerInfo.customerName}
+                      onChange={(e) =>
+                        setBuyerInfo({
+                          ...buyerInfo,
+                          customerName: e.target.value,
+                        })
+                      }
+                      style={{
+                        padding: "0.7rem",
+                        borderRadius: 8,
+                        border: "1px solid #cbd5e1",
+                      }}
+                    />
+                    <input
+                      placeholder="SĐT / Zalo"
+                      value={buyerInfo.customerPhone}
+                      onChange={(e) =>
+                        setBuyerInfo({
+                          ...buyerInfo,
+                          customerPhone: e.target.value,
+                        })
+                      }
+                      style={{
+                        padding: "0.7rem",
+                        borderRadius: 8,
+                        border: "1px solid #cbd5e1",
+                      }}
+                    />
+                    <input
+                      placeholder="Email"
+                      value={buyerInfo.customerEmail}
+                      onChange={(e) =>
+                        setBuyerInfo({
+                          ...buyerInfo,
+                          customerEmail: e.target.value,
+                        })
+                      }
+                      style={{
+                        padding: "0.7rem",
+                        borderRadius: 8,
+                        border: "1px solid #cbd5e1",
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginTop: "0.75rem" }}>
+                    <label
+                      style={{
+                        display: "block",
+                        color: "#64748b",
+                        fontSize: "0.85rem",
+                        marginBottom: "0.35rem",
+                      }}
+                    >
+                      ID Máy tính
+                    </label>
+                    <input
+                      readOnly
+                      value={machineId}
+                      onClick={(e) => e.target.select()}
+                      style={{
+                        width: "100%",
+                        padding: "0.7rem",
+                        borderRadius: 8,
+                        border: "1px solid #cbd5e1",
+                        background: "#f8fafc",
+                        color: "#334155",
+                        fontFamily: "monospace",
+                        fontWeight: 700,
+                        cursor: "text",
+                      }}
+                    />
+                  </div>
+
+                  {paymentError && (
+                    <div
+                      style={{
+                        marginTop: "0.75rem",
+                        color: "#b91c1c",
+                        background: "#fee2e2",
+                        borderRadius: 8,
+                        padding: "0.65rem",
+                      }}
+                    >
+                      {paymentError}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleCreateOrder}
+                    disabled={purchaseLoading || !selectedPlanId}
+                    style={{
+                      width: "100%",
+                      marginTop: "1rem",
+                      padding: "0.85rem 1rem",
+                      background: "#2563eb",
+                      color: "#fff",
+                      border: 0,
+                      borderRadius: 10,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      opacity: purchaseLoading ? 0.7 : 1,
+                    }}
+                  >
+                    {purchaseLoading ? "Đang tạo đơn..." : "Tiếp tục"}
+                  </button>
+                </>
+              ) : paidLicenseKey ? (
+                <div
+                  style={{
+                    border: "1px solid #bbf7d0",
+                    background: "#f0fdf4",
+                    borderRadius: 12,
+                    padding: "1rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                      marginBottom: "0.75rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 999,
+                        background: "#16a34a",
+                        color: "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 900,
+                      }}
+                    >
+                      ✓
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, color: "#166534" }}>
+                        Đơn hàng đã được xác nhận
+                      </div>
+                      <div style={{ color: "#64748b", fontSize: "0.9rem" }}>
+                        Mã đơn {paymentOrder.order.order_code} đã có license.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: "#fff",
+                      border: "1px solid #dcfce7",
+                      borderRadius: 10,
+                      padding: "0.75rem",
+                      marginBottom: "0.75rem",
+                    }}
+                  >
+                    <div style={{ color: "#64748b", fontSize: "0.85rem" }}>
+                      License Key
+                    </div>
+                    <code
+                      style={{
+                        display: "block",
+                        marginTop: "0.35rem",
+                        color: "#0f172a",
+                        fontSize: "0.82rem",
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      {paidLicenseKey}
+                    </code>
+                  </div>
+
+                  <button
+                    onClick={handleManualActivate}
+                    style={{
+                      width: "100%",
+                      padding: "0.85rem 1rem",
+                      background: "#10b981",
+                      color: "#fff",
+                      border: 0,
+                      borderRadius: 10,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Kích hoạt license
+                  </button>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(220px, 320px) 1fr",
+                    gap: "1rem",
+                    alignItems: "start",
+                  }}
+                >
+                  <div
+                    style={{
+                      border: "1px solid #dbe3ef",
+                      borderRadius: 12,
+                      padding: "0.75rem",
+                      textAlign: "center",
+                    }}
+                  >
+                    {paymentOrder.qrUrl ? (
+                      <img
+                        src={paymentOrder.qrUrl}
+                        alt="VietQR"
+                        style={{ width: "100%", borderRadius: 8 }}
+                      />
+                    ) : (
+                      <div style={{ color: "#b91c1c", padding: "2rem 0" }}>
+                        Admin chưa cấu hình tài khoản VietQR.
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ color: "#64748b", fontSize: "0.9rem" }}>
+                      Mã đơn hàng
+                    </div>
+                    <div
+                      style={{
+                        fontWeight: 800,
+                        fontSize: "1.5rem",
+                        letterSpacing: 1,
+                        marginBottom: "0.75rem",
+                      }}
+                    >
+                      {paymentOrder.order.order_code}
+                    </div>
+                    <div style={{ color: "#64748b", fontSize: "0.9rem" }}>
+                      Số tiền
+                    </div>
+                    <div
+                      style={{
+                        fontWeight: 800,
+                        color: "#0d5bd7",
+                        fontSize: "1.5rem",
+                        marginBottom: "0.75rem",
+                      }}
+                    >
+                      {formatVnd(paymentOrder.order.amount_vnd)}
+                    </div>
+                    <div
+                      style={{
+                        background: "#f1f5f9",
+                        borderRadius: 10,
+                        padding: "0.75rem",
+                        color: "#334155",
+                        fontSize: "0.9rem",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Chuyển khoản đúng số tiền và nội dung{" "}
+                      <strong>{paymentOrder.order.order_code}</strong>. Sau khi
+                      admin xác nhận, license sẽ được cấp và gửi lại cho bạn.
+                    </div>
+                    {paymentError && (
+                      <div
+                        style={{
+                          marginTop: "0.75rem",
+                          color: "#b91c1c",
+                          background: "#fee2e2",
+                          borderRadius: 8,
+                          padding: "0.65rem",
+                        }}
+                      >
+                        {paymentError}
+                      </div>
+                    )}
+                    <button
+                      onClick={handleCheckPayment}
+                      disabled={checkingOrder}
+                      style={{
+                        width: "100%",
+                        marginTop: "0.75rem",
+                        padding: "0.85rem 1rem",
+                        background: "#10b981",
+                        color: "#fff",
+                        border: 0,
+                        borderRadius: 10,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        opacity: checkingOrder ? 0.7 : 1,
+                      }}
+                    >
+                      {checkingOrder ? "Đang kiểm tra..." : "Kiểm tra thanh toán"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+      )}
+
+      {purchaseOnly && showPurchase && (
+        <PurchaseDialog
+          plans={plans}
+          selectedPlanId={selectedPlanId}
+          setSelectedPlanId={setSelectedPlanId}
+          purchaseLoading={purchaseLoading}
+          buyerInfo={buyerInfo}
+          setBuyerInfo={setBuyerInfo}
+          paymentError={paymentError}
+          handleCreateOrder={handleCreateOrder}
+          paymentOrder={paymentOrder}
+          paidLicenseKey={paidLicenseKey}
+          manualKey={manualKey}
+          machineId={machineId}
+          checkingOrder={checkingOrder}
+          handleCheckPayment={handleCheckPayment}
+          handleManualActivate={handleManualActivate}
+          formatVnd={formatVnd}
+          onClose={onCancel}
+        />
+      )}
     </div>
   );
 }

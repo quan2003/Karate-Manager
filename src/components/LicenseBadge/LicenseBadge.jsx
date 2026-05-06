@@ -1,15 +1,13 @@
-import { useEffect, useState } from 'react';
-import { getLicenseStatus, isTrialLicense } from '../../services/licenseService';
-import LicenseManager from '../LicenseManager/LicenseManager';
-import './LicenseBadge.css';
+import { useEffect, useState } from "react";
+import { getLicenseStatus } from "../../services/licenseService";
+import LicenseManager from "../LicenseManager/LicenseManager";
+import LicenseWarning from "../LicenseWarning/LicenseWarning";
+import "./LicenseBadge.css";
 
-/**
- * Badge hiển thị trạng thái license ở góc màn hình
- * Click vào để mở popup Quản lý Bản quyền
- */
 export default function LicenseBadge() {
   const [status, setStatus] = useState(null);
   const [showManager, setShowManager] = useState(false);
+  const [showPurchase, setShowPurchase] = useState(false);
 
   useEffect(() => {
     const updateStatus = () => {
@@ -17,52 +15,54 @@ export default function LicenseBadge() {
     };
 
     updateStatus();
-    
-    // Listen for license changes
-    window.addEventListener('licenseChanged', updateStatus);
-    
+    window.addEventListener("licenseChanged", updateStatus);
+
     return () => {
-      window.removeEventListener('licenseChanged', updateStatus);
+      window.removeEventListener("licenseChanged", updateStatus);
     };
   }, []);
 
   const handleLicenseChanged = () => {
     setStatus(getLicenseStatus());
-    // Dispatch event so other components update too
-    window.dispatchEvent(new CustomEvent('licenseChanged'));
+    window.dispatchEvent(new CustomEvent("licenseChanged"));
+  };
+
+  const handleBuyLicense = () => {
+    setShowManager(false);
+    setShowPurchase(true);
   };
 
   if (!status) return null;
 
-  // Determine badge type
-  const isTrial = status.status === 'trial';
-  const isActive = status.status === 'active';
-  const isExpired = status.status === 'expired';
-  const isNone = status.status === 'none';
-
-  // Don't show badge if no license and not trial
-  if (isNone) return null;
+  const isNone = status.status === "none";
+  const isTrial = status.status === "trial";
+  const isActive = status.status === "active";
+  const isExpired = status.status === "expired";
 
   return (
     <>
-      <div 
-        className={`license-badge ${isTrial ? 'trial' : ''} ${isActive ? 'active' : ''} ${isExpired ? 'expired' : ''}`}
+      <div
+        className={`license-badge ${isNone ? "none" : ""} ${
+          isTrial ? "trial" : ""
+        } ${isActive ? "active" : ""} ${isExpired ? "expired" : ""}`}
         onClick={() => setShowManager(true)}
-        style={{ cursor: 'pointer' }}
         title="Click để quản lý bản quyền"
       >
         <div className="badge-icon">
-          {isTrial && '🔓'}
-          {isActive && '✅'}
-          {isExpired && '❌'}
+          {isNone && "🔒"}
+          {isTrial && "🔓"}
+          {isActive && "✅"}
+          {isExpired && "❌"}
         </div>
         <div className="badge-content">
           <div className="badge-label">
-            {isTrial && 'BẢN DÙNG THỬ'}
-            {isActive && 'BẢN QUYỀN'}
-            {isExpired && 'HẾT HẠN'}
+            {isNone && "CHƯA BẢN QUYỀN"}
+            {isTrial && "BẢN DÙNG THỬ"}
+            {isActive && "BẢN QUYỀN"}
+            {isExpired && "HẾT HẠN"}
           </div>
           <div className="badge-detail">
+            {isNone && <span>Mua bản quyền</span>}
             {status.daysRemaining !== undefined && status.daysRemaining > 0 && (
               <span>Còn {status.daysRemaining} ngày</span>
             )}
@@ -71,11 +71,23 @@ export default function LicenseBadge() {
         </div>
       </div>
 
-      {/* License Manager Popup */}
       {showManager && (
-        <LicenseManager 
+        <LicenseManager
           onClose={() => setShowManager(false)}
           onLicenseChanged={handleLicenseChanged}
+          onBuyLicense={handleBuyLicense}
+        />
+      )}
+
+      {showPurchase && (
+        <LicenseWarning
+          type={isExpired ? "expired" : "demo"}
+          purchaseOnly
+          onCancel={() => setShowPurchase(false)}
+          onSuccess={() => {
+            setShowPurchase(false);
+            handleLicenseChanged();
+          }}
         />
       )}
     </>

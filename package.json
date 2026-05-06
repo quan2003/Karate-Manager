@@ -1,7 +1,7 @@
 {
   "name": "k-sport",
   "private": true,
-  "version": "1.1.7",
+  "version": "1.1.8",
   "type": "module",
   "main": "electron.cjs",
   "author": "K-SPORT",
@@ -16,7 +16,7 @@
     "electron:build:mac": "npm run build && electron-builder --mac",
     "electron:build:all": "npm run build && electron-builder -mwl",
     "electron:build:dir": "npm run build && electron-builder --win --x64 --dir",
-    "deploy-server": "scp license-server/server.js root@103.82.194.186:/root/karate-license-server/ && ssh root@103.82.194.186 \"pm2 restart all\"",
+    "deploy-server": "scp license-server/server.js root@103.82.193.133:/root/karate-app/license-server/ && ssh root@103.82.193.133 \"pm2 restart all\"",
     "version": "node scripts/update-version-date.js && git add package.json",
     "rebuild-sqlite": "electron-rebuild -f -w better-sqlite3"
   },
@@ -27,6 +27,7 @@
     "electron-updater": "^6.8.3",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.0.0",
+    "lucide-react": "^1.14.0",
     "pdf-lib": "^1.17.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

@@ -3,9 +3,9 @@ const { NodeSSH } = require('node-ssh');
 const ssh = new NodeSSH();
 
 async function deploy() {
-  const host = '103.82.194.186';
+  const host = '103.82.193.133';
   const username = 'root';
-  const password = 'j7D4w1rMTAnGXS4f';
+  const password = '6N9Z6bW0nc3tZ5Gy';
 
   try {
     console.log(`Đang kết nối tới VPS ${host}...`);

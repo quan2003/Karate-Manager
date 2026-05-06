@@ -6,6 +6,8 @@ import DashboardPage from './pages/DashboardPage';
 import LicensePage from './pages/LicensePage';
 import UsersPage from './pages/UsersPage';
 import RequestsPage from './pages/RequestsPage';
+import PaymentOrdersPage from './pages/PaymentOrdersPage';
+import PaymentConfigPage from './pages/PaymentConfigPage';
 import Sidebar from './components/Sidebar';
 
 const ProtectedLayout = () => {
@@ -35,6 +37,9 @@ function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/licenses" element={<LicensePage />} />
+            <Route path="/payments" element={<Navigate to="/payment-orders" replace />} />
+            <Route path="/payment-orders" element={<PaymentOrdersPage />} />
+            <Route path="/payment-config" element={<PaymentConfigPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/requests" element={<RequestsPage />} />
           </Route>

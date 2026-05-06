@@ -42,6 +42,7 @@ pool.query("SELECT NOW()", (err, res) => {
     initializeAdminSchema();
     initializeAccountsSchema();
     initializeRequestsSchema();
+    initializeCommerceSchema();
     // Start cleanup jobs after schemas are ready
     setTimeout(() => {
       cleanupRevokedExpiredLicenses();
@@ -154,6 +155,193 @@ const initializeRequestsSchema = async () => {
   } catch (err) {
     console.error("Error creating requests schema:", err);
   }
+};
+
+const initializeCommerceSchema = async () => {
+  try {
+    await pool.query("CREATE EXTENSION IF NOT EXISTS pgcrypto;");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pricing_plans (
+        id TEXT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        license_type VARCHAR(50) NOT NULL,
+        duration_days INTEGER NOT NULL,
+        max_machines INTEGER NOT NULL DEFAULT 1,
+        price_vnd INTEGER NOT NULL DEFAULT 0,
+        features TEXT[] DEFAULT '{}',
+        is_active BOOLEAN DEFAULT TRUE,
+        sort_order INTEGER DEFAULT 0,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS payment_settings (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        bank_id VARCHAR(50),
+        account_no VARCHAR(50),
+        account_name VARCHAR(100),
+        qr_template VARCHAR(50) DEFAULT 'compact2',
+        qr_image_url TEXT,
+        instructions TEXT,
+        contact_phone VARCHAR(50),
+        contact_email VARCHAR(255),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await pool.query("ALTER TABLE payment_settings ADD COLUMN IF NOT EXISTS qr_image_url TEXT;");
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS payment_orders (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_code VARCHAR(32) UNIQUE NOT NULL,
+        plan_id TEXT REFERENCES pricing_plans(id),
+        plan_name VARCHAR(255) NOT NULL,
+        license_type VARCHAR(50) NOT NULL,
+        duration_days INTEGER NOT NULL,
+        max_machines INTEGER NOT NULL,
+        amount_vnd INTEGER NOT NULL,
+        machine_id TEXT NOT NULL,
+        customer_name VARCHAR(255),
+        customer_phone VARCHAR(50),
+        customer_email VARCHAR(255),
+        note TEXT,
+        status VARCHAR(20) DEFAULT 'pending',
+        license_key TEXT,
+        admin_note TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        paid_at TIMESTAMPTZ
+      );
+    `);
+
+    await pool.query(`
+      INSERT INTO pricing_plans
+        (id, name, description, license_type, duration_days, max_machines, price_vnd, features, sort_order)
+      VALUES
+        ('tournament', 'Goi License theo giai', 'Dung cho mot giai dau', 'tournament', 30, 1, 400000,
+          ARRAY['Quan ly VDV', 'Quan ly HLV', 'Boc tham tu dong', 'Xuat Sigma', 'Quan ly ket qua'], 1),
+        ('support', 'Goi Ho tro Online toan giai', 'Kem ho tro van hanh online', 'yearly', 30, 1, 800000,
+          ARRAY['Ho tro nhap du lieu dau vao', 'Ho tro van hanh online', 'Xuat Sigma', 'Tong ket toan giai'], 2)
+      ON CONFLICT (id) DO NOTHING;
+    `);
+
+    await pool.query(`
+      INSERT INTO payment_settings (id, qr_template, instructions, contact_email)
+      VALUES ('default', 'compact2', 'Chuyen khoan dung noi dung ma don hang de duoc xu ly nhanh.', 'luuquankarate@gmail.com')
+      ON CONFLICT (id) DO NOTHING;
+    `);
+
+    console.log("Commerce schema initialized successfully.");
+  } catch (err) {
+    console.error("Error creating commerce schema:", err);
+  }
+};
+
+const createLicenseRecord = async (
+  {
+    type,
+    days,
+    maxMachines,
+    clientName,
+    clientPhone,
+    clientEmail,
+    notes,
+  },
+  db = pool
+) => {
+  const duration = parseInt(days) || 30;
+  const machines = parseInt(maxMachines) || 1;
+  const licenseType = type || "trial";
+  const client = clientName || "Unknown";
+  const phone = clientPhone || null;
+  const email = clientEmail || null;
+  const note = notes || null;
+
+  const expiryDate = new Date();
+  expiryDate.setDate(expiryDate.getDate() + duration);
+
+  const licenseId = crypto.randomUUID();
+  const licenseDataContent = {
+    id: licenseId,
+    v: 2,
+    t: licenseType,
+    o: client,
+    c: new Date().toISOString(),
+    e: expiryDate.toISOString(),
+    mm: machines,
+    tmids: [],
+    kv: 1,
+  };
+
+  const rawKey = Buffer.from(JSON.stringify(licenseDataContent)).toString(
+    "base64"
+  );
+  const prefix = licenseType.charAt(0).toUpperCase();
+  const chunks = rawKey.match(/.{1,5}/g) || [];
+  const formattedKey = `KRT-${prefix}-${chunks.slice(0, 5).join("-")}`;
+
+  const result = await db.query(
+    `
+      INSERT INTO licenses (id, key, raw_key, type, client_name, client_phone, client_email, notes, expiry_date, max_machines, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
+      RETURNING *;
+    `,
+    [
+      licenseId,
+      formattedKey,
+      rawKey,
+      licenseType,
+      client,
+      phone,
+      email,
+      note,
+      expiryDate,
+      machines,
+    ]
+  );
+
+  const newLicense = result.rows[0];
+  return {
+    key: newLicense.key,
+    raw: newLicense.raw_key,
+    type: newLicense.type,
+    clientName: newLicense.client_name,
+    expiryDate: newLicense.expiry_date,
+    maxMachines: newLicense.max_machines,
+  };
+};
+
+const buildVietQrUrl = (settings, order) => {
+  if (!settings?.bank_id || !settings?.account_no || !settings?.account_name) {
+    return settings?.qr_image_url || null;
+  }
+  const normalizedBankId = normalizeVietQrBankId(settings.bank_id);
+  const bankId = encodeURIComponent(normalizedBankId);
+  const accountNo = encodeURIComponent(settings.account_no);
+  const template = encodeURIComponent(settings.qr_template || "compact2");
+  const params = new URLSearchParams({
+    amount: String(order.amount_vnd),
+    addInfo: order.order_code,
+    accountName: settings.account_name,
+  });
+  return `https://img.vietqr.io/image/${bankId}-${accountNo}-${template}.png?${params.toString()}`;
+};
+
+const normalizeVietQrBankId = (bankId) => {
+  const value = String(bankId || "").trim();
+  const normalized = value.toLowerCase();
+  if (normalized.includes("timo")) return "TIMO";
+  if (
+    normalized.includes("bvbank") ||
+    normalized.includes("ban viet") ||
+    normalized.includes("bản việt") ||
+    normalized.includes("viet capital")
+  ) {
+    return "VCCB";
+  }
+  return value.toUpperCase();
 };
 
 // === AUTO-CLEANUP FUNCTIONS ===
@@ -297,7 +485,8 @@ const loginLimiter = rateLimit({
 app.use(limiter);
 app.use(cors({ origin: "*" }));
 app.use(morgan("combined"));
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: "10mb" }));
+app.use(bodyParser.urlencoded({ extended: true, limit: "10mb" }));
 
 // --- Auth Middleware ---
 const authMiddleware = (req, res, next) => {
@@ -558,6 +747,41 @@ app.get("/api/stats/dashboard", authMiddleware, async (req, res) => {
     const typeRes = await pool.query(
       "SELECT type as name, COUNT(*) as count FROM licenses GROUP BY type"
     );
+    const paymentSummaryRes = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total_orders,
+        COUNT(*) FILTER (WHERE status = 'paid')::int AS paid_orders,
+        COUNT(*) FILTER (WHERE status <> 'paid')::int AS pending_orders,
+        COALESCE(SUM(amount_vnd) FILTER (WHERE status = 'paid'), 0)::bigint AS revenue_vnd,
+        COALESCE(SUM(amount_vnd) FILTER (WHERE status = 'paid' AND paid_at >= NOW() - INTERVAL '30 days'), 0)::bigint AS revenue_30d_vnd
+      FROM payment_orders
+    `);
+    const dailyRevenueRes = await pool.query(`
+      SELECT
+        TO_CHAR(day::date, 'DD/MM') AS day,
+        COALESCE(SUM(po.amount_vnd) FILTER (WHERE po.status = 'paid'), 0)::bigint AS revenue_vnd,
+        COUNT(po.id) FILTER (WHERE po.status = 'paid')::int AS paid_orders
+      FROM generate_series(
+        CURRENT_DATE - INTERVAL '13 days',
+        CURRENT_DATE,
+        INTERVAL '1 day'
+      ) AS day
+      LEFT JOIN payment_orders po
+        ON DATE(po.paid_at) = day::date
+      GROUP BY day
+      ORDER BY day
+    `);
+    const planRevenueRes = await pool.query(`
+      SELECT
+        COALESCE(plan_name, 'Không rõ') AS name,
+        COUNT(*)::int AS count,
+        COALESCE(SUM(amount_vnd), 0)::bigint AS revenue_vnd
+      FROM payment_orders
+      WHERE status = 'paid'
+      GROUP BY plan_name
+      ORDER BY revenue_vnd DESC
+      LIMIT 8
+    `);
 
     // Real pending request count
     let pendingCount = 0;
@@ -578,6 +802,15 @@ app.get("/api/stats/dashboard", authMiddleware, async (req, res) => {
         expiredLicenses: parseInt(expiredRes.rows[0].count),
         requestsPending: pendingCount,
         licensesByType: typeRes.rows,
+        payments: paymentSummaryRes.rows[0] || {
+          total_orders: 0,
+          paid_orders: 0,
+          pending_orders: 0,
+          revenue_vnd: 0,
+          revenue_30d_vnd: 0,
+        },
+        dailyRevenue: dailyRevenueRes.rows,
+        revenueByPlan: planRevenueRes.rows,
       },
     });
   } catch (err) {
@@ -600,6 +833,368 @@ app.get(
     }
   }
 );
+
+// Public pricing for website/client app
+app.get("/api/public/pricing", async (req, res) => {
+  try {
+    const plans = await pool.query(
+      "SELECT * FROM pricing_plans WHERE is_active = TRUE ORDER BY sort_order ASC, price_vnd ASC"
+    );
+    const settings = await pool.query(
+      "SELECT bank_id, account_no, account_name, qr_template, qr_image_url, instructions, contact_phone, contact_email FROM payment_settings WHERE id = 'default'"
+    );
+    res.json({
+      success: true,
+      plans: plans.rows,
+      paymentSettings: settings.rows[0] || null,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post("/api/payment/orders", async (req, res) => {
+  const {
+    planId,
+    machineId,
+    customerName,
+    customerPhone,
+    customerEmail,
+    note,
+  } = req.body;
+
+  if (!planId || !machineId) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Thiáº¿u gÃ³i hoáº·c Machine ID" });
+  }
+
+  try {
+    const planRes = await pool.query(
+      "SELECT * FROM pricing_plans WHERE id = $1 AND is_active = TRUE",
+      [planId]
+    );
+    if (planRes.rows.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "GÃ³i thanh toÃ¡n khÃ´ng tá»“n táº¡i" });
+    }
+
+    const plan = planRes.rows[0];
+    const orderCode = `KSP${Date.now().toString(36).toUpperCase()}`;
+    const orderRes = await pool.query(
+      `
+        INSERT INTO payment_orders
+          (order_code, plan_id, plan_name, license_type, duration_days, max_machines, amount_vnd,
+           machine_id, customer_name, customer_phone, customer_email, note)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING *;
+      `,
+      [
+        orderCode,
+        plan.id,
+        plan.name,
+        plan.license_type,
+        plan.duration_days,
+        plan.max_machines,
+        plan.price_vnd,
+        machineId,
+        customerName || null,
+        customerPhone || null,
+        customerEmail || null,
+        note || null,
+      ]
+    );
+
+    const settingsRes = await pool.query(
+      "SELECT * FROM payment_settings WHERE id = 'default'"
+    );
+    const order = orderRes.rows[0];
+    const qrUrl = buildVietQrUrl(settingsRes.rows[0], order);
+
+    res.json({ success: true, order, qrUrl, paymentSettings: settingsRes.rows[0] });
+  } catch (err) {
+    console.error("Create payment order error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/payment/orders/:orderCode", async (req, res) => {
+  const { machineId } = req.query;
+  try {
+    const result = await pool.query(
+      "SELECT order_code, status, license_key, amount_vnd, plan_name, machine_id, paid_at FROM payment_orders WHERE order_code = $1",
+      [req.params.orderCode]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n" });
+    }
+    const order = result.rows[0];
+    if (machineId && order.machine_id !== machineId) {
+      return res.status(403).json({ success: false, message: "Machine ID khÃ´ng khá»›p" });
+    }
+    res.json({ success: true, order });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/admin/pricing", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM pricing_plans ORDER BY sort_order ASC, price_vnd ASC"
+    );
+    res.json({ success: true, plans: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.put("/api/admin/pricing", authMiddleware, async (req, res) => {
+  const { plans } = req.body;
+  if (!Array.isArray(plans)) {
+    return res.status(400).json({ success: false, message: "Dá»¯ liá»‡u khÃ´ng há»£p lá»‡" });
+  }
+
+  const clientDb = await pool.connect();
+  try {
+    await clientDb.query("BEGIN");
+    for (const plan of plans) {
+      await clientDb.query(
+        `
+          INSERT INTO pricing_plans
+            (id, name, description, license_type, duration_days, max_machines, price_vnd, features, is_active, sort_order, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            description = EXCLUDED.description,
+            license_type = EXCLUDED.license_type,
+            duration_days = EXCLUDED.duration_days,
+            max_machines = EXCLUDED.max_machines,
+            price_vnd = EXCLUDED.price_vnd,
+            features = EXCLUDED.features,
+            is_active = EXCLUDED.is_active,
+            sort_order = EXCLUDED.sort_order,
+            updated_at = NOW();
+        `,
+        [
+          plan.id,
+          plan.name,
+          plan.description || null,
+          plan.license_type,
+          parseInt(plan.duration_days) || 30,
+          parseInt(plan.max_machines) || 1,
+          parseInt(plan.price_vnd) || 0,
+          Array.isArray(plan.features)
+            ? plan.features
+            : String(plan.features || "")
+                .split("\n")
+                .map((item) => item.trim())
+                .filter(Boolean),
+          plan.is_active !== false,
+          parseInt(plan.sort_order) || 0,
+        ]
+      );
+    }
+    await clientDb.query("COMMIT");
+    res.json({ success: true });
+  } catch (err) {
+    await clientDb.query("ROLLBACK");
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    clientDb.release();
+  }
+});
+
+app.delete("/api/admin/pricing/:id", authMiddleware, async (req, res) => {
+  try {
+    await pool.query("DELETE FROM pricing_plans WHERE id = $1", [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/admin/payment-settings", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM payment_settings WHERE id = 'default'"
+    );
+    res.json({ success: true, settings: result.rows[0] || null });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.put("/api/admin/payment-settings", authMiddleware, async (req, res) => {
+  const {
+    bank_id,
+    account_no,
+    account_name,
+    qr_template,
+    qr_image_url,
+    instructions,
+    contact_phone,
+    contact_email,
+  } = req.body;
+
+  try {
+    const result = await pool.query(
+      `
+        INSERT INTO payment_settings
+          (id, bank_id, account_no, account_name, qr_template, qr_image_url, instructions, contact_phone, contact_email, updated_at)
+        VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        ON CONFLICT (id) DO UPDATE SET
+          bank_id = EXCLUDED.bank_id,
+          account_no = EXCLUDED.account_no,
+          account_name = EXCLUDED.account_name,
+          qr_template = EXCLUDED.qr_template,
+          qr_image_url = EXCLUDED.qr_image_url,
+          instructions = EXCLUDED.instructions,
+          contact_phone = EXCLUDED.contact_phone,
+          contact_email = EXCLUDED.contact_email,
+          updated_at = NOW()
+        RETURNING *;
+      `,
+      [
+        bank_id || null,
+        account_no || null,
+        account_name || null,
+        qr_template || "compact2",
+        qr_image_url || null,
+        instructions || null,
+        contact_phone || null,
+        contact_email || null,
+      ]
+    );
+    res.json({ success: true, settings: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get("/api/admin/payment-orders", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM payment_orders ORDER BY created_at DESC LIMIT 200"
+    );
+    res.json({ success: true, orders: result.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.put("/api/admin/payment-orders/:id", authMiddleware, async (req, res) => {
+  const {
+    customer_name,
+    customer_phone,
+    customer_email,
+    amount_vnd,
+    plan_name,
+    note,
+  } = req.body;
+
+  try {
+    const result = await pool.query(
+      `
+        UPDATE payment_orders
+        SET customer_name = $1,
+            customer_phone = $2,
+            customer_email = $3,
+            amount_vnd = $4,
+            plan_name = $5,
+            note = $6
+        WHERE id = $7
+        RETURNING *;
+      `,
+      [
+        customer_name || null,
+        customer_phone || null,
+        customer_email || null,
+        parseInt(amount_vnd) || 0,
+        plan_name || "",
+        note || null,
+        req.params.id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n" });
+    }
+
+    res.json({ success: true, order: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.delete("/api/admin/payment-orders/:id", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "DELETE FROM payment_orders WHERE id = $1 RETURNING id",
+      [req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n" });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post("/api/admin/payment-orders/:id/mark-paid", authMiddleware, async (req, res) => {
+  const { adminNote } = req.body;
+  const clientDb = await pool.connect();
+  try {
+    await clientDb.query("BEGIN");
+    const orderRes = await clientDb.query(
+      "SELECT * FROM payment_orders WHERE id = $1 FOR UPDATE",
+      [req.params.id]
+    );
+    if (orderRes.rows.length === 0) {
+      await clientDb.query("ROLLBACK");
+      return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n" });
+    }
+
+    const order = orderRes.rows[0];
+    if (order.status === "paid" && order.license_key) {
+      await clientDb.query("COMMIT");
+      return res.json({ success: true, order });
+    }
+
+    const license = await createLicenseRecord(
+      {
+        type: order.license_type,
+        days: order.duration_days,
+        maxMachines: order.max_machines,
+        clientName: order.customer_name || order.order_code,
+        clientPhone: order.customer_phone,
+        clientEmail: order.customer_email,
+        notes: `Paid order ${order.order_code}${adminNote ? ` - ${adminNote}` : ""}`,
+      },
+      clientDb
+    );
+
+    const updateRes = await clientDb.query(
+      `
+        UPDATE payment_orders
+        SET status = 'paid', paid_at = NOW(), license_key = $1, admin_note = $2
+        WHERE id = $3
+        RETURNING *;
+      `,
+      [license.raw || license.key, adminNote || null, order.id]
+    );
+    await clientDb.query("COMMIT");
+    res.json({ success: true, order: updateRes.rows[0], license });
+  } catch (err) {
+    await clientDb.query("ROLLBACK");
+    console.error("Mark paid error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    clientDb.release();
+  }
+});
 
 // Serve Admin Web
 const path = require("path");
@@ -833,7 +1428,22 @@ app.get("/api/license/list", authMiddleware, async (req, res) => {
   // However, if called from Electron with secret query param, authMiddleware handles it.
   try {
     const result = await pool.query(
-      "SELECT * FROM licenses ORDER BY created_at DESC"
+      `
+        SELECT
+          l.*,
+          po.order_code AS payment_order_code,
+          po.customer_name AS payment_customer_name,
+          po.customer_phone AS payment_customer_phone,
+          po.customer_email AS payment_customer_email,
+          po.plan_name AS payment_plan_name,
+          po.amount_vnd AS payment_amount_vnd,
+          po.created_at AS payment_created_at,
+          po.paid_at AS payment_paid_at
+        FROM licenses l
+        LEFT JOIN payment_orders po
+          ON po.license_key = l.raw_key OR po.license_key = l.key
+        ORDER BY l.created_at DESC
+      `
     );
     res.json({
       success: true,
@@ -887,6 +1497,27 @@ app.post("/api/license/revoke", authMiddleware, async (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ success: false });
+  }
+});
+
+/**
+ * DELETE LICENSE (Admin)
+ */
+app.delete("/api/license/:id", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "DELETE FROM licenses WHERE id = $1 RETURNING id",
+      [req.params.id]
+    );
+    if (result.rowCount > 0) {
+      res.json({ success: true, message: "Đã xóa license khỏi database" });
+    } else {
+      res
+        .status(404)
+        .json({ success: false, message: "License không tìm thấy" });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

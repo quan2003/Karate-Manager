@@ -21,6 +21,12 @@
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
 }
 
+.license-badge.none {
+  background: linear-gradient(135deg, #e0f2fe, #bae6fd);
+  border: 1px solid #0284c7;
+  color: #075985;
+}
+
 /* Trial badge - màu cam/vàng */
 .license-badge.trial {
   background: linear-gradient(135deg, #fef3c7, #fde68a);

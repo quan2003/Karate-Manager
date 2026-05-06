@@ -19,7 +19,7 @@ const TABS = {
   REQUEST: "request",
 };
 
-export default function LicenseManager({ onClose, onLicenseChanged }) {
+export default function LicenseManager({ onClose, onLicenseChanged, onBuyLicense }) {
   const [activeTab, setActiveTab] = useState(TABS.INFO);
   const [license, setLicense] = useState(null);
   const [status, setStatus] = useState(null);
@@ -399,6 +399,12 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                     </div>
                   )}
 
+                  {(isTrial || isExpired) && (
+                    <button className="lm-buy-btn" onClick={onBuyLicense}>
+                      Mua bản quyền
+                    </button>
+                  )}
+
                   {loadingServerInfo && (
                     <div className="lm-loading">
                       <div className="lm-spinner" />
@@ -443,6 +449,9 @@ export default function LicenseManager({ onClose, onLicenseChanged }) {
                     key, hoặc tab <strong>"Yêu cầu hỗ trợ"</strong> để xin cấp
                     key.
                   </p>
+                  <button className="lm-buy-btn" onClick={onBuyLicense}>
+                    Mua bản quyền
+                  </button>
                 </div>
               )}
 
