@@ -6,6 +6,7 @@ import {
   getPublicPricing,
   importLicenseFile,
   generateMachineId,
+  normalizeVietnameseMessage,
 } from "../../services/licenseService";
 import "./LicenseWarning.css";
 
@@ -256,7 +257,7 @@ function PurchaseDialog({
                   padding: "0.65rem",
                 }}
               >
-                {paymentError}
+                {normalizeVietnameseMessage(paymentError)}
               </div>
             )}
 
@@ -403,7 +404,7 @@ function PurchaseDialog({
                     padding: "0.65rem",
                   }}
                 >
-                  {paymentError}
+                  {normalizeVietnameseMessage(paymentError)}
                 </div>
               )}
               <button
@@ -460,7 +461,11 @@ export default function LicenseWarning({
   const pendingPaymentKey = `krt_pending_payment_order_${machineId}`;
 
   const showToast = (message, toastType = "success") => {
-    setToast({ message, type: toastType, key: Date.now() });
+    setToast({
+      message: normalizeVietnameseMessage(message),
+      type: toastType,
+      key: Date.now(),
+    });
   };
 
   const savePendingPayment = (payload) => {
@@ -1107,7 +1112,7 @@ export default function LicenseWarning({
                         padding: "0.65rem",
                       }}
                     >
-                      {paymentError}
+                      {normalizeVietnameseMessage(paymentError)}
                     </div>
                   )}
 
@@ -1293,7 +1298,7 @@ export default function LicenseWarning({
                           padding: "0.65rem",
                         }}
                       >
-                        {paymentError}
+                        {normalizeVietnameseMessage(paymentError)}
                       </div>
                     )}
                     <button

@@ -866,7 +866,7 @@ app.post("/api/payment/orders", async (req, res) => {
   if (!planId || !machineId) {
     return res
       .status(400)
-      .json({ success: false, message: "Thiáº¿u gÃ³i hoáº·c Machine ID" });
+      .json({ success: false, message: "Thiếu gói hoặc Machine ID" });
   }
 
   try {
@@ -877,7 +877,7 @@ app.post("/api/payment/orders", async (req, res) => {
     if (planRes.rows.length === 0) {
       return res
         .status(404)
-        .json({ success: false, message: "GÃ³i thanh toÃ¡n khÃ´ng tá»“n táº¡i" });
+        .json({ success: false, message: "Gói thanh toán không tồn tại" });
     }
 
     const plan = planRes.rows[0];
@@ -927,11 +927,11 @@ app.get("/api/payment/orders/:orderCode", async (req, res) => {
       [req.params.orderCode]
     );
     if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n" });
+      return res.status(404).json({ success: false, message: "Không tìm thấy đơn" });
     }
     const order = result.rows[0];
     if (machineId && order.machine_id !== machineId) {
-      return res.status(403).json({ success: false, message: "Machine ID khÃ´ng khá»›p" });
+      return res.status(403).json({ success: false, message: "Machine ID không khớp" });
     }
     res.json({ success: true, order });
   } catch (err) {
@@ -953,7 +953,7 @@ app.get("/api/admin/pricing", authMiddleware, async (req, res) => {
 app.put("/api/admin/pricing", authMiddleware, async (req, res) => {
   const { plans } = req.body;
   if (!Array.isArray(plans)) {
-    return res.status(400).json({ success: false, message: "Dá»¯ liá»‡u khÃ´ng há»£p lá»‡" });
+    return res.status(400).json({ success: false, message: "Dữ liệu không hợp lệ" });
   }
 
   const clientDb = await pool.connect();
@@ -1119,7 +1119,7 @@ app.put("/api/admin/payment-orders/:id", authMiddleware, async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n" });
+      return res.status(404).json({ success: false, message: "Không tìm thấy đơn" });
     }
 
     res.json({ success: true, order: result.rows[0] });
@@ -1135,7 +1135,7 @@ app.delete("/api/admin/payment-orders/:id", authMiddleware, async (req, res) => 
       [req.params.id]
     );
     if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n" });
+      return res.status(404).json({ success: false, message: "Không tìm thấy đơn" });
     }
     res.json({ success: true });
   } catch (err) {
@@ -1154,7 +1154,7 @@ app.post("/api/admin/payment-orders/:id/mark-paid", authMiddleware, async (req, 
     );
     if (orderRes.rows.length === 0) {
       await clientDb.query("ROLLBACK");
-      return res.status(404).json({ success: false, message: "KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n" });
+      return res.status(404).json({ success: false, message: "Không tìm thấy đơn" });
     }
 
     const order = orderRes.rows[0];

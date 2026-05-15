@@ -6,6 +6,51 @@
 // ĐỊA CHỈ SERVER LICENSE - Cần thay đổi khi deploy lên VPS
 export const SERVER_URL = "https://admin.luuquancoder.id.vn";
 
+export function normalizeVietnameseMessage(message) {
+  if (typeof message !== "string") return message;
+
+  const exact = {
+    "Thiáº¿u gÃ³i hoáº·c Machine ID": "Thiếu gói hoặc Machine ID",
+    "ThiÃ¡ÂºÂ¿u gÃƒÂ³i hoÃ¡ÂºÂ·c Machine ID": "Thiếu gói hoặc Machine ID",
+    "GÃ³i thanh toÃ¡n khÃ´ng tá»“n táº¡i": "Gói thanh toán không tồn tại",
+    "GÃƒÂ³i thanh toÃƒÂ¡n khÃƒÂ´ng tÃ¡Â»â€œn tÃ¡ÂºÂ¡i": "Gói thanh toán không tồn tại",
+    "KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n": "Không tìm thấy đơn",
+    "KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y Ã„â€˜Ã†Â¡n": "Không tìm thấy đơn",
+    "Machine ID khÃ´ng khá»›p": "Machine ID không khớp",
+    "Machine ID khÃƒÂ´ng khÃ¡Â»â€ºp": "Machine ID không khớp",
+    "Dá»¯ liá»‡u khÃ´ng há»£p lá»‡": "Dữ liệu không hợp lệ",
+    "DÃ¡Â»Â¯ liÃ¡Â»â€¡u khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡": "Dữ liệu không hợp lệ",
+  };
+
+  if (exact[message]) return exact[message];
+
+  return message
+    .replaceAll("KhÃ´ng", "Không")
+    .replaceAll("khÃ´ng", "không")
+    .replaceAll("tÃ¬m", "tìm")
+    .replaceAll("tháº¥y", "thấy")
+    .replaceAll("Ä‘Æ¡n", "đơn")
+    .replaceAll("Ä‘Æ°á»£c", "được")
+    .replaceAll("xÃ¡c nháº­n", "xác nhận")
+    .replaceAll("thanh toÃ¡n", "thanh toán")
+    .replaceAll("kiá»ƒm tra", "kiểm tra")
+    .replaceAll("táº£i", "tải")
+    .replaceAll("báº£ng giÃ¡", "bảng giá")
+    .replaceAll("táº¡o", "tạo")
+    .replaceAll("khá»›p", "khớp")
+    .replaceAll("há»£p lá»‡", "hợp lệ")
+    .replaceAll("gÃ³i", "gói")
+    .replaceAll("hoáº·c", "hoặc");
+}
+
+async function readJsonWithNormalizedMessage(response) {
+  const data = await response.json();
+  if (data?.message) {
+    return { ...data, message: normalizeVietnameseMessage(data.message) };
+  }
+  return data;
+}
+
 export const LICENSE_TYPES = {
   TRIAL: "trial",
   TOURNAMENT: "tournament",
@@ -452,7 +497,7 @@ export async function getLicenseInfoFromServer(key) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key }),
     });
-    return await response.json();
+    return await readJsonWithNormalizedMessage(response);
   } catch (e) {
     return { success: false, message: "Không thể kết nối server" };
   }
@@ -480,7 +525,7 @@ export async function submitLicenseRequest({
         message,
       }),
     });
-    return await response.json();
+    return await readJsonWithNormalizedMessage(response);
   } catch (e) {
     return { success: false, message: "Không thể kết nối server" };
   }
@@ -489,7 +534,7 @@ export async function submitLicenseRequest({
 export async function getPublicPricing() {
   try {
     const response = await fetch(`${SERVER_URL}/api/public/pricing`);
-    return await response.json();
+    return await readJsonWithNormalizedMessage(response);
   } catch (e) {
     return { success: false, message: "Không thể tải bảng giá" };
   }
@@ -516,7 +561,7 @@ export async function createPaymentOrder({
         note,
       }),
     });
-    return await response.json();
+    return await readJsonWithNormalizedMessage(response);
   } catch (e) {
     return { success: false, message: "Không thể tạo đơn thanh toán" };
   }
@@ -531,7 +576,7 @@ export async function getPaymentOrderStatus(orderCode, machineId) {
         orderCode
       )}?${params.toString()}`
     );
-    return await response.json();
+    return await readJsonWithNormalizedMessage(response);
   } catch (e) {
     return { success: false, message: "Không thể kiểm tra đơn thanh toán" };
   }

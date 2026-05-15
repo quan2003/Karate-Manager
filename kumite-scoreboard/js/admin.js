@@ -659,7 +659,7 @@ function redWins() {
   saveState();
   
   // Tự động Gửi kết quả về sơ đồ thi đấu (nếu trận được load từ bracket)
-  if (pendingMatchData || state.matchId) {
+  if (state.mode !== "team" && (pendingMatchData || state.matchId)) {
     setTimeout(() => finishMatch(true), 1500); // Đợi 1.5s để người xem thấy ai thắng rồi tự đóng
   }
 }
@@ -670,7 +670,7 @@ function blueWins() {
   saveState();
 
   // Tự động Gửi kết quả về sơ đồ thi đấu (nếu trận được load từ bracket)
-  if (pendingMatchData || state.matchId) {
+  if (state.mode !== "team" && (pendingMatchData || state.matchId)) {
     setTimeout(() => finishMatch(true), 1500); // Đợi 1.5s để người xem thấy ai thắng rồi tự đóng
   }
 }
@@ -1185,7 +1185,13 @@ function finishRound() {
 
   // Determine round winner
   let roundWinner = "";
-  if (state.akaScore > state.aoScore) {
+  if (state.winnerFlash === "aka") {
+    roundWinner = "AKA";
+    state.teamMode.akaWins++;
+  } else if (state.winnerFlash === "ao") {
+    roundWinner = "AO";
+    state.teamMode.aoWins++;
+  } else if (state.akaScore > state.aoScore) {
     roundWinner = "AKA";
     state.teamMode.akaWins++;
   } else if (state.aoScore > state.akaScore) {
@@ -1240,6 +1246,9 @@ function finishRound() {
           `Bạn có muốn reset để bắt đầu trận mới?`
       )
     ) {
+      if (finishTeamMatch(true)) {
+        return;
+      }
       resetAll();
       return;
     }
@@ -1271,6 +1280,9 @@ function finishRound() {
         `🏆 Kết quả chung cuộc: ${matchWinner}\n` +
         `📊 Tỉ số: ${state.teamMode.akaWins} - ${state.teamMode.aoWins}`
     );
+    if (state.teamMode.akaWins !== state.teamMode.aoWins) {
+      finishTeamMatch();
+    }
   }
 }
 
@@ -1526,7 +1538,75 @@ function loadPendingMatch() {
  * Kết thúc trận đấu và gửi kết quả về React app (bracket)
  * @param {boolean} autoSubmit - Nếu true, bỏ qua confirm box
  */
+function finishTeamMatch(autoSubmit = false) {
+  if (!state.teamMode) return false;
+
+  if (!pendingMatchData && state.matchId) {
+     pendingMatchData = {
+       matchId: state.matchId,
+       athlete1: { id: 'aka', name: state.akaName },
+       athlete2: { id: 'ao', name: state.aoName }
+     };
+  }
+
+  if (!pendingMatchData) {
+    if (!autoSubmit) alert('Khong co tran dau nao dang cho tu so do!');
+    return false;
+  }
+
+  let winnerSide = null;
+  if (state.teamMode.akaWins > state.teamMode.aoWins) {
+    winnerSide = "aka";
+  } else if (state.teamMode.aoWins > state.teamMode.akaWins) {
+    winnerSide = "ao";
+  }
+
+  if (!winnerSide) {
+    if (!autoSubmit) alert('Tran dong doi dang hoa, chua the chot nguoi thang chung cuoc.');
+    return false;
+  }
+
+  const winnerId = winnerSide === "aka"
+    ? (pendingMatchData.athlete1?.id || 'aka')
+    : (pendingMatchData.athlete2?.id || 'ao');
+  const winnerName = winnerSide === "aka" ? state.akaName : state.aoName;
+
+  if (!autoSubmit) {
+    if (!confirm(`Xac nhan ket thuc tran dong doi?\n\nNguoi thang: ${winnerName}\nTi so round: ${state.teamMode.akaWins} - ${state.teamMode.aoWins}`)) {
+      return false;
+    }
+  }
+
+  const result = {
+    matchId: pendingMatchData.matchId,
+    winnerId: winnerId,
+    score1: state.teamMode.akaWins,
+    score2: state.teamMode.aoWins,
+    timestamp: Date.now(),
+  };
+
+  localStorage.setItem(MATCH_RESULT_KEY, JSON.stringify(result));
+
+  if (window.opener) {
+    window.opener.postMessage({
+      type: 'MATCH_RESULT',
+      result: result,
+    }, '*');
+  }
+
+  localStorage.removeItem(PENDING_MATCH_KEY);
+  pendingMatchData = null;
+
+  alert('Da gui ket qua dong doi ve so do thi dau!');
+  resetAll();
+  return true;
+}
+
 function finishMatch(autoSubmit = false) {
+  if (state.mode === "team") {
+    return finishTeamMatch(autoSubmit);
+  }
+
   // If no actively pending match data from bracket load, but we do have a matchId in state, 
   // try to reconstruct pendingMatchData so it can submit
   if (!pendingMatchData && state.matchId) {
