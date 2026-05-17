@@ -293,7 +293,27 @@ export async function revalidateLicenseWithServer() {
   if (!valid.valid) {
     console.warn("License invalidated by server:", valid.error);
     // Optional: deactive locally if server says invalid
+    return;
   }
+
+  const refreshedLicense = {
+    ...license,
+    ...valid.data,
+    licenseKey: license.licenseKey,
+    machineId: license.machineId || generateMachineId(),
+    active: true,
+    expired: false,
+    isTrial: false,
+    lastCheck: new Date().toISOString(),
+  };
+
+  localStorage.setItem("krt_active_license", JSON.stringify(refreshedLicense));
+
+  window.dispatchEvent(
+    new CustomEvent("licenseChanged", {
+      detail: { type: "revalidated", license: refreshedLicense },
+    })
+  );
 }
 
 export function hasFeature(featureName) {
