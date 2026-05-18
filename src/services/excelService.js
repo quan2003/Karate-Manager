@@ -48,16 +48,42 @@ function parseDateValue(val) {
 
 function parseGenderValue(val) {
   if (!val) return null;
-  const str = String(val).trim().toLowerCase();
+  const str = normalizeText(val);
   if (str === "nam" || str === "male" || str === "m") return "male";
-  if (str === "nữ" || str === "nu" || str === "female" || str === "f")
+  if (
+    str === "nữ" ||
+    str === "nu" ||
+    str === "female" ||
+    str === "f" ||
+    str.startsWith("nu ") ||
+    str.includes(" nu") ||
+    str.includes("nữ")
+  )
     return "female";
   return null;
 }
 
+function normalizeText(val) {
+  return String(val || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/\s+/g, " ");
+}
+
+function findHeaderColumn(header, terms) {
+  const normalizedTerms = terms.map(normalizeText);
+  return header.findIndex((cell) => {
+    const normalizedCell = normalizeText(cell);
+    return normalizedTerms.some((term) => normalizedCell.includes(term));
+  });
+}
+
 function parseBooleanValue(val) {
   if (!val) return false;
-  const str = String(val).trim().toLowerCase();
+  const str = normalizeText(val);
   return (
     str === "có" ||
     str === "co" ||
@@ -195,6 +221,47 @@ export function parseCoachExcelFile(file) {
         let teamLeaderName = "";
         let additionalCoaches = [];
 
+        const dataSheet = workbook.Sheets["Data"];
+        if (dataSheet) {
+          const dataRows = XLSX.utils.sheet_to_json(dataSheet, { header: 1 });
+          if (dataRows?.[0]?.[0] === "JSON_DATA_CHUNKS") {
+            try {
+              const parsed = JSON.parse(
+                dataRows
+                  .slice(1)
+                  .map((row) => String(row?.[0] || ""))
+                  .join("")
+              );
+              if (parsed && Array.isArray(parsed.athletes)) {
+                resolve({
+                  athletes: parsed.athletes
+                    .map((a) => ({
+                      name: String(a.name || "").trim(),
+                      gender: parseGenderValue(a.gender) || a.gender || null,
+                      birthDate: a.birthDate || null,
+                      birthYear: a.birthYear || null,
+                      club: String(a.club || parsed.clubName || "").trim(),
+                      eventName: String(a.eventName || "").trim(),
+                      weight: a.weight || null,
+                      isTeam: !!a.isTeam,
+                      seed: a.seed || null,
+                      country: a.country || "VN",
+                    }))
+                    .filter((a) => a.name),
+                  errors: [],
+                  clubName: parsed.clubName || "",
+                  coachName: parsed.coachName || "",
+                  teamLeaderName: parsed.teamLeaderName || "",
+                  additionalCoaches: parsed.additionalCoaches || [],
+                });
+                return;
+              }
+            } catch (jsonError) {
+              // Fall back to the visible worksheet below.
+            }
+          }
+        }
+
         // Try to read info from "Thông tin" sheet
         const infoSheet = workbook.Sheets["Thông tin"];
         if (infoSheet) {
@@ -231,10 +298,13 @@ export function parseCoachExcelFile(file) {
         const jsonData = XLSX.utils.sheet_to_json(athleteSheet, { header: 1 });
 
         // Detect header row
-        const startRow = isCoachHeaderRow(jsonData[0]) ? 1 : 0;
+        const headerRow = jsonData.find((row) => isCoachHeaderRow(row));
+        const headerIndex = headerRow ? jsonData.indexOf(headerRow) : -1;
+        const startRow = headerIndex >= 0 ? headerIndex + 1 : 0;
 
         const athletes = [];
         const errors = [];
+        const header = headerRow || [];
 
         for (let i = startRow; i < jsonData.length; i++) {
           const row = jsonData[i];
@@ -267,6 +337,26 @@ export function parseCoachExcelFile(file) {
             teamCol = 7;
           }
 
+          if (header.length > 0) {
+            const dynamicNameCol = findHeaderColumn(header, ["họ tên", "ho ten", "tên vđv", "ten vdv", "name"]);
+            const dynamicGenderCol = findHeaderColumn(header, ["giới tính", "gioi tinh", "gender", "phái", "phai"]);
+            const dynamicBirthCol = findHeaderColumn(header, ["ngày sinh", "ngay sinh", "birth", "năm sinh", "nam sinh"]);
+            const dynamicClubCol = findHeaderColumn(header, ["clb", "đơn vị", "don vi", "club"]);
+            const dynamicEventCol = findHeaderColumn(header, ["nội dung", "noi dung", "hạng mục", "hang muc", "event"]);
+            const dynamicWeightCol = findHeaderColumn(header, ["cân nặng", "can nang", "weight", "kg"]);
+            const dynamicSeedCol = findHeaderColumn(header, ["hạt giống", "hat giong", "seed"]);
+            const dynamicTeamCol = findHeaderColumn(header, ["đồng đội", "dong doi", "team"]);
+
+            if (dynamicNameCol >= 0) nameCol = dynamicNameCol;
+            if (dynamicGenderCol >= 0) genderCol = dynamicGenderCol;
+            if (dynamicBirthCol >= 0) birthCol = dynamicBirthCol;
+            if (dynamicClubCol >= 0) clubCol = dynamicClubCol;
+            if (dynamicEventCol >= 0) eventCol = dynamicEventCol;
+            if (dynamicWeightCol >= 0) weightCol = dynamicWeightCol;
+            if (dynamicSeedCol >= 0) seedCol = dynamicSeedCol;
+            if (dynamicTeamCol >= 0) teamCol = dynamicTeamCol;
+          }
+
           const name = String(row[nameCol] || "").trim();
           if (!name) continue;
 
@@ -280,7 +370,7 @@ export function parseCoachExcelFile(file) {
 
           athletes.push({
             name,
-            gender: gender || "male",
+            gender,
             birthDate,
             club: athleteClub,
             eventName,
@@ -307,7 +397,10 @@ export function parseCoachExcelFile(file) {
 
 function isCoachHeaderRow(row) {
   if (!row || row.length < 2) return false;
-  const values = row.map((v) => String(v || "").toLowerCase());
+  const values = row.map(normalizeText);
+  const hasName = values.some((v) => v.includes("ho ten") || v.includes("ten") || v.includes("name"));
+  const hasKnownColumn = values.some((v) => v.includes("noi dung") || v.includes("gioi") || v.includes("gender") || v.includes("stt"));
+  if (hasName && hasKnownColumn) return true;
   return (
     values.some((v) => v.includes("họ tên") || v.includes("tên")) &&
     (values.some((v) => v.includes("nội dung") || v.includes("giới")) || values.some((v) => v.includes("stt")))

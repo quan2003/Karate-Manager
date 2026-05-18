@@ -275,6 +275,9 @@ export default function StatisticsPage() {
     return athletes;
   };
 
+  const getAthleteIdentityKey = (athlete) =>
+    `${(athlete.name || "").replace(/\s+/g, " ").trim().toLowerCase()}_${(athlete.club || "").trim().toLowerCase()}`;
+
   const handleFeeSettingsChange = (field, value) => {
     const newSettings = { ...feeSettings, [field]: value };
     setFeeSettings(newSettings);
@@ -298,11 +301,18 @@ export default function StatisticsPage() {
       let teamEntries = 0;
       let individualCount = 0;
       let extraEventsForSurcharge = 0;
-      const allEventsByAthlete = {};
+      const individualEventsByAthlete = {};
 
       tournament.categories.forEach((cat) => {
         // Tính số đội tham gia
-        const isTeamCat = cat.isTeam || (cat.name && (cat.name.toLowerCase().includes("đồng đội") || cat.name.toLowerCase().includes("hỗn hợp")));
+        const categoryName = cat.name?.toLowerCase() || "";
+        const isTeamCat =
+          cat.isTeam ||
+          categoryName.includes("đồng đội") ||
+          categoryName.includes("dong doi") ||
+          categoryName.includes("hỗn hợp") ||
+          categoryName.includes("hon hop") ||
+          categoryName.includes("team");
         if (isTeamCat) {
           const hasAthletesInTeam = (cat.athletes || []).some(
             (a) => a.club?.trim() === club
@@ -311,22 +321,25 @@ export default function StatisticsPage() {
             teamEntries += 1;
           }
         }
-        // Tính lệ phí cá nhân và phụ thu cho TẤT CẢ VĐV ở TẤT CẢ hạng mục
+        // Chỉ tính phụ thu trên số nội dung cá nhân; nội dung đồng đội không tính thêm 50.000đ.
+        if (isTeamCat) return;
+
         (cat.athletes || []).forEach((a) => {
           if (a.club?.trim() === club) {
             const identifier = (a.name || "").replace(/\s+/g, ' ').trim().toLowerCase();
-            if (!allEventsByAthlete[identifier]) {
-              allEventsByAthlete[identifier] = 0;
+            if (!individualEventsByAthlete[identifier]) {
+              individualEventsByAthlete[identifier] = new Set();
             }
-            allEventsByAthlete[identifier] += 1;
+            individualEventsByAthlete[identifier].add(cat.id || cat.name);
           }
         });
       });
 
-      Object.values(allEventsByAthlete).forEach((eventCount) => {
+      Object.values(individualEventsByAthlete).forEach((events) => {
+        const eventCount = events.size;
         individualCount += 1;
         if (feeSettings.enableSurcharge && eventCount > 1) {
-          extraEventsForSurcharge += eventCount - 1;
+          extraEventsForSurcharge += 1;
         }
       });
 
@@ -374,7 +387,7 @@ export default function StatisticsPage() {
   const getUniqueAthletesCount = () => {
     const unique = new Set();
     getAllAthletes().forEach((a) => {
-      const key = `${(a.name || "").replace(/\s+/g, ' ').trim().toLowerCase()}_${(a.club || "").trim().toLowerCase()}`;
+      const key = getAthleteIdentityKey(a);
       unique.add(key);
     });
     return unique.size;
@@ -2264,9 +2277,7 @@ export default function StatisticsPage() {
       const uniqueFemale = new Set();
 
       refAthletes.forEach((a) => {
-        const key = `${(a.name || "").trim().toLowerCase()}_${
-          a.birthDate || a.birthYear || ""
-        }_${a.gender || ""}`;
+        const key = getAthleteIdentityKey(a);
         uniqueAthletes.add(key);
         if (a.gender === "male") uniqueMale.add(key);
         if (a.gender === "female") uniqueFemale.add(key);
@@ -3167,11 +3178,7 @@ export default function StatisticsPage() {
                     const uniqueFemale = new Set();
 
                     athletesInClub.forEach((a) => {
-                      const key = `${(a.name || "").trim().toLowerCase()}_${
-                        a.birthDate || a.birthYear || ""
-                      }_${a.gender || ""}_${(a.club || "")
-                        .trim()
-                        .toLowerCase()}`;
+                      const key = getAthleteIdentityKey(a);
                       uniqueAthletes.add(key);
                       if (a.gender === "male") uniqueMale.add(key);
                       if (a.gender === "female") uniqueFemale.add(key);

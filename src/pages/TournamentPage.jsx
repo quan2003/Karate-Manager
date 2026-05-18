@@ -24,6 +24,7 @@ import DateTimeInput from "../components/common/DateTimeInput";
 import { useToast } from "../components/common/Toast";
 import { useOnboarding } from "../context/OnboardingContext";
 import { publishTournament, unpublishTournament, fetchTournamentById } from "../services/supabaseService";
+import { downloadAthleteImportTemplate } from "../services/athleteTemplateService";
 import appIcon from "../assets/icon.png";
 import "./TournamentPage.css";
 
@@ -590,6 +591,35 @@ export default function TournamentPage() {
     generateCategoriesTemplate();
   };
 
+  const handleDownloadAthleteTemplate = async () => {
+    if (!tournament?.categories?.length) {
+      toast.warning("Vui lòng tạo hạng mục trước khi tải mẫu VĐV.");
+      return;
+    }
+
+    try {
+      const result = await downloadAthleteImportTemplate({
+        tournamentName: tournament.name,
+        events: tournament.categories.map((cat) => ({
+          id: cat.id,
+          name: cat.name,
+          type: cat.type,
+          gender: cat.gender,
+          isTeam: cat.isTeam,
+        })),
+      });
+
+      if (result?.canceled) return;
+      if (result?.success === false) {
+        toast.error(result.error || "Không thể tải mẫu VĐV.");
+        return;
+      }
+      toast.success("Đã tạo mẫu VĐV CLB!");
+    } catch (error) {
+      toast.error("Không thể tải mẫu VĐV: " + error.message);
+    }
+  };
+
   // ====== Import VĐV từ nhiều file CLB ======
   const clubFileInputRef = useRef(null);
   const [importingClub, setImportingClub] = useState(false);
@@ -946,12 +976,12 @@ export default function TournamentPage() {
             onClick={() => { handleDownloadTemplate(); clearHint(); }}
           >
             <span className="action-icon">📥</span>
-            <span className="action-label">Tải mẫu<br/>Excel</span>
+            <span className="action-label">Tải mẫu hạng mục <br/>Excel</span>
           </button>
 
           <label className={`tournament-action-btn action-import ${activeHint === "create_category" ? "hint-pulse" : ""}`} style={{ cursor: "pointer" }} onClick={() => clearHint()}>
             <span className="action-icon">📤</span>
-            <span className="action-label">Import từ<br/>Excel</span>
+            <span className="action-label">Import hạng mục từ Excel</span>
             <input
               ref={fileInputRef}
               type="file"
@@ -960,6 +990,15 @@ export default function TournamentPage() {
               style={{ display: "none" }}
             />
           </label>
+
+          <button
+            className="tournament-action-btn action-export"
+            onClick={() => { handleDownloadAthleteTemplate(); clearHint(); }}
+            title="Tải mẫu nhập VĐV có danh sách chọn theo hạng mục của giải"
+          >
+            <span className="action-icon">📥</span>
+            <span className="action-label">Mẫu VĐV<br/>CLB</span>
+          </button>
 
           <label className={`tournament-action-btn action-import ${activeHint === "import_athletes" ? "hint-pulse" : ""}`} style={{ cursor: "pointer" }} onClick={() => clearHint()}>
             <span className="action-icon">🏢</span>

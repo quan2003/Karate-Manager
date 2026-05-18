@@ -1,23 +1,14 @@
-import { useState, useRef } from "react";
-import {
-  parseExcelFile,
-  generateTemplateExcel,
-} from "../../services/excelService";
+import { useState } from "react";
 import "./AthleteList.css";
 
 export default function AthleteList({
   athletes,
   onEdit,
   onDelete,
-  onImport,
   onClearAll,
   category,
-  activeHint,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [importing, setImporting] = useState(false);
-  const [importErrors, setImportErrors] = useState([]);
-  const fileInputRef = useRef(null);
 
   const filteredAthletes = athletes.filter(
     (athlete) =>
@@ -25,47 +16,26 @@ export default function AthleteList({
       athlete.club?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleFileSelect = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setImporting(true);
-    setImportErrors([]);
-
-    try {
-      const { athletes: importedAthletes, errors } = await parseExcelFile(file);
-      if (errors.length > 0) {
-        setImportErrors(errors);
-      }
-      if (importedAthletes.length > 0) {
-        onImport(importedAthletes);
-      }
-    } catch (error) {
-      setImportErrors([error.message]);
-    } finally {
-      setImporting(false);
-      e.target.value = "";
-    }
-  };
-
   const getFlagEmoji = (countryCode) => {
     if (!countryCode) return "🏳️";
     const code = countryCode.toUpperCase();
     return (
-      <img 
+      <img
         src={`${import.meta.env.BASE_URL}flags/${code}.png`}
         alt={code}
-        style={{ 
-          width: '18px', 
-          height: '12px', 
-          objectFit: 'cover', 
-          display: 'inline-block', 
-          verticalAlign: 'middle', 
-          border: '1px solid #cbd5e1',
-          borderRadius: '2px',
-          marginRight: '6px'
+        style={{
+          width: "18px",
+          height: "12px",
+          objectFit: "cover",
+          display: "inline-block",
+          verticalAlign: "middle",
+          border: "1px solid #cbd5e1",
+          borderRadius: "2px",
+          marginRight: "6px",
         }}
-        onError={(e) => e.target.style.display = 'none'}
+        onError={(e) => {
+          e.target.style.display = "none";
+        }}
       />
     );
   };
@@ -92,42 +62,7 @@ export default function AthleteList({
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-
-        <div className="list-actions">
-          <button
-            className={`btn btn-secondary ${activeHint === "import_athletes" ? "hint-pulse" : ""}`}
-            onClick={() => generateTemplateExcel(category)}
-          >
-            📥 Tải mẫu Excel
-          </button>
-          <button
-            className={`btn btn-secondary ${activeHint === "import_athletes" ? "hint-pulse" : ""}`}
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-          >
-            {importing ? "⏳ Đang nhập..." : "📤 Import Excel"}
-          </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileSelect}
-            accept=".xlsx,.xls"
-            style={{ display: "none" }}
-          />
-        </div>
       </div>
-
-      {importErrors.length > 0 && (
-        <div className="import-errors">
-          <strong>⚠️ Lỗi khi import:</strong>
-          <ul>
-            {importErrors.map((error, i) => (
-              <li key={i}>{error}</li>
-            ))}
-          </ul>
-          <button onClick={() => setImportErrors([])}>Đóng</button>
-        </div>
-      )}
 
       {filteredAthletes.length === 0 ? (
         <div className="empty-list">
@@ -135,9 +70,7 @@ export default function AthleteList({
             <>
               <span className="empty-icon">👥</span>
               <p>Chưa có vận động viên nào.</p>
-              <p className="empty-hint">
-                Thêm VĐV thủ công hoặc import từ file Excel.
-              </p>
+              <p className="empty-hint">Thêm VĐV thủ công từ nút phía trên.</p>
             </>
           ) : (
             <p>Không tìm thấy VĐV phù hợp.</p>
@@ -155,7 +88,6 @@ export default function AthleteList({
           </div>
 
           <div className="table-container">
-            {" "}
             <table className="athlete-table">
               <thead>
                 <tr>
@@ -181,16 +113,12 @@ export default function AthleteList({
                     </td>
                     <td className="col-birth">
                       {athlete.birthDate
-                        ? new Date(athlete.birthDate).toLocaleDateString(
-                            "vi-VN"
-                          )
+                        ? new Date(athlete.birthDate).toLocaleDateString("vi-VN")
                         : "-"}
                     </td>
                     <td className="col-club">{athlete.club || "-"}</td>
                     {category?.type === "kumite" && (
-                      <td className="col-weight">
-                        {athlete.weight || "-"}
-                      </td>
+                      <td className="col-weight">{athlete.weight || "-"}</td>
                     )}
                     <td className="col-country">
                       <span className="country-flag">
@@ -229,10 +157,7 @@ export default function AthleteList({
           </div>
 
           {athletes.length > 0 && (
-            <button
-              className="btn btn-secondary clear-all"
-              onClick={onClearAll}
-            >
+            <button className="btn btn-secondary clear-all" onClick={onClearAll}>
               🗑️ Xóa tất cả VĐV
             </button>
           )}
