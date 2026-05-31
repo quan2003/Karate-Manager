@@ -15,8 +15,13 @@ const KMATCH_VERSION = "1.0.0";
  * @param {string} targetRole - Role đích: "secretary" (mặc định) hoặc "admin"
  */
 export function createKmatchData(tournament, categories, settings = {}, targetRole = 'secretary') {
+  const exportId =
+    globalThis.crypto?.randomUUID?.() ||
+    `kmatch_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
   const data = {
     version: KMATCH_VERSION,
+    exportId,
     tournamentId: tournament.id,
     tournamentName: tournament.name,
     tournamentDate: tournament.startDate || tournament.date,
@@ -28,14 +33,17 @@ export function createKmatchData(tournament, categories, settings = {}, targetRo
     scoringEnabled: settings.scoringEnabled !== false,
 
     // Danh sách hạng mục và trận đấu
-    categories: categories.map((cat) => ({
-      id: cat.id,
-      name: cat.name,
-      type: cat.type || "kumite",
-      athletes: cat.athletes || [],
-      bracket: cat.bracket || null,
-      matches: extractMatchesFromBracket(cat.bracket) || [],
-    })),
+    categories: categories.map((cat) => {
+      const bracket = createCleanKmatchBracket(cat.bracket);
+      return {
+        id: cat.id,
+        name: cat.name,
+        type: cat.type || "kumite",
+        athletes: cat.athletes || [],
+        bracket,
+        matches: extractMatchesFromBracket(bracket) || [],
+      };
+    }),
 
     createdAt: new Date().toISOString(),
     // Flag điều hướng thông minh - chỉ định role nào sẽ mở file này
@@ -43,6 +51,67 @@ export function createKmatchData(tournament, categories, settings = {}, targetRo
   };
 
   return data;
+}
+
+/**
+ * Tao bracket sach cho file .kmatch.
+ * Neu admin da bam thu/sync thu, bracket co the co score, winner va VDV da len vong sau.
+ * File moi chi giu boc tham goc va BYE tu dong, khong mang theo ket qua test.
+ */
+function createCleanKmatchBracket(bracket) {
+  if (!bracket?.matches || !Array.isArray(bracket.matches)) return bracket || null;
+
+  const cleanBracket = JSON.parse(JSON.stringify(bracket));
+
+  cleanBracket.matches = cleanBracket.matches.map((match) => {
+    const cleanMatch = {
+      ...match,
+      score1: null,
+      score2: null,
+      winner: null,
+      scores: null,
+      disqualification: false,
+      disqualifiedSlot: null,
+      disqualifiedReason: null,
+    };
+
+    if ((cleanMatch.round || 0) > 1) {
+      cleanMatch.athlete1 = null;
+      cleanMatch.athlete2 = null;
+    }
+
+    if (cleanMatch.athlete1?.disqualified) {
+      cleanMatch.athlete1 = { ...cleanMatch.athlete1, disqualified: false };
+    }
+    if (cleanMatch.athlete2?.disqualified) {
+      cleanMatch.athlete2 = { ...cleanMatch.athlete2, disqualified: false };
+    }
+
+    return cleanMatch;
+  });
+
+  cleanBracket.matches.forEach((match) => {
+    if (match.isBye && match.round === 1) {
+      const byeWinner = match.athlete1 || match.athlete2;
+      if (!byeWinner) return;
+
+      match.winner = byeWinner;
+      if (!match.nextMatchId) return;
+
+      const nextMatch = cleanBracket.matches.find((m) => m.id === match.nextMatchId);
+      if (!nextMatch) return;
+
+      const feedingMatches = cleanBracket.matches
+        .filter((m) => m.nextMatchId === nextMatch.id)
+        .sort((a, b) => a.position - b.position);
+      const isFirstFeeder = feedingMatches[0]?.id === match.id;
+
+      if (isFirstFeeder) nextMatch.athlete1 = byeWinner;
+      else nextMatch.athlete2 = byeWinner;
+    }
+  });
+
+  return cleanBracket;
 }
 
 /**

@@ -13,6 +13,9 @@ import {
 
 const RoleContext = createContext(null);
 
+const getMatchSessionId = (data) =>
+  data?.exportId || data?.exportSessionId || data?.matchSessionId || data?.tournamentId;
+
 /**
  * Trạng thái thời gian nhập liệu
  * - 'before': Chưa đến thời gian nhập
@@ -100,7 +103,7 @@ export function RoleProvider({ children }) {
 
       const savedAdditionalCoaches = await dbGetSessionData(data.tournamentId, 'additional_coaches');
       if (savedAdditionalCoaches) {
-        try { setAdditionalCoaches(JSON.parse(savedAdditionalCoaches)); } catch (e) { setAdditionalCoaches([]); }
+        try { setAdditionalCoaches(JSON.parse(savedAdditionalCoaches)); } catch { setAdditionalCoaches([]); }
       }
 
       // Save as last active session
@@ -116,11 +119,12 @@ export function RoleProvider({ children }) {
    */
   const loadMatchData = useCallback(
     async (data) => {
+      const matchSessionId = getMatchSessionId(data);
       setMatchData(data);
       setScoringEnabled(data.scoringEnabled || false);
 
       // Load kết quả từ SQLite nếu có
-      const savedResults = await dbGetSessionData(data.tournamentId, 'match_results');
+      const savedResults = await dbGetSessionData(matchSessionId, 'match_results');
       if (savedResults) {
         try { setMatchResults(JSON.parse(savedResults)); } catch { setMatchResults([]); }
       } else {
@@ -135,8 +139,8 @@ export function RoleProvider({ children }) {
 
       // Save as last active session
       dbSetSessionData('system', 'last_role', ROLES.SECRETARY);
-      dbSetSessionData('system', 'last_match_id', data.tournamentId);
-      dbSetSessionData('system', `match_json_${data.tournamentId}`, JSON.stringify(data));
+      dbSetSessionData('system', 'last_match_id', matchSessionId);
+      dbSetSessionData('system', `match_json_${matchSessionId}`, JSON.stringify(data));
     },
     [checkTimeStatus]
   );
@@ -367,7 +371,7 @@ export function RoleProvider({ children }) {
           ];
         }
         if (matchData) {
-          dbSetSessionData(matchData.tournamentId, 'match_results', JSON.stringify(updated));
+          dbSetSessionData(getMatchSessionId(matchData), 'match_results', JSON.stringify(updated));
         }
         return updated;
       });
@@ -384,7 +388,7 @@ export function RoleProvider({ children }) {
       setMatchResults((prev) => {
         const updated = prev.filter((r) => r.matchId !== matchId);
         if (matchData) {
-          dbSetSessionData(matchData.tournamentId, 'match_results', JSON.stringify(updated));
+          dbSetSessionData(getMatchSessionId(matchData), 'match_results', JSON.stringify(updated));
         }
         return updated;
       });
@@ -820,6 +824,7 @@ export function RoleProvider({ children }) {
     });
 
     return {
+      exportId: matchData?.exportId,
       tournamentId: matchData?.tournamentId,
       tournamentName: matchData?.tournamentName,
       exportTime: new Date().toISOString(),
@@ -905,6 +910,7 @@ export function RoleProvider({ children }) {
     matchData,
     matchResults,
     scoringEnabled,
+    isRestored,
     canScore,
 
     // Actions
