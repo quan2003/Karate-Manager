@@ -1906,6 +1906,64 @@ export default function StatisticsPage() {
   };
 
   // ===== MEDAL TALLY (Bảng tổng sắp) =====
+  const createMedalTallyMap = () => {
+    const clubMap = {};
+    getClubs().forEach((club) => {
+      if (club) {
+        clubMap[club] = {
+          name: club,
+          gold: 0,
+          silver: 0,
+          bronze: 0,
+          total: 0,
+        };
+      }
+    });
+    return clubMap;
+  };
+
+  const addMedalToTallyMap = (clubMap, clubName, type) => {
+    if (!clubName) return;
+    const club = clubName.trim();
+    if (!clubMap[club]) {
+      clubMap[club] = {
+        name: club,
+        gold: 0,
+        silver: 0,
+        bronze: 0,
+        total: 0,
+      };
+    }
+    clubMap[club][type] += 1;
+    clubMap[club].total += 1;
+  };
+
+  const sortMedalTally = (clubMap, onlyWithMedals = false) => {
+    return Object.values(clubMap)
+      .filter((club) => !onlyWithMedals || club.total > 0)
+      .sort((a, b) => {
+        if (b.gold !== a.gold) return b.gold - a.gold;
+        if (b.silver !== a.silver) return b.silver - a.silver;
+        if (b.bronze !== a.bronze) return b.bronze - a.bronze;
+        return a.name.localeCompare(b.name, "vi");
+      });
+  };
+
+  const normalizeAgeGroupLabel = (value) =>
+    (value || "").toString().replace(/\s+/g, " ").trim();
+
+  const getCategoryAgeGroupLabel = (cat) =>
+    normalizeAgeGroupLabel(cat.ageGroup) || "Chưa xác định lứa tuổi";
+
+  const getAgeGroupSortValue = (label) => {
+    const normalized = label
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    const numberMatch = normalized.match(/\d+/);
+    return numberMatch ? Number(numberMatch[0]) : Number.MAX_SAFE_INTEGER;
+  };
+
   const getMedalTally = () => {
     const clubMap = {};
     
@@ -1957,6 +2015,39 @@ export default function StatisticsPage() {
     });
   };
 
+  const getMedalTallyByAgeGroup = () => {
+    const groupMaps = {};
+
+    getFilteredCategories().forEach((cat) => {
+      const groupLabel = getCategoryAgeGroupLabel(cat);
+      if (!groupMaps[groupLabel]) {
+        groupMaps[groupLabel] = createMedalTallyMap();
+      }
+
+      const result = getCategoryResults(cat.id);
+      if (!result) return;
+
+      if (result.club1) addMedalToTallyMap(groupMaps[groupLabel], result.club1, "gold");
+      if (result.club2) addMedalToTallyMap(groupMaps[groupLabel], result.club2, "silver");
+      if (result.club3a) addMedalToTallyMap(groupMaps[groupLabel], result.club3a, "bronze");
+      if (result.club3b) addMedalToTallyMap(groupMaps[groupLabel], result.club3b, "bronze");
+    });
+
+    return Object.entries(groupMaps)
+      .map(([label, clubMap]) => ({
+        id: label,
+        label,
+        tally: sortMedalTally(clubMap, true),
+      }))
+      .filter((group) => group.tally.length > 0)
+      .sort((a, b) => {
+        const sortA = getAgeGroupSortValue(a.label);
+        const sortB = getAgeGroupSortValue(b.label);
+        if (sortA !== sortB) return sortA - sortB;
+        return a.label.localeCompare(b.label, "vi");
+      });
+  };
+
   // ===== EXPORT MEDAL TALLY TO EXCEL =====
   const handleExportMedalTally = () => {
     const tally = getMedalTally();
@@ -1991,6 +2082,160 @@ export default function StatisticsPage() {
     );
     toast.success("Đã xuất bảng tổng sắp Excel!");
   };
+  const buildAgeGroupMedalData = (group) =>
+    group.tally.map((club, idx) => ({
+      "Hạng": idx === 0 ? "NHẤT LỨA TUỔI" : idx === 1 ? "NHÌ LỨA TUỔI" : idx === 2 ? "BA LỨA TUỔI" : idx + 1,
+      "Đơn vị/CLB": club.name,
+      "HCV": club.gold,
+      "HCB": club.silver,
+      "HCĐ": club.bronze,
+      "Tổng": club.total,
+    }));
+
+  const getSafeExportName = (value, fallback = "XuatFile") =>
+    (value || fallback).replace(/[^a-zA-Z0-9\u00C0-\u1EF9]/g, "_");
+
+  const handleExportAgeGroupMedalsExcel = (groups = ageGroupMedalTallies) => {
+    if (!groups.length) {
+      toast.error("Chưa có dữ liệu huy chương theo lứa tuổi để xuất!");
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+    groups.forEach((group) => {
+      const data = buildAgeGroupMedalData(group);
+      const ws = XLSX.utils.json_to_sheet(data);
+      ws["!cols"] = Object.keys(data[0] || {}).map((key) => ({
+        wch:
+          Math.max(
+            key.length,
+            ...data.map((r) => (r[key] || "").toString().length)
+          ) + 2,
+      }));
+      XLSX.utils.book_append_sheet(
+        wb,
+        ws,
+        group.label.replace(/[:\\/?*\[\]]/g, "").slice(0, 31)
+      );
+    });
+
+    const suffix = groups.length === 1 ? `_${getSafeExportName(groups[0].label)}` : "";
+    XLSX.writeFile(
+      wb,
+      `HuyChuong_LuaTuoi${suffix}_${getSafeExportName(tournament.name)}.xlsx`
+    );
+    toast.success(
+      groups.length === 1
+        ? `Đã xuất Excel lứa tuổi ${groups[0].label}!`
+        : "Đã xuất Excel các lứa tuổi!"
+    );
+  };
+
+  const buildAgeGroupMedalTablesHTML = (groups) =>
+    groups
+      .map(
+        (group) => `
+          <h3 class="age-group-title">${group.label}</h3>
+          <table class="age-group-table">
+            <thead>
+              <tr>
+                <th>Hạng</th>
+                <th>Đơn vị / CLB</th>
+                <th>HCV</th>
+                <th>HCB</th>
+                <th>HCĐ</th>
+                <th>Tổng</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${group.tally
+                .map(
+                  (club, idx) => `<tr class="${idx < 3 ? "top" : ""}">
+                    <td style="text-align:center;font-weight:bold">${idx === 0 ? "NHẤT LỨA TUỔI" : idx === 1 ? "NHÌ LỨA TUỔI" : idx === 2 ? "BA LỨA TUỔI" : idx + 1}</td>
+                    <td><strong>${club.name}</strong></td>
+                    <td style="text-align:center;color:#000">${club.gold || "-"}</td>
+                    <td style="text-align:center;color:#000">${club.silver || "-"}</td>
+                    <td style="text-align:center;color:#000">${club.bronze || "-"}</td>
+                    <td style="text-align:center;font-weight:bold">${club.total}</td>
+                  </tr>`
+                )
+                .join("")}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="2" style="font-weight:bold">Tổng cộng</td>
+                <td style="text-align:center;font-weight:bold">${group.tally.reduce((s, c) => s + c.gold, 0)}</td>
+                <td style="text-align:center;font-weight:bold">${group.tally.reduce((s, c) => s + c.silver, 0)}</td>
+                <td style="text-align:center;font-weight:bold">${group.tally.reduce((s, c) => s + c.bronze, 0)}</td>
+                <td style="text-align:center;font-weight:bold">${group.tally.reduce((s, c) => s + c.total, 0)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        `
+      )
+      .join("");
+
+  const handleExportAgeGroupMedalsPDF = (groups = ageGroupMedalTallies) => {
+    if (!groups.length) {
+      toast.error("Chưa có dữ liệu huy chương theo lứa tuổi để xuất!");
+      return;
+    }
+
+    const appIconUrl = `${getAppBaseUrl()}icon.png`;
+    const sponsorLogos = tournament.sponsorLogos || {};
+    const tournamentLogosList = getTournamentLogos(sponsorLogos);
+    const sponsors = sponsorLogos.sponsors || [];
+    const title =
+      groups.length === 1
+        ? `BẢNG HUY CHƯƠNG LỨA TUỔI ${groups[0].label}`
+        : "BẢNG HUY CHƯƠNG THEO LỨA TUỔI";
+    const logoHeaderHTML = `
+      <div class="logo-header">
+        <div class="header-left">
+          ${tournamentLogosList.length > 0 ? `<div class="sponsor-logos">${tournamentLogosList.map(logo => `<img src="${logo}" class="system-logo" />`).join("")}</div>` : ""}
+        </div>
+        <div class="header-center"><img src="${appIconUrl}" class="app-icon" /></div>
+        <div class="header-right">
+          ${sponsors.length > 0 ? `<div class="sponsor-logos">${sponsors.map(l => `<img src="${l}" class="sponsor-logo" />`).join("")}</div>` : ""}
+        </div>
+      </div>
+    `;
+
+    printIframeWithLoading(`<!DOCTYPE html><html><head>
+      <meta charset="utf-8"/>
+      <title>${title} - ${tournament.name}</title>
+      <style>
+        @page { size: portrait; margin: 10mm; }
+        body { font-family: 'Times New Roman', Times, serif; color: #000; padding: 20px; }
+        h1 { text-align: center; font-size: 24px; font-weight: bold; text-transform: uppercase; margin-bottom: 4px; }
+        h2 { text-align: center; font-size: 16px; font-weight: bold; font-style: italic; color: #000; margin-bottom: 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { color: #000; padding: 8px 6px; text-align: center; font-size: 12px; font-weight: bold; border: 1px solid #000; }
+        td { padding: 6px; border: 1px solid #000; }
+        tfoot td { border: 1px solid #000; font-weight: bold; }
+        .age-group-title { font-size: 16px; font-weight: bold; margin: 22px 0 8px; text-transform: uppercase; }
+        .age-group-table { page-break-inside: avoid; margin-bottom: 12px; }
+        .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; }
+        .header-left { justify-content: flex-start; }
+        .header-center { justify-content: center; }
+        .header-right { justify-content: flex-end; }
+        .system-logo { height: 55px; max-width: 160px; object-fit: contain; }
+        .app-icon { height: 60px; width: 60px; object-fit: contain; }
+        .sponsor-logos { display: flex; align-items: center; gap: 10px; }
+        .sponsor-logo { height: 45px; max-width: 120px; object-fit: contain; }
+      </style>
+    </head><body>
+      ${logoHeaderHTML}
+      <h1>${title}</h1>
+      <h2>${tournament.name}</h2>
+      <div style="text-align: right; font-style: italic; font-size: 13px; margin-bottom: 8px; color: #000;">
+        Cập nhật: ${new Date().toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}, ngày ${new Date().toLocaleDateString('vi-VN')}
+      </div>
+      ${buildAgeGroupMedalTablesHTML(groups)}
+    </body></html>`);
+  };
+
   // ===== EXPORT PDF =====
   const handleExportPDF = (type) => {
     let htmlContent = "";
@@ -2123,7 +2368,9 @@ export default function StatisticsPage() {
                 0
               )}</td>
             </tr>
-          </tfoot>        </table>`;
+          </tfoot>
+        </table>
+        `;
     }
     printIframeWithLoading(`<!DOCTYPE html><html><head>
       <meta charset="utf-8"/>
@@ -2140,6 +2387,8 @@ export default function StatisticsPage() {
         td { padding: 6px; border: 1px solid #000; }
         small { font-size: 11px; }
         tfoot td { border: 1px solid #000; font-weight: bold; }
+        .age-group-title { font-size: 16px; font-weight: bold; margin: 22px 0 8px; text-transform: uppercase; }
+        .age-group-table { page-break-inside: avoid; margin-bottom: 12px; }
         .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
         .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; }
         .header-left { justify-content: flex-start; }
@@ -2177,6 +2426,7 @@ export default function StatisticsPage() {
   const medals = getEstimatedMedals();
   const clubs = getClubs();
   const medalTally = getMedalTally();
+  const ageGroupMedalTallies = getMedalTallyByAgeGroup();
   const filteredCategories = getFilteredCategories();
   const categoriesWithResults = tournament.categories.filter((c) => {
     const r = getCategoryResults(c.id);
@@ -5030,6 +5280,23 @@ export default function StatisticsPage() {
                 📄 Xuất PDF
               </button>
 
+              {ageGroupMedalTallies.length > 0 && (
+                <>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => handleExportAgeGroupMedalsExcel()}
+                  >
+                    Xuất Excel lứa tuổi
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => handleExportAgeGroupMedalsPDF()}
+                  >
+                    Xuất PDF lứa tuổi
+                  </button>
+                </>
+              )}
+
               {selectedTallyClubs.size > 0 && (
                 <>
                   <button
@@ -5057,6 +5324,7 @@ export default function StatisticsPage() {
                 <p>Hãy nhập kết quả thi đấu trước ở tab "Kết quả thi đấu"</p>
               </div>
             ) : (
+              <>
               <div className="medal-tally-wrapper">
                 <table className="medal-tally-table">
                   <thead>
@@ -5174,6 +5442,81 @@ export default function StatisticsPage() {
                   </tfoot>
                 </table>
               </div>
+              {ageGroupMedalTallies.map((group) => (
+                <div className="age-group-medal-section" key={group.id}>
+                  <div className="age-group-medal-header">
+                    <h3>{group.label}</h3>
+                    <div className="age-group-medal-actions">
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => handleExportAgeGroupMedalsExcel([group])}
+                      >
+                        Excel lứa tuổi
+                      </button>
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => handleExportAgeGroupMedalsPDF([group])}
+                      >
+                        PDF lứa tuổi
+                      </button>
+                    </div>
+                  </div>
+                  <div className="medal-tally-wrapper compact">
+                    <table className="medal-tally-table">
+                      <thead>
+                        <tr>
+                          <th className="rank-col">Hạng</th>
+                          <th className="club-col">Đơn vị / CLB</th>
+                          <th className="medal-col gold-col">HCV</th>
+                          <th className="medal-col silver-col">HCB</th>
+                          <th className="medal-col bronze-col">HCĐ</th>
+                          <th className="medal-col total-col">Tổng</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.tally.map((club, idx) => (
+                          <tr key={`${group.id}-${club.name}`} className={idx < 3 ? `top-${idx + 1}` : ""}>
+                            <td className="rank-cell">
+                              {idx === 0
+                                ? "NHẤT LỨA TUỔI"
+                                : idx === 1
+                                ? "NHÌ LỨA TUỔI"
+                                : idx === 2
+                                ? "BA LỨA TUỔI"
+                                : idx + 1}
+                            </td>
+                            <td className="club-cell">{club.name}</td>
+                            <td className="gold-cell">{club.gold || "-"}</td>
+                            <td className="silver-cell">{club.silver || "-"}</td>
+                            <td className="bronze-cell">{club.bronze || "-"}</td>
+                            <td className="total-cell">{club.total}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td colSpan="2">
+                            <strong>Tổng cộng</strong>
+                          </td>
+                          <td className="gold-cell">
+                            <strong>{group.tally.reduce((s, c) => s + c.gold, 0)}</strong>
+                          </td>
+                          <td className="silver-cell">
+                            <strong>{group.tally.reduce((s, c) => s + c.silver, 0)}</strong>
+                          </td>
+                          <td className="bronze-cell">
+                            <strong>{group.tally.reduce((s, c) => s + c.bronze, 0)}</strong>
+                          </td>
+                          <td className="total-cell">
+                            <strong>{group.tally.reduce((s, c) => s + c.total, 0)}</strong>
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              ))}
+              </>
             )}
           </div>
         )}

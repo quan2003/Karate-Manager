@@ -131,86 +131,218 @@ function createZip(files) {
   return concatBytes([localData, centralDirectory, endRecord]);
 }
 
+function getAgeGroup(birthYear, currentYear) {
+  if (!birthYear || !currentYear) return "";
+  const age = currentYear - birthYear;
+  if (age <= 5) return "Dưới 6 tuổi";
+  if (age <= 8) return "6-8 tuổi";
+  if (age <= 11) return "9-11 tuổi";
+  if (age <= 14) return "12-14 tuổi";
+  if (age <= 17) return "15-17 tuổi";
+  return "18+ tuổi";
+}
+
 function buildAthleteTemplateWorkbook({ tournamentData, clubName }) {
-  const headers = [
-    "Họ tên",
-    "Giới tính",
-    "Ngày sinh (DD/MM/YYYY)",
-    "Đơn vị/CLB",
-    "Nội dung thi đấu",
-    "Cân nặng (kg)",
-    "Đồng đội (Có/Không)",
-    "Hạt giống (1-8)",
-  ];
   const events = tournamentData.events || [];
-  const sampleRows = events.slice(0, 3).map((event, index) => [
-    `VĐV mẫu ${index + 1}`,
-    event.gender === "female" ? "Nữ" : "Nam",
-    "15/03/2008",
-    clubName || "CLB ...",
-    event.name,
-    event.type === "kumite" || event.name?.toLowerCase().includes("kumite") ? 60 : "",
-    event.isTeam ? "Có" : "Không",
-    index === 0 ? 1 : "",
-  ]);
-  const eventRangeEnd = Math.max(events.length + 1, 2);
-  const inputRows = [
-    makeRow(1, headers, 1),
-    ...sampleRows.map((row, index) => makeRow(index + 2, row)),
-  ].join("");
+  const currentYear = new Date().getFullYear();
+
+  function parseEventAgeRange(name) {
+    let minAge = 0;
+    let maxAge = 99;
+    const lowerName = (name || "").toLowerCase();
+    const strForAge = lowerName.replace(/(?:dưới|trên|duoi|tren|hạng\s*cân|hang\s*can)?\s*\d+\s*kg/ig, "");
+    
+    const rangeMatch = strForAge.match(/(\d+)\s*(?:tuổi\s*)?(?:đến|den|-\u2013|-)\s*(\d+)/i); 
+    const plusMatch1 = strForAge.match(/(\d+)\s*(?:tuổi\s*)?(?:trở\s*lên|tro\s*len)/i);
+    const plusMatch2 = strForAge.match(/(\d+)\+/i); 
+    const plusMatch3 = strForAge.match(/(?:trên|tren)\s*(\d+)/i); 
+    const underMatch = strForAge.match(/(?:dưới|duoi)\s*(\d+)/i); 
+    
+    if (rangeMatch) { minAge = parseInt(rangeMatch[1]); maxAge = parseInt(rangeMatch[2]); }
+    else if (plusMatch1) { minAge = parseInt(plusMatch1[1]); maxAge = 99; }
+    else if (plusMatch2) { minAge = parseInt(plusMatch2[1]); maxAge = 99; }
+    else if (plusMatch3) { minAge = parseInt(plusMatch3[1]); maxAge = 99; }
+    else if (underMatch) { minAge = 0; maxAge = parseInt(underMatch[1]); }
+    
+    return { minAge, maxAge };
+  }
+
+  // Generate All lists
+  const maleEventsAll   = events.filter(e => e.gender === "male"   || e.gender === "mixed");
+  const femaleEventsAll = events.filter(e => e.gender === "female" || e.gender === "mixed");
+  
+  // Create age-specific columns: minAge = 4, maxAge = 60
+  const MIN_AGE_GEN = 4;
+  const MAX_AGE_GEN = 60;
+  
+  const catalogColumns = []; 
+  catalogColumns.push({ name: "Nam_All", events: maleEventsAll });
+  catalogColumns.push({ name: "Nu_All", events: femaleEventsAll });
+  catalogColumns.push({ name: "All_All", events: events });
+  
+  for (let age = MIN_AGE_GEN; age <= MAX_AGE_GEN; age++) {
+    const mEvents = maleEventsAll.filter(e => {
+       const r = parseEventAgeRange(e.name);
+       return age >= r.minAge && age <= r.maxAge;
+    });
+    const fEvents = femaleEventsAll.filter(e => {
+       const r = parseEventAgeRange(e.name);
+       return age >= r.minAge && age <= r.maxAge;
+    });
+    catalogColumns.push({ name: `Nam_${age}`, events: mEvents });
+    catalogColumns.push({ name: `Nu_${age}`, events: fEvents });
+  }
+
+  const catalogEndRows = Math.max(...catalogColumns.map(c => c.events.length), 1) + 1; // +1 for header
+  const catalogEndCols = catalogColumns.length;
+
+  const headers = [
+    "Họ tên", "Giới tính", "Năm sinh", "Nhóm tuổi (tự động)",
+    "Đơn vị/CLB", "Nội dung thi đấu", "Cân nặng (kg)", "Đồng đội", "Hạt giống",
+  ];
+
+  const sampleSources = [
+    maleEventsAll[0], femaleEventsAll[0], maleEventsAll[1] || femaleEventsAll[1],
+  ].filter(Boolean).slice(0, 3);
+
+  const sampleRows = sampleSources.map((event, index) => {
+    const isFemale = event.gender === "female";
+    const sampleYear = isFemale ? currentYear - 14 : currentYear - 13;
+    return [
+      `VĐV mẫu ${index + 1}`,
+      isFemale ? "Nữ" : "Nam",
+      sampleYear,
+      getAgeGroup(sampleYear, currentYear),
+      clubName || "CLB ...",
+      event.name,
+      event.type === "kumite" || event.name?.toLowerCase().includes("kumite") ? 60 : "",
+      event.isTeam ? "Có" : "Không",
+      index === 0 ? 1 : "",
+    ];
+  });
+
+  const headerRowXml  = makeRow(1, headers, 1);
+  const sampleRowsXml = sampleRows.map((row, idx) => makeRow(idx + 2, row)).join("");
+
+  const formulaRowsXml = (() => {
+    const start = sampleRows.length + 2;
+    const yr = currentYear;
+    return Array.from({ length: TEMPLATE_ROWS + 1 - start + 1 }, (_, i) => {
+      const r = start + i;
+      const formula =
+        `IF(C${r}="","",` +
+        `IF((${yr}-C${r})<=5,"D\u01b0\u1edbi 6 tu\u1ed5i",` +
+        `IF((${yr}-C${r})<=8,"6-8 tu\u1ed5i",` +
+        `IF((${yr}-C${r})<=11,"9-11 tu\u1ed5i",` +
+        `IF((${yr}-C${r})<=14,"12-14 tu\u1ed5i",` +
+        `IF((${yr}-C${r})<=17,"15-17 tu\u1ed5i","18+ tu\u1ed5i"))))))`;
+      return `<row r="${r}"><c r="D${r}"><f>${xmlEscape(formula)}</f></c></row>`;
+    }).join("");
+  })();
+
+  const eventValidationFormula = `IF(C2="", INDIRECT(IF(B2="N\u1eef","Nu_All",IF(B2="Nam","Nam_All","All_All"))), INDIRECT(IF(B2="N\u1eef","Nu_","Nam_") & MIN(MAX(${currentYear}-C2, ${MIN_AGE_GEN}), ${MAX_AGE_GEN})))`;
+
   const inputSheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<dimension ref="A1:H${TEMPLATE_ROWS + 1}"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="18"/>
-<cols><col min="1" max="1" width="26" customWidth="1"/><col min="2" max="2" width="14" customWidth="1"/><col min="3" max="3" width="20" customWidth="1"/><col min="4" max="4" width="24" customWidth="1"/><col min="5" max="5" width="42" customWidth="1"/><col min="6" max="6" width="15" customWidth="1"/><col min="7" max="7" width="20" customWidth="1"/><col min="8" max="8" width="16" customWidth="1"/></cols>
-<sheetData>${inputRows}</sheetData>
+<dimension ref="A1:I${TEMPLATE_ROWS + 1}"/>
+<sheetViews><sheetView tabSelected="1" workbookViewId="0"><selection activeCell="A2" sqref="A2"/></sheetView></sheetViews>
+<sheetFormatPr defaultRowHeight="20" customHeight="1"/>
+<cols>
+  <col min="1" max="1" width="28" customWidth="1"/>
+  <col min="2" max="2" width="13" customWidth="1"/>
+  <col min="3" max="3" width="12" customWidth="1"/>
+  <col min="4" max="4" width="20" customWidth="1"/>
+  <col min="5" max="5" width="24" customWidth="1"/>
+  <col min="6" max="6" width="44" customWidth="1"/>
+  <col min="7" max="7" width="14" customWidth="1"/>
+  <col min="8" max="8" width="13" customWidth="1"/>
+  <col min="9" max="9" width="14" customWidth="1"/>
+</cols>
+<sheetData>
+${headerRowXml}
+${sampleRowsXml}
+${formulaRowsXml}
+</sheetData>
 <dataValidations count="3">
-<dataValidation type="list" allowBlank="1" showErrorMessage="1" sqref="B2:B${TEMPLATE_ROWS + 1}"><formula1>"Nam,Nữ"</formula1></dataValidation>
-<dataValidation type="list" allowBlank="1" showErrorMessage="1" sqref="E2:E${TEMPLATE_ROWS + 1}"><formula1>'Danh mục'!$A$2:$A$${eventRangeEnd}</formula1></dataValidation>
-<dataValidation type="list" allowBlank="1" showErrorMessage="1" sqref="G2:G${TEMPLATE_ROWS + 1}"><formula1>"Không,Có"</formula1></dataValidation>
+  <dataValidation type="list" allowBlank="1" showDropDown="0" showErrorMessage="1"
+    errorTitle="Gioi tinh khong hop le" error="Chi duoc chon Nam hoac Nu"
+    sqref="B2:B${TEMPLATE_ROWS + 1}">
+    <formula1>"Nam,N&#432;"</formula1>
+  </dataValidation>
+  <dataValidation type="list" allowBlank="1" showDropDown="0" showErrorMessage="1"
+    errorTitle="Noi dung khong hop le" error="Vui long chon tu danh sach co san"
+    sqref="F2:F${TEMPLATE_ROWS + 1}">
+    <formula1>${xmlEscape(eventValidationFormula)}</formula1>
+  </dataValidation>
+  <dataValidation type="list" allowBlank="1" showDropDown="0" showErrorMessage="1"
+    sqref="H2:H${TEMPLATE_ROWS + 1}">
+    <formula1>"Kh&#244;ng,C&#243;"</formula1>
+  </dataValidation>
 </dataValidations>
 <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
 </worksheet>`;
 
-  const catalogRows = [
-    makeRow(1, ["Nội dung thi đấu", "Loại", "Giới tính", "Đồng đội"], 1),
-    ...events.map((event, index) =>
-      makeRow(index + 2, [
-        event.name,
-        event.type === "kata" ? "Kata" : "Kumite",
-        event.gender === "male" ? "Nam" : event.gender === "female" ? "Nữ" : "Hỗn hợp",
-        event.isTeam ? "Có" : "Không",
-      ])
-    ),
-  ].join("");
+  const catalogHeaderXml = makeRow(1, catalogColumns.map(c => c.name), 1);
+  const catalogDataXml = Array.from({ length: catalogEndRows - 1 }, (_, i) =>
+    makeRow(i + 2, catalogColumns.map(c => c.events[i]?.name || ""))
+  ).join("");
+
   const catalogSheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<dimension ref="A1:D${eventRangeEnd}"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="18"/>
-<cols><col min="1" max="1" width="48" customWidth="1"/><col min="2" max="4" width="14" customWidth="1"/></cols>
-<sheetData>${catalogRows}</sheetData></worksheet>`;
+<dimension ref="A1:${columnName(catalogEndCols - 1)}${catalogEndRows}"/>
+<sheetViews><sheetView workbookViewId="0"/></sheetViews>
+<sheetFormatPr defaultRowHeight="18"/>
+<cols>
+  <col min="1" max="${catalogEndCols}" width="40" customWidth="1"/>
+</cols>
+<sheetData>${catalogHeaderXml}${catalogDataXml}</sheetData>
+</worksheet>`;
 
   const guideRows = [
-    makeRow(1, ["Cột", "Yêu cầu"], 1),
-    makeRow(2, ["Họ tên", "Bắt buộc. Nhập đúng họ tên VĐV."]),
-    makeRow(3, ["Giới tính", "Chọn Nam hoặc Nữ."]),
-    makeRow(4, ["Ngày sinh", "Định dạng DD/MM/YYYY, ví dụ 15/03/2008."]),
-    makeRow(5, ["Đơn vị/CLB", "Có thể để trống nếu đã nhập tên CLB trên trang HLV."]),
-    makeRow(6, ["Nội dung thi đấu", "Chọn từ danh sách hạng mục đã setup của giải. Không tự sửa tên."]),
-    makeRow(7, ["Cân nặng", "Bắt buộc cho nội dung Kumite, có thể trống cho Kata."]),
-    makeRow(8, ["Đồng đội", "Chọn Có nếu là nội dung đồng đội/hỗn hợp, ngược lại chọn Không."]),
-    makeRow(9, ["Hạt giống", "Tùy chọn, chỉ nhập số từ 1 đến 8."]),
+    makeRow(1,  ["HƯỚNG DẪN NHẬP DANH SÁCH VĐV", ""], 1),
+    makeRow(2,  ["", ""]),
+    makeRow(3,  ["CỘT", "YÊU CẦU & HƯỚNG DẪN"], 1),
+    makeRow(4,  ["A - Họ tên",          "BẮT BUỘC. Nhập đầy đủ họ và tên VĐV. Ví dụ: Nguyễn Văn An"]),
+    makeRow(5,  ["B - Giới tính",       "BẮT BUỘC. Bấm vào ô → chọn Nam hoặc Nữ từ danh sách xổ xuống ▼"]),
+    makeRow(6,  ["C - Năm sinh",        "BẮT BUỘC. Chỉ nhập NĂM (4 chữ số). Ví dụ: 2010, 2008, 1995"]),
+    makeRow(7,  ["D - Nhóm tuổi",       "TỰ ĐỘNG tính từ Năm sinh. KHÔNG cần nhập, Excel tự điền."]),
+    makeRow(8,  ["E - Đơn vị/CLB",      "Nhập tên CLB hoặc đơn vị. Có thể để trống nếu đã cài sẵn."]),
+    makeRow(9,  ["F - Nội dung thi đấu","BẮT BUỘC. Bấm vào ô → danh sách TỰ LỌC theo Giới tính (B) và Năm sinh (C) ▼"]),
+    makeRow(10, ["G - Cân nặng (kg)",   "BẮT BUỘC với nội dung Kumite. Bỏ trống nếu là Kata."]),
+    makeRow(11, ["H - Đồng đội",        "Bấm chọn: Có (nội dung đồng đội) hoặc Không (cá nhân)."]),
+    makeRow(12, ["I - Hạt giống",       "Tùy chọn. Chỉ nhập số từ 1 đến 8 nếu VĐV được xếp hạt giống."]),
+    makeRow(13, ["", ""]),
+    makeRow(14, ["LƯU Ý QUAN TRỌNG", ""], 1),
+    makeRow(15, ["1.", "NHẬP NĂM SINH VÀ CHỌN GIỚI TÍNH TRƯỚC, sau đó bấm cột F → danh sách nội dung sẽ TỰ LỌC."]),
+    makeRow(16, ["2.", "Nếu không nhập năm sinh, danh sách nội dung sẽ hiện tất cả."]),
+    makeRow(17, ["3.", "Một VĐV thi nhiều nội dung → nhập NHIỀU DÒNG, mỗi dòng một nội dung."]),
+    makeRow(18, ["4.", "Sau khi điền xong, lưu file và gửi lại cho BTC hoặc nhập trực tiếp vào phần mềm."]),
+    makeRow(19, ["5.", "Không xóa hoặc thay đổi dòng tiêu đề (dòng 1 màu đậm)."]),
   ].join("");
+
   const guideSheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<dimension ref="A1:B9"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="18"/>
-<cols><col min="1" max="1" width="24" customWidth="1"/><col min="2" max="2" width="82" customWidth="1"/></cols>
-<sheetData>${guideRows}</sheetData></worksheet>`;
+<dimension ref="A1:B19"/>
+<sheetViews><sheetView workbookViewId="0"/></sheetViews>
+<sheetFormatPr defaultRowHeight="20"/>
+<cols>
+  <col min="1" max="1" width="28" customWidth="1"/>
+  <col min="2" max="2" width="92" customWidth="1"/>
+</cols>
+<sheetData>${guideRows}</sheetData>
+</worksheet>`;
+
+  const definedNames = `<definedNames>` + catalogColumns.map((c, i) => {
+    const end = c.events.length > 0 ? c.events.length + 1 : 2;
+    return `<definedName name="${c.name}">'Danh m&#7909;c'!$${columnName(i)}$2:$${columnName(i)}$${end}</definedName>`;
+  }).join("") + `</definedNames>`;
 
   const files = [
     { name: "[Content_Types].xml", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>` },
     { name: "_rels/.rels", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
     { name: "xl/_rels/workbook.xml.rels", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/><Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` },
     { name: "xl/styles.xml", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>` },
-    { name: "xl/workbook.xml", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Mẫu nhập VĐV" sheetId="1" r:id="rId1"/><sheet name="Danh mục" sheetId="2" state="hidden" r:id="rId2"/><sheet name="Hướng dẫn" sheetId="3" r:id="rId3"/></sheets></workbook>` },
+    { name: "xl/workbook.xml", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="M&#7851;u nh&#7853;p V&#272;V" sheetId="1" r:id="rId1"/><sheet name="Danh m&#7909;c" sheetId="2" state="hidden" r:id="rId2"/><sheet name="H&#432;&#7899;ng d&#7851;n" sheetId="3" r:id="rId3"/></sheets>${definedNames}</workbook>` },
     { name: "xl/worksheets/sheet1.xml", content: inputSheet },
     { name: "xl/worksheets/sheet2.xml", content: catalogSheet },
     { name: "xl/worksheets/sheet3.xml", content: guideSheet },
@@ -486,49 +618,6 @@ function CoachPage() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     return;
-    const headers = [
-      "Tên VĐV",
-      "Giới tính",
-      "Ngày sinh (DD/MM/YYYY)",
-      "Đơn vị/CLB",
-      "Nội dung thi đấu",
-      "Cân nặng (kg)",
-      "Đồng đội (Có/Không)",
-      "Hạt giống (1-8)",
-    ];
-    const data = [headers];
-    // Add sample rows with available events
-    tournamentData.events.slice(0, 3).forEach((ev, i) => {
-      data.push([
-        `VĐV mẫu ${i + 1}`,
-        "Nam",
-        "15/03/2008",
-        clubName || "CLB ...",
-        ev.name,
-        ev.type === "kumite" || ev.name?.toLowerCase().includes("kumite")
-          ? "60"
-          : "",
-        "Không",
-        i === 0 ? 1 : "",
-      ]);
-    });
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Mẫu nhập VĐV");
-    ws["!cols"] = [
-      { wch: 25 },
-      { wch: 10 },
-      { wch: 18 },
-      { wch: 20 },
-      { wch: 30 },
-      { wch: 14 },
-      { wch: 18 },
-      { wch: 12 },
-    ];
-    XLSX.writeFile(
-      wb,
-      `mau_nhap_vdv_${tournamentData.tournamentName || "hlv"}.xlsx`
-    );
   };
 
   // Excel import
@@ -537,206 +626,131 @@ function CoachPage() {
     if (!file) return;
     setImporting(true);
     try {
-      const wb = XLSX.read(await file.arrayBuffer(), {
-        type: "array",
-        codepage: 65001,
-      });
+      const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', codepage: 65001 });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-      // Detect header
       let startRow = 0;
-      if (
-        rows[0] &&
-        rows[0].some((h) =>
-          String(h || "")
-            .toLowerCase()
-            .includes("tên")
-        )
-      )
-        startRow = 1;
-
-      // Detect if "Nội dung" column exists
-      let hasEventCol = false;
-      if (startRow === 1) {
-        const headerStr = rows[0].map((h) => String(h || "").toLowerCase());
-        hasEventCol = headerStr.some((h) => h.includes("nội dung"));
-      }
+      if (rows[0] && rows[0].some(h => {
+        const s = String(h || '').toLowerCase();
+        return s.includes('ten') || s.includes('tên') || s.includes('name');
+      })) startRow = 1;
 
       let imported = 0;
       const importErrors = [];
+
       for (let i = startRow; i < rows.length; i++) {
         const row = rows[i];
         if (!row || !row[0]) continue;
- 
-        // Detect column indices dynamically based on header
-        let nameCol = 0, genderCol = 1, birthCol = 2, clubCol = 3, eventCol = 4, weightCol = 5, seedCol = 7, teamCol = 6;
-        
+
+        let nameCol=0, genderCol=1, birthCol=2, clubCol=3, eventCol=4, weightCol=5, teamCol=6, seedCol=7;
+
         if (startRow === 1 && rows[0]) {
-          const header = rows[0].map(h => String(h || "").toLowerCase());
-          const findCol = (terms) => header.findIndex(h => terms.some(t => h.includes(t.toLowerCase())));
-          
-          const n = findCol(["tên", "họ tên", "name"]); if (n !== -1) nameCol = n;
-          const g = findCol(["giới", "gender", "phái"]); if (g !== -1) genderCol = g;
-          const b = findCol(["sinh", "birth"]); if (b !== -1) birthCol = b;
-          const c = findCol(["clb", "đơn vị", "club"]); if (c !== -1) clubCol = c;
-          const e = findCol(["nội dung", "event", "hạng mục"]); if (e !== -1) eventCol = e;
-          const w = findCol(["cân", "weight", "kg"]); if (w !== -1) weightCol = w;
-          const s = findCol(["hạt giống", "seed"]); if (s !== -1) seedCol = s;
-          const t = findCol(["đồng đội", "đội", "team", "(Có/K)"]); if (t !== -1) teamCol = t;
+          const norm = v => String(v||'').toLowerCase().normalize('NFD')
+            .replace(/[̀-ͯ]/g,'').replace(/đ/g,'d');
+          const hdr = rows[0].map(norm);
+          const fc = (terms) => hdr.findIndex(h => terms.some(t => h.includes(t)));
+          const n=fc(['ten','name']);              if(n>=0) nameCol=n;
+          const g=fc(['gioi','gender']);           if(g>=0) genderCol=g;
+          const b=fc(['sinh','birth']);            if(b>=0) birthCol=b;
+          const c=fc(['clb','don vi','club']);     if(c>=0) clubCol=c;
+          const ev=fc(['noi dung','event','hang muc']); if(ev>=0) eventCol=ev;
+          const w=fc(['can','weight','kg']);       if(w>=0) weightCol=w;
+          const t=fc(['dong doi','team']);         if(t>=0) teamCol=t;
+          const s=fc(['hat giong','seed']);        if(s>=0) seedCol=s;
         } else {
-          // Fallback based on STT existence if no clear header matching
-          const isNum = typeof row[0] === 'number' || (!isNaN(row[0]) && String(row[0]).trim() !== "");
-          if (isNum && row[1]) {
-            nameCol = 1; birthCol = 2; genderCol = 3; clubCol = 4; eventCol = 5; weightCol = 6; seedCol = 7; teamCol = 8;
-          }
+          const isNum = typeof row[0]==='number' || (!isNaN(row[0]) && String(row[0]).trim()!=='');
+          if (isNum && row[1]) { nameCol=1;birthCol=2;genderCol=3;clubCol=4;eventCol=5;weightCol=6;teamCol=7;seedCol=8; }
         }
 
-        const name = String(row[nameCol] || "").trim();
+        const name = String(row[nameCol]||'').trim();
         if (!name) continue;
 
-        const genderRaw = String(row[genderCol] || "").trim().toLowerCase();
-        const gender = (genderRaw.includes("nữ") || genderRaw === "female" || genderRaw === "f") ? "female" : "male";
+        const genderRaw = String(row[genderCol]||'').trim().toLowerCase();
+        const gender = (genderRaw.includes('nữ')||genderRaw.includes('nu')||genderRaw==='female'||genderRaw==='f') ? 'female' : 'male';
 
-        // Parse birth date
-        let birthDate = "";
+        let birthDate='', birthYearOnly=null;
         const dateVal = row[birthCol];
-        if (dateVal) {
-          if (typeof dateVal === "number") {
-            const d = new Date(1899, 11, 30 + dateVal);
-            birthDate = d.toISOString().split("T")[0];
+        if (dateVal !== undefined && dateVal !== null && dateVal !== '') {
+          if (typeof dateVal === 'number') {
+            if (Number.isInteger(dateVal) && dateVal>=1900 && dateVal<=2050) {
+              birthYearOnly = dateVal;
+            } else {
+              const d = new Date(1899, 11, 30 + Math.round(dateVal));
+              birthDate = d.toISOString().split('T')[0];
+            }
           } else {
             const str = String(dateVal).trim();
-            const sep = /[-\/.]/;
-            const parts = str.split(sep);
-            if (parts.length === 3) {
-              const a = parseInt(parts[0]), b = parseInt(parts[1]), c = parseInt(parts[2]);
-              if (c > 1900) birthDate = `${c}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
-              else if (a > 1900) birthDate = `${a}-${String(b).padStart(2, "0")}-${String(c).padStart(2, "0")}`;
+            if (/^d{4}$/.test(str)) {
+              const yr = parseInt(str);
+              if (yr>=1900 && yr<=2050) birthYearOnly = yr;
+            } else {
+              const parts = str.split(/[-/.]/);
+              if (parts.length===3) {
+                const [a,b2,c2] = parts.map(Number);
+                if (c2>1900) birthDate=c2+'-'+String(b2).padStart(2,'0')+'-'+String(a).padStart(2,'0');
+                else if (a>1900) birthDate=a+'-'+String(b2).padStart(2,'0')+'-'+String(c2).padStart(2,'0');
+              }
             }
           }
         }
 
-        const club = String(row[clubCol] || clubName || "").trim();
-        let eventName, weight, isTeam, seed;
+        const club = String(row[clubCol]||clubName||'').trim();
+        const eventName = String(row[eventCol]||'').trim();
+        const weight = row[weightCol] ? parseFloat(row[weightCol]) : null;
+        const teamRaw = String(row[teamCol]||'').trim().toLowerCase();
+        const isTeam = teamRaw==='ó'||teamRaw==='co'||teamRaw==='yes'||teamRaw==='x'||teamRaw.startsWith('có')||teamRaw==='có';
+        const seed = parseInt(row[seedCol]) || null;
 
-        if (hasEventCol) {
-          eventName = String(row[eventCol] || "").trim();
-          weight = row[weightCol] ? parseFloat(row[weightCol]) : null;
-          const teamRaw = String(row[teamCol] || "").trim().toLowerCase();
-          isTeam = teamRaw === "có" || teamRaw === "co" || teamRaw === "yes" || teamRaw === "x";
-          seed = parseInt(row[seedCol]) || null;
-        } else {
-          eventName = "";
-          weight = row[weightCol - 1] ? parseFloat(row[weightCol - 1]) : null;
-          const teamRaw = String(row[teamCol - 1] || "").trim().toLowerCase();
-          isTeam = teamRaw === "có" || teamRaw === "co" || teamRaw === "yes" || teamRaw === "x";
-          seed = parseInt(row[seedCol - 1]) || null;
-        }
-
-        // Match event by name
-        let matchedEvent = null;
-        if (eventName) {
-          matchedEvent = tournamentData.events.find((ev) => {
-            const evN = ev.name.toLowerCase();
-            const inN = eventName.toLowerCase();
-            return evN === inN || evN.includes(inN) || inN.includes(evN);
-          });
-        }
-
-        if (!matchedEvent && !eventName) {
-          importErrors.push(`Dòng ${i + 1} (${name}): Thiếu nội dung thi đấu`);
+        if (!eventName) {
+          importErrors.push('Đòng '+(i+1)+' ('+name+'): Thiếu nội dung thi đấu');
           continue;
         }
+
+        const matchedEvent = tournamentData.events.find(ev => {
+          const a=ev.name.toLowerCase(), b3=eventName.toLowerCase();
+          return a===b3 || a.includes(b3) || b3.includes(a);
+        });
         if (!matchedEvent) {
-          importErrors.push(
-            `Dòng ${i + 1} (${name}): Không tìm thấy nội dung "${eventName}"`
-          );
+          importErrors.push('Đòng '+(i+1)+' ('+name+'): Không tìm thấy nội dung "'+eventName+'"');
           continue;
         }
 
-        const birthYear = birthDate ? new Date(birthDate).getFullYear() : null;
-
-        // Validate age
-        const evName = matchedEvent.name || "";
-        const rangeMatch = evName.match(
-          /(\d+)\s*[-\u2013]\s*(\d+)\s*tu\u1ed5i/i
-        );
-        const plusMatch = evName.match(/(\d+)\+\s*tu\u1ed5i/i);
-        let minAge = null,
-          maxAge = null;
-        if (rangeMatch) {
-          minAge = parseInt(rangeMatch[1]);
-          maxAge = parseInt(rangeMatch[2]);
-        } else if (plusMatch) {
-          minAge = parseInt(plusMatch[1]);
-          maxAge = 99;
+        const birthYear = birthDate ? new Date(birthDate).getFullYear() : birthYearOnly;
+        const evName = matchedEvent.name || '';
+        const rangeMatch = evName.match(/(d+)s*[-–]s*(d+)s*tu/i);
+        const plusMatch  = evName.match(/(d+)+s*tu/i);
+        let minAge=null, maxAge=null;
+        if (rangeMatch) { minAge=+rangeMatch[1]; maxAge=+rangeMatch[2]; }
+        else if (plusMatch) { minAge=+plusMatch[1]; maxAge=99; }
+        if (birthYear && minAge !== null) {
+          const age = new Date().getFullYear() - birthYear;
+          if (age<minAge||age>maxAge)
+            importErrors.push('⚠️ Đòng '+(i+1)+' ('+name+'): '+age+' tuổi — không phù hợp "'+minAge+'-'+maxAge+'" của "'+evName+'"');
         }
-
-        if (birthDate && minAge !== null) {
-          const birth = new Date(birthDate);
-          const now = new Date();
-          let age = now.getFullYear() - birth.getFullYear();
-          const mo = now.getMonth() - birth.getMonth();
-          if (mo < 0 || (mo === 0 && now.getDate() < birth.getDate())) age--;
-          if (age < minAge || age > maxAge) {
-            importErrors.push(
-              `\u26a0\ufe0f D\u00f2ng ${
-                i + 1
-              } (${name}): ${age} tu\u1ed5i - kh\u00f4ng ph\u00f9 h\u1ee3p l\u1ee9a tu\u1ed5i "${minAge}-${maxAge}" c\u1ee7a "${evName}"`
-            );
-          }
-        }
-
-        // Validate weight for kumite
-        const isKumiteEv =
-          matchedEvent.type === "kumite" ||
-          evName.toLowerCase().includes("kumite");
-        if (isKumiteEv && (!weight || isNaN(weight))) {
-          importErrors.push(
-            `\u26a0\ufe0f D\u00f2ng ${
-              i + 1
-            } (${name}): Thi\u1ebfu c\u00e2n n\u1eb7ng cho n\u1ed9i dung Kumite "${evName}"`
-          );
-        }
+        const isKumiteEv = matchedEvent.type==='kumite' || evName.toLowerCase().includes('kumite');
+        if (isKumiteEv && (!weight||isNaN(weight)))
+          importErrors.push('⚠️ Đòng '+(i+1)+' ('+name+'): Thiếu cân nặng cho Kumite "'+evName+'"');
 
         const result = await addAthlete({
-          name,
-          birthDate,
-          birthYear,
-          gender,
-          club,
-          eventId: matchedEvent.id,
-          eventName: matchedEvent.name,
+          name, birthDate, birthYear, gender, club,
+          eventId: matchedEvent.id, eventName: matchedEvent.name,
           weight: weight && !isNaN(weight) ? weight : undefined,
-          isTeam,
-          seed: seed && seed >= 1 && seed <= 8 ? seed : null,
+          isTeam, seed: seed && seed>=1 && seed<=8 ? seed : null,
         });
         if (result.success) imported++;
-        else
-          importErrors.push(
-            `\u274c D\u00f2ng ${i + 1} (${name}): ${result.error}`
-          );
+        else importErrors.push('❌ Đòng '+(i+1)+' ('+name+'): '+result.error);
       }
 
-      if (importErrors.length > 0) {
-        toast.warning(
-          `\u0110\u00e3 import ${imported} V\u0110V.\n\nC\u1ea3nh b\u00e1o/L\u1ed7i (${
-            importErrors.length
-          }):\n${importErrors.join(
-            "\n"
-          )}\n\nVui l\u00f2ng ki\u1ec3m tra v\u00e0 s\u1eeda l\u1ea1i c\u00e1c V\u0110V c\u00f3 v\u1ea5n \u0111\u1ec1.`
-        );
-      } else {
-        toast.success(
-          `\u0110\u00e3 import th\u00e0nh c\u00f4ng ${imported} V\u0110V! T\u1ea5t c\u1ea3 h\u1ee3p l\u1ec7.`
-        );
-      }
+      if (importErrors.length > 0)
+        toast.warning('Đã import '+imported+' VĐV.\n\nCảnh báo ('+importErrors.length+'):\n'+importErrors.join('\n')+'\n\nVui lòng kiểm tra và sửa lại.');
+      else
+        toast.success('Đã import thành công '+imported+' VĐV! Tất cả hợp lệ.');
     } catch (err) {
-      toast.error("Lỗi đọc file: " + err.message);
+      toast.error('Lỗi đọc file: '+err.message);
     } finally {
       setImporting(false);
-      e.target.value = "";
+      e.target.value = '';
     }
   };
   // Submit form

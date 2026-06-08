@@ -384,6 +384,41 @@
   border-top: 2px solid var(--color-border);
 }
 
+.age-group-medal-section {
+  margin-top: var(--spacing-6);
+}
+
+.age-group-medal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-3);
+  flex-wrap: wrap;
+}
+
+.age-group-medal-section h3 {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.age-group-medal-actions {
+  display: flex;
+  gap: var(--spacing-2);
+  flex-wrap: wrap;
+}
+
+.medal-tally-wrapper.compact .medal-tally-table th,
+.medal-tally-wrapper.compact .medal-tally-table td {
+  padding: var(--spacing-2) var(--spacing-3);
+}
+
+.medal-tally-wrapper.compact .medal-tally-table .rank-cell {
+  font-size: var(--font-size-sm);
+}
+
 /* Result Form */
 .result-form {
   display: flex;

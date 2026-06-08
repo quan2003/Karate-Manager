@@ -21,6 +21,33 @@ const initialState = {
   currentCategory: null,
 };
 
+function normalizeCategoryImportKey(value) {
+  return String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "d")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function buildImportedCategory(cat, existingCategory = null) {
+  return {
+    ...(existingCategory || {}),
+    id: existingCategory?.id || uuidv4(),
+    name: cat.name,
+    type: cat.type,
+    isTeam: cat.isTeam || false,
+    weightClass: cat.weightClass || "",
+    ageGroup: cat.ageGroup || "",
+    gender: cat.gender || "male",
+    athletes: existingCategory?.athletes || [],
+    bracket: existingCategory?.bracket || null,
+    format: cat.format || existingCategory?.format || "single_elimination",
+  };
+}
+
 // Actions
 const ACTIONS = {
   LOAD_DATA: "LOAD_DATA",
@@ -168,31 +195,32 @@ function tournamentReducer(state, action) {
       break;
 
     case ACTIONS.IMPORT_CATEGORIES:
-      // Import multiple categories at once
+      // Import hạng mục theo kiểu sync: Excel là danh sách nguồn.
+      // Trùng tên thì cập nhật và giữ VĐV/bracket cũ; không còn trong Excel thì bỏ khỏi danh sách.
       newState = {
         ...state,
-        tournaments: state.tournaments.map((t) =>
-          t.id === action.payload.tournamentId
-            ? {
-                ...t,
-                categories: [
-                  ...t.categories,
-                  ...action.payload.categories.map((cat) => ({
-                    id: uuidv4(),
-                    name: cat.name,
-                    type: cat.type,
-                    isTeam: cat.isTeam || false,
-                    weightClass: cat.weightClass || "",
-                    ageGroup: cat.ageGroup || "",
-                    gender: cat.gender || "male",
-                    athletes: [],
-                    bracket: null,
-                    format: cat.format || "single_elimination",
-                  })),
-                ],
-              }
-            : t
-        ),
+        tournaments: state.tournaments.map((t) => {
+          if (t.id !== action.payload.tournamentId) return t;
+
+          const existingByName = new Map();
+          t.categories.forEach((cat) => {
+            const key = normalizeCategoryImportKey(cat.name);
+            if (key) existingByName.set(key, cat);
+          });
+
+          const syncedCategories = Array.from(
+            new Map(
+              (action.payload.categories || [])
+                .map((cat) => [normalizeCategoryImportKey(cat.name), cat])
+                .filter(([key]) => key)
+            ).entries()
+          ).map(([key, cat]) => buildImportedCategory(cat, existingByName.get(key)));
+
+          return {
+            ...t,
+            categories: syncedCategories,
+          };
+        }),
       };
       if (state.currentTournament?.id === action.payload.tournamentId) {
         newState.currentTournament = newState.tournaments.find(
