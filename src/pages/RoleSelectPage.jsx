@@ -46,7 +46,7 @@ function RoleSelectPage() {
 
     // Check license to show warning
     const status = getLicenseStatus();
-    if (status.status === "expired") {
+    if (role === ROLES.ADMIN && status.status === "expired") {
       setWarningType("expired");
       setShowLicenseWarning(true);
     } else if (status.status === "none" || status.status === "trial") {
@@ -61,7 +61,7 @@ function RoleSelectPage() {
   };
 
   const handleSelectRole = (role) => {
-    // Block access when license is expired (ONLY for Admin)
+    // Only Admin requires a valid license. Secretary and Coach use exported files.
     const status = getLicenseStatus();
     if (role === ROLES.ADMIN && status.status === "expired") {
       setWarningType("expired");

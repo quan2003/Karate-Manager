@@ -33,6 +33,8 @@ import { ToastProvider } from "./components/common/Toast";
 import appIcon from "./assets/icon.png";
 import "./index.css";
 
+const LICENSE_RECHECK_INTERVAL_MS = 60 * 1000;
+
 // Inner shell that reads sidebar state to apply layout class
 function AppShell({ children }) {
   const { sidebarOpen } = useOnboarding();
@@ -48,7 +50,28 @@ function App() {
   // Kiểm tra lại với Server mỗi khi mở app
   useEffect(() => {
     initializeTrialIfNeeded();
-    revalidateLicenseWithServer();
+
+    const revalidate = () => {
+      revalidateLicenseWithServer();
+    };
+
+    const revalidateWhenVisible = () => {
+      if (document.visibilityState === "visible") revalidate();
+    };
+
+    revalidate();
+    const intervalId = window.setInterval(
+      revalidate,
+      LICENSE_RECHECK_INTERVAL_MS
+    );
+    window.addEventListener("online", revalidate);
+    document.addEventListener("visibilitychange", revalidateWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("online", revalidate);
+      document.removeEventListener("visibilitychange", revalidateWhenVisible);
+    };
   }, []);
 
   return (

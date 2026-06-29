@@ -195,7 +195,7 @@ export async function validateLicenseKey(licenseKey, currentMachineId = null) {
       body: JSON.stringify({ key: licenseKey.trim(), machineId }),
     });
 
-    const result = await response.json();
+    const result = await readJsonWithNormalizedMessage(response);
 
     if (result.success && result.valid) {
       return {
@@ -213,6 +213,9 @@ export async function validateLicenseKey(licenseKey, currentMachineId = null) {
       return {
         valid: false,
         error: result.message || "License không hợp lệ hoặc lỗi server",
+        // Only an explicit invalid verdict from a reachable server may
+        // invalidate an already activated local license.
+        serverConfirmedInvalid: response.ok && result.valid === false,
       };
     }
   } catch (e) {
@@ -220,6 +223,7 @@ export async function validateLicenseKey(licenseKey, currentMachineId = null) {
     return {
       valid: false,
       error: "Không thể kết nối đến License Server (" + SERVER_URL + ")",
+      serverConfirmedInvalid: false,
     };
   }
 }
@@ -292,8 +296,31 @@ export async function revalidateLicenseWithServer() {
   );
   if (!valid.valid) {
     console.warn("License invalidated by server:", valid.error);
-    // Optional: deactive locally if server says invalid
-    return;
+    if (!valid.serverConfirmedInvalid) return;
+
+    const invalidatedLicense = {
+      ...license,
+      active: false,
+      invalidatedAt: new Date().toISOString(),
+      invalidReason: valid.error,
+      lastCheck: new Date().toISOString(),
+    };
+
+    localStorage.setItem(
+      "krt_active_license",
+      JSON.stringify(invalidatedLicense)
+    );
+
+    window.dispatchEvent(
+      new CustomEvent("licenseChanged", {
+        detail: {
+          type: "invalidated",
+          license: invalidatedLicense,
+          reason: valid.error,
+        },
+      })
+    );
+    return { valid: false, invalidated: true, error: valid.error };
   }
 
   const refreshedLicense = {
