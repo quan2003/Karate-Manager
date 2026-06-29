@@ -20,6 +20,7 @@ import {
 } from "../services/krtService";
 import { createKmatchData, saveKmatchFile } from "../services/matchService";
 import { generateBracket } from "../utils/drawEngine";
+import { getTeamCountFromAthletes, getTeamsFromAthletes, isTeamCategory as isTeamCategoryMeta } from "../utils/teamDraw";
 import DateTimeInput from "../components/common/DateTimeInput";
 import { useToast } from "../components/common/Toast";
 import { useOnboarding } from "../context/OnboardingContext";
@@ -51,6 +52,8 @@ export default function TournamentPage() {
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [showExportPDFModal, setShowExportPDFModal] = useState(false);
+  const [exportingPDF, setExportingPDF] = useState(false);
+  const [exportPDFProgress, setExportPDFProgress] = useState({ percent: 0, label: "" });
   const [exportFilter, setExportFilter] = useState({ type: 'all', format: 'all', gender: 'all' });
   const [exportSelectedIds, setExportSelectedIds] = useState([]);
   const [searchQueryExport, setSearchQueryExport] = useState("");
@@ -525,23 +528,42 @@ export default function TournamentPage() {
   };
 
   const handleExportSelectedPDF = async () => {
+    if (exportingPDF) return;
     const categoriesToExport = tournament.categories.filter(c => exportSelectedIds.includes(c.id) && c.bracket);
     if (categoriesToExport.length === 0) {
       alert("Vui lòng chọn ít nhất một hạng mục đã bốc thăm!");
       return;
     }
-    
-    const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
-    const sponsorLogos = tournament.sponsorLogos || null;
-    
-    // Sort logic to make the PDF organized: Type -> Format -> Name
-    const sorted = [...categoriesToExport].sort((a, b) => {
-      if (a.type !== b.type) return a.type.localeCompare(b.type);
-      return a.name.localeCompare(b.name);
-    });
 
-    await exportAllBracketsToPDF(sorted, tournament.name, null, tournament.schedule || null, splitSettings, sponsorLogos);
-    setShowExportPDFModal(false);
+    setExportingPDF(true);
+    setExportPDFProgress({ percent: 0, label: "Đang chuẩn bị PDF..." });
+    try {
+      const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
+      const sponsorLogos = tournament.sponsorLogos || null;
+
+      // Sort logic to make the PDF organized: Type -> Format -> Name
+      const sorted = [...categoriesToExport].sort((a, b) => {
+        if (a.type !== b.type) return a.type.localeCompare(b.type);
+        return a.name.localeCompare(b.name);
+      });
+
+      await exportAllBracketsToPDF(
+        sorted,
+        tournament.name,
+        null,
+        tournament.schedule || null,
+        splitSettings,
+        sponsorLogos,
+        (progress) => setExportPDFProgress(progress)
+      );
+      setShowExportPDFModal(false);
+      toast.success(`Đã xuất PDF tổng hợp ${sorted.length} sơ đồ`);
+    } catch (error) {
+      toast.error("Không thể xuất PDF: " + error.message);
+    } finally {
+      setExportingPDF(false);
+      setExportPDFProgress({ percent: 0, label: "" });
+    }
   };
 
   const applyBulkFilter = (filters) => {
@@ -766,42 +788,31 @@ export default function TournamentPage() {
   };
 
   // === Bulk Draw ===
+  const isTeamCategoryForDraw = (cat) => isTeamCategoryMeta(cat);
+
+  const getTeamCountForDraw = (cat) =>
+    getTeamCountFromAthletes(cat.athletes || [], cat, tournament);
+
+  const canBulkDrawCategory = (cat) => {
+    if (cat.bracket) return false;
+    return isTeamCategoryForDraw(cat)
+      ? getTeamCountForDraw(cat) >= 3
+      : (cat.athletes?.length || 0) >= 3;
+  };
+
   const handleOpenBulkDraw = () => {
     const cats = tournament.categories || [];
     const selection = {};
     cats.forEach(cat => {
-      // Pre-select categories that can be drawn (>=3 athletes, no bracket yet)
-      const canDraw = (cat.athletes?.length || 0) >= 3 && !cat.bracket;
-      selection[cat.id] = canDraw;
+      selection[cat.id] = canBulkDrawCategory(cat);
     });
     setBulkDrawSelection(selection);
     setBulkDrawResults(null);
     setShowBulkDrawModal(true);
   };
 
-  // Helper: group athletes by club into teams
-  const getTeamsFromAthletes = (athletes) => {
-    const clubMap = {};
-    athletes.forEach(a => {
-      const clubKey = (a.club || 'Không CLB').trim();
-      if (!clubMap[clubKey]) {
-        clubMap[clubKey] = {
-          id: `team_${clubKey.replace(/\s+/g, '_').toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          name: clubKey,
-          club: clubKey,
-          country: a.country || 'VN',
-          gender: a.gender,
-          isTeam: true,
-          members: [],
-        };
-      }
-      clubMap[clubKey].members.push(a);
-    });
-    return Object.values(clubMap);
-  };
-
   const handleBulkDraw = async () => {
-    const cats = tournament.categories.filter(cat => bulkDrawSelection[cat.id]);
+    const cats = tournament.categories.filter(cat => bulkDrawSelection[cat.id] && canBulkDrawCategory(cat));
     if (cats.length === 0) {
       toast.error("Vui lòng chọn ít nhất một nội dung!");
       return;
@@ -812,14 +823,13 @@ export default function TournamentPage() {
 
     for (const cat of cats) {
       const athleteCount = cat.athletes?.length || 0;
-      const isTeamCategory = cat.name?.toLowerCase().includes('đồng đội') ||
-        cat.isTeam || (cat.athletes || []).some(a => a.isTeam);
+      const isTeamCategory = isTeamCategoryForDraw(cat);
 
       if (isTeamCategory) {
         // Team category: group by club
-        const teams = getTeamsFromAthletes(cat.athletes || []);
+        const teams = getTeamsFromAthletes(cat.athletes || [], cat, tournament);
         if (teams.length < 3) {
-          results.skipped.push({ name: cat.name, reason: `Chỉ có ${teams.length} đội (cần ≥ 3 CLB khác nhau)` });
+          results.skipped.push({ name: cat.name, reason: `Chỉ có ${teams.length} đội (cần ≥ 3 đội)` });
           continue;
         }
         try {
@@ -864,15 +874,8 @@ export default function TournamentPage() {
     toast.success(`Đã bốc thăm ${results.success.length}/${cats.length} nội dung`);
   };
 
-  const drawableCount = tournament.categories.filter(c => {
-    const isTeamCategory = c.name?.toLowerCase().includes('đồng đội') ||
-      c.isTeam || (c.athletes || []).some(a => a.isTeam);
-    return !c.bracket && (
-      isTeamCategory
-        ? (new Set((c.athletes || []).map(a => (a.club || '').trim().toLowerCase()).filter(Boolean))).size >= 3
-        : (c.athletes?.length || 0) >= 3
-    );
-  }).length;
+  const bulkDrawableCategories = tournament.categories.filter(canBulkDrawCategory);
+  const drawableCount = bulkDrawableCategories.length;
   const handlePublishTournament = async () => {
     setPublishing(true);
     try {
@@ -1148,7 +1151,7 @@ export default function TournamentPage() {
                 <div style={{ display: 'flex', gap: '15px', fontSize: '13px', color: '#475569', background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px' }}>
                   {teamCategoryAvailability.kata && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      Số HC Kata ĐĐ/đội:
+                      Số VĐV Kata ĐĐ/đội:
                       <input
                         type="number"
                         min="1"
@@ -1171,7 +1174,7 @@ export default function TournamentPage() {
                   )}
                   {teamCategoryAvailability.kumite && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      Số HC Kumite ĐĐ/đội:
+                      Số VĐV Kumite ĐĐ/đội:
                       <input
                         type="number"
                         min="1"
@@ -2274,11 +2277,11 @@ export default function TournamentPage() {
                 <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'8px 12px',background:'#f1f5f9',borderRadius:'8px',marginBottom:'8px'}}>
                   <input
                     type="checkbox"
-                    checked={tournament.categories.filter(c => (c.athletes?.length || 0) >= 3).every(c => bulkDrawSelection[c.id])}
+                    checked={bulkDrawableCategories.length > 0 && bulkDrawableCategories.every(c => bulkDrawSelection[c.id])}
                     onChange={(e) => {
                       const newSel = {...bulkDrawSelection};
                       tournament.categories.forEach(cat => {
-                        if ((cat.athletes?.length || 0) >= 3) newSel[cat.id] = e.target.checked;
+                        if (canBulkDrawCategory(cat)) newSel[cat.id] = e.target.checked;
                       });
                       setBulkDrawSelection(newSel);
                     }}
@@ -2286,7 +2289,7 @@ export default function TournamentPage() {
                   />
                   <span style={{fontWeight:600,fontSize:'13px',color:'#334155'}}>Chọn tất cả</span>
                   <span style={{marginLeft:'auto',fontSize:'12px',color:'#64748b'}}>
-                    {Object.values(bulkDrawSelection).filter(Boolean).length} / {tournament.categories.length} đã chọn
+                    {Object.values(bulkDrawSelection).filter(Boolean).length} / {drawableCount} đã chọn
                   </span>
                 </div>
 
@@ -2294,7 +2297,7 @@ export default function TournamentPage() {
                 <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
                   {tournament.categories.map(cat => {
                     const athleteCount = cat.athletes?.length || 0;
-                    const canDraw = athleteCount >= 3;
+                    const canDraw = canBulkDrawCategory(cat);
                     const hasBracket = !!cat.bracket;
                     return (
                       <label
@@ -2318,7 +2321,7 @@ export default function TournamentPage() {
                         <span style={{flex:1,fontWeight:600,fontSize:'13px',color:'#1e293b'}}>{cat.name}</span>
                         <span style={{fontSize:'11px',color:'#64748b'}}>{athleteCount} VĐV</span>
                         {hasBracket && <span style={{fontSize:'10px',background:'#dcfce7',color:'#16a34a',padding:'2px 6px',borderRadius:'4px',fontWeight:600}}>✓ Đã bốc</span>}
-                        {!canDraw && <span style={{fontSize:'10px',background:'#fef2f2',color:'#dc2626',padding:'2px 6px',borderRadius:'4px',fontWeight:600}}>Ín VĐV</span>}
+                        {!hasBracket && !canDraw && <span style={{fontSize:'10px',background:'#fef2f2',color:'#dc2626',padding:'2px 6px',borderRadius:'4px',fontWeight:600}}>Không đủ điều kiện</span>}
                       </label>
                     );
                   })}
@@ -2580,7 +2583,9 @@ export default function TournamentPage() {
         {/* Modal xuất PDF chọn lọc - Giao diện nâng cấp đầy đủ */}
         <Modal
           isOpen={showExportPDFModal}
-          onClose={() => setShowExportPDFModal(false)}
+          onClose={() => {
+            if (!exportingPDF) setShowExportPDFModal(false);
+          }}
           title="Tùy chọn xuất PDF tất cả sơ đồ"
         >
           <div className="export-pdf-selection" style={{ padding: '4px' }}>
@@ -2817,18 +2822,38 @@ export default function TournamentPage() {
                  boxShadow: '0 4px 15px -1px rgba(124, 58, 237, 0.4)'
                }}
                onClick={handleExportSelectedPDF}
-               disabled={exportSelectedIds.length === 0}
+               disabled={exportingPDF || exportSelectedIds.length === 0}
              >
-               🚀 XUẤT FILE PDF TỔNG HỢP ({exportSelectedIds.length})
+               {exportingPDF ? "⏳ ĐANG XUẤT PDF..." : `🚀 XUẤT FILE PDF TỔNG HỢP (${exportSelectedIds.length})`}
              </button>
              <button 
                className="btn btn-secondary" 
                onClick={() => setShowExportPDFModal(false)}
+               disabled={exportingPDF}
                style={{ flex: 1, padding: '14px', borderRadius: '12px', fontSize: '14px', fontWeight: 600 }}
              >
                HUỶ BỎ
              </button>
           </div>
+          {exportingPDF && (
+            <div style={{ marginTop: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '13px', fontWeight: 700, color: '#475569' }}>
+                <span>{exportPDFProgress.label || "Đang xuất PDF..."}</span>
+                <span>{exportPDFProgress.percent || 0}%</span>
+              </div>
+              <div style={{ height: '10px', background: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    width: `${exportPDFProgress.percent || 0}%`,
+                    height: '100%',
+                    background: 'linear-gradient(90deg, #7c3aed, #0ea5e9)',
+                    borderRadius: '999px',
+                    transition: 'width 180ms ease',
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </Modal>
       </div>
     </div>

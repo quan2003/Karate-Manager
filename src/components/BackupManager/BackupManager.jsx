@@ -4,10 +4,10 @@ import {
   readBackupFile,
   compareBackupWithCurrent,
   restoreBackup,
+  restoreSingleTournament,
   getAutoBackupHistory,
   restoreFromAutoBackup,
   getDataSizeInfo,
-  getBackupHistory,
   createAutoBackup,
 } from "../../services/backupService";
 import "./BackupManager.css";
@@ -25,6 +25,9 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
   const [autoBackups, setAutoBackups] = useState([]);
   const [dataInfo, setDataInfo] = useState(null);
   const [tournamentCount, setTournamentCount] = useState(0);
+  const [tournaments, setTournaments] = useState([]);
+  const [exportScope, setExportScope] = useState("all");
+  const [selectedTournamentId, setSelectedTournamentId] = useState("");
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -33,6 +36,8 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
       setStatus(null);
       setBackupData(null);
       setComparison(null);
+      setExportScope("all");
+      setSelectedTournamentId("");
       refreshInfo();
     }
   }, [isOpen]);
@@ -46,7 +51,9 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
     try {
       const { createBackupData } = await import("../../services/backupService");
       const bd = await createBackupData();
-      setTournamentCount(bd.data?.meta?.tournamentCount || 0);
+      const availableTournaments = bd.data?.data?.tournaments || [];
+      setTournaments(availableTournaments);
+      setTournamentCount(availableTournaments.length);
     } catch { setTournamentCount(0); }
   };
 
@@ -60,7 +67,12 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
   // ====== EXPORT ======
   const handleExport = async () => {
     showStatus("info", "⏳ Đang tạo file backup...");
-    const result = await exportBackup(description || undefined);
+    const tournamentId = exportScope === "single" ? selectedTournamentId : null;
+    if (exportScope === "single" && !tournamentId) {
+      showStatus("error", "Vui lòng chọn giải đấu cần xuất");
+      return;
+    }
+    const result = await exportBackup(description || undefined, tournamentId);
     if (result.success) {
       showStatus("success", `✅ Đã xuất backup: ${result.fileName}`);
       setDescription("");
@@ -116,6 +128,8 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
       setView("main");
       setBackupData(null);
       setComparison(null);
+      setExportScope("all");
+      setSelectedTournamentId("");
       refreshInfo();
       if (onDataRestored) {
         onDataRestored();
@@ -125,6 +139,30 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
     }
   };
 
+  const handleSingleTournamentRestore = async (mode) => {
+    if (!backupData || backupData.data?.tournaments?.length !== 1) return;
+
+    const tournamentName = backupData.data.tournaments[0]?.name || "giải đấu";
+    const messages = {
+      add: `Thêm giải "${tournamentName}" vào máy này?`,
+      overwrite: `Ghi đè dữ liệu của giải "${tournamentName}"? Các giải khác không bị ảnh hưởng.`,
+      copy: `Tạo một bản sao mới của giải "${tournamentName}"?`,
+    };
+    if (!window.confirm(messages[mode])) return;
+
+    showStatus("info", "⏳ Đang nhập giải đấu...");
+    const result = await restoreSingleTournament(backupData, mode);
+    if (result.success) {
+      showStatus("success", `✅ ${result.message}`);
+      setView("main");
+      setBackupData(null);
+      setComparison(null);
+      refreshInfo();
+      onDataRestored?.();
+    } else {
+      showStatus("error", `❌ ${result.error}`);
+    }
+  };
   // ====== AUTO-BACKUP RESTORE ======
   const handleAutoRestore = async (backupId) => {
     if (!window.confirm("Khôi phục dữ liệu từ bản auto-backup này?\nDữ liệu hiện tại sẽ được backup trước.")) {
@@ -257,9 +295,40 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
               </button>
               <h3 style={{ marginBottom: "1rem", fontSize: "1.1rem" }}>📤 Xuất file Backup</h3>
               <p style={{ color: "#64748b", fontSize: "0.88rem", marginBottom: "1rem", lineHeight: 1.6 }}>
-                File backup chứa toàn bộ dữ liệu giải đấu (hạng mục, VĐV, sơ đồ thi đấu, lịch thi đấu...).
-                Gửi file này cho Admin khác để đồng bộ dữ liệu.
+                Chọn xuất toàn bộ các giải hoặc chỉ một giải cụ thể. File vẫn chứa đầy đủ hạng mục, VĐV,
+                sơ đồ và lịch thi đấu của phạm vi đã chọn.
               </p>
+              <div style={{ marginBottom: "1rem" }}>
+                <label style={{ display: "block", fontWeight: 700, fontSize: "0.86rem", marginBottom: "0.5rem" }}>
+                  Phạm vi backup
+                </label>
+                <select
+                  className="backup-desc-input"
+                  value={exportScope}
+                  onChange={(e) => {
+                    setExportScope(e.target.value);
+                    if (e.target.value === "all") setSelectedTournamentId("");
+                  }}
+                  style={{ marginBottom: exportScope === "single" ? "0.75rem" : 0 }}
+                >
+                  <option value="all">Toàn bộ {tournamentCount} giải trên máy</option>
+                  <option value="single">Chỉ một giải đấu</option>
+                </select>
+                {exportScope === "single" && (
+                  <select
+                    className="backup-desc-input"
+                    value={selectedTournamentId}
+                    onChange={(e) => setSelectedTournamentId(e.target.value)}
+                  >
+                    <option value="">-- Chọn giải cần xuất --</option>
+                    {tournaments.map((tournament) => (
+                      <option key={tournament.id} value={tournament.id}>
+                        {tournament.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
               <input
                 type="text"
                 className="backup-desc-input"
@@ -370,12 +439,31 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
                 <button className="restore-btn-cancel" onClick={() => { setView("main"); setBackupData(null); setComparison(null); }}>
                   Hủy
                 </button>
-                <button className="restore-btn-merge" onClick={() => handleRestore("merge")}>
-                  🔀 Gộp dữ liệu
-                </button>
-                <button className="restore-btn-replace" onClick={() => handleRestore("replace")}>
-                  🔄 Thay thế
-                </button>
+                {backupData.data?.tournaments?.length === 1 ? (
+                  comparison.newInBackup.length > 0 ? (
+                    <button className="restore-btn-merge" onClick={() => handleSingleTournamentRestore("add")}>
+                      ➕ Thêm giải này
+                    </button>
+                  ) : (
+                    <>
+                      <button className="restore-btn-merge" onClick={() => handleSingleTournamentRestore("copy")}>
+                        📋 Tạo bản sao
+                      </button>
+                      <button className="restore-btn-replace" onClick={() => handleSingleTournamentRestore("overwrite")}>
+                        🔄 Ghi đè giải này
+                      </button>
+                    </>
+                  )
+                ) : (
+                  <>
+                    <button className="restore-btn-merge" onClick={() => handleRestore("merge")}>
+                      🔀 Gộp dữ liệu
+                    </button>
+                    <button className="restore-btn-replace" onClick={() => handleRestore("replace")}>
+                      🔄 Thay thế toàn bộ
+                    </button>
+                  </>
+                )}
               </div>
             </>
           )}

@@ -18,6 +18,7 @@ import {
   openScoreboard,
   listenForMatchResult,
 } from "../services/scoreboardService";
+import { syncTeamBracketMembers } from "../utils/teamDraw";
 import Bracket from "../components/Bracket/Bracket";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
@@ -192,6 +193,24 @@ export default function BracketPage() {
 
     return cleanup;
   }, [category?.bracket, category?.id, dispatch]);
+
+  useEffect(() => {
+    if (!category?.bracket || !tournament) return;
+
+    const syncedTeamBracket = syncTeamBracketMembers(
+      category.bracket,
+      category.athletes || [],
+      category,
+      tournament
+    );
+
+    if (syncedTeamBracket !== category.bracket) {
+      dispatch({
+        type: ACTIONS.UPDATE_CATEGORY,
+        payload: { id: category.id, bracket: syncedTeamBracket },
+      });
+    }
+  }, [category, tournament, dispatch]);
   if (!category || !tournament) {
     return (
       <div className="page">

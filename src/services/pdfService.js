@@ -419,7 +419,8 @@ export async function exportAllBracketsToPDF(
   filename = null,
   schedule = null,
   splitSettings = null,
-  sponsorLogos = null
+  sponsorLogos = null,
+  onProgress = null
 ) {
   const categoriesWithBracket = categories.filter((c) => c.bracket);
 
@@ -429,10 +430,22 @@ export async function exportAllBracketsToPDF(
   }
 
   const finalFilename = filename || `${tournamentName.replace(/\\s+/g, "_")}_tat_ca_so_do.pdf`;
+  const totalPages = categoriesWithBracket.reduce(
+    (total, category) => total + getSplitCount(category, splitSettings),
+    0
+  );
+  const totalSteps = Math.max(totalPages + 1, 1);
+  let completedSteps = 0;
+  const reportProgress = (label = "", percentOverride = null) => {
+    if (!onProgress) return;
+    const percent = percentOverride ?? Math.min(100, Math.round((completedSteps / totalSteps) * 100));
+    onProgress({ percent, completed: Math.min(completedSteps, totalSteps), total: totalSteps, label });
+  };
 
   try {
     const originalCursor = document.body.style.cursor;
     document.body.style.cursor = "wait";
+    reportProgress("Đang chuẩn bị PDF...", 0);
 
     // ─── Electron printToPDF path (VECTOR, custom page size) ───
     if (isElectronPdfAvailable()) {
@@ -462,13 +475,31 @@ export async function exportAllBracketsToPDF(
           pages.push({
             htmlContent: wrapAsFullDocument(processedHtml),
           });
+          completedSteps++;
+          const preparePercent = Math.round((completedSteps / Math.max(totalPages, 1)) * 20);
+          reportProgress(`Đang chuẩn bị sơ đồ ${completedSteps}/${totalPages}`, preparePercent);
         }
       }
 
-      const result = await window.electronAPI.pdf.printBracketMulti({
-        pages,
-        filename: finalFilename,
+      reportProgress("Chọn nơi lưu file PDF...", 20);
+      const stopElectronProgress = window.electronAPI?.pdf?.onProgress?.((progress) => {
+        const current = progress?.current || 0;
+        const total = progress?.total || pages.length || 1;
+        const renderPercent = 20 + Math.round((current / total) * 75);
+        reportProgress(`Đang render PDF ${current}/${total}`, Math.min(renderPercent, 95));
       });
+
+      let result;
+      try {
+        result = await window.electronAPI.pdf.printBracketMulti({
+          pages,
+          filename: finalFilename,
+        });
+      } finally {
+        if (stopElectronProgress) stopElectronProgress();
+      }
+      completedSteps = totalSteps;
+      reportProgress("Hoàn tất");
 
       document.body.style.cursor = originalCursor;
       if (result.success) {
@@ -501,12 +532,17 @@ export async function exportAllBracketsToPDF(
           pdf = addCanvasPage(pdf, canvas, false);
         }
         pageCount++;
+        completedSteps++;
+        reportProgress(`Đang tạo sơ đồ ${completedSteps}/${totalPages}`);
       }
     }
 
     if (pdf) {
+      reportProgress("Đang lưu file PDF...");
       pdf.save(finalFilename);
     }
+    completedSteps = totalSteps;
+    reportProgress("Hoàn tất");
     document.body.style.cursor = originalCursor;
     alert(`Đã xuất ${pageCount} sơ đồ thành công!`);
   } catch (error) {

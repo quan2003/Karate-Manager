@@ -48,6 +48,197 @@ function buildImportedCategory(cat, existingCategory = null) {
   };
 }
 
+function getParticipantRestoreKey(athlete) {
+  if (athlete?.id) return `id:${athlete.id}`;
+  return [
+    "fallback",
+    athlete?.name || "",
+    athlete?.club || "",
+    athlete?.birthDate || "",
+  ]
+    .join("|")
+    .normalize("NFC")
+    .toLowerCase();
+}
+
+function normalizeRestoredAthlete(athlete, fallbackClub = "") {
+  return {
+    id: athlete.id || uuidv4(),
+    name: athlete.name || "",
+    gender: athlete.gender || null,
+    birthDate: athlete.birthDate || null,
+    club: athlete.club || fallbackClub || "",
+    country: athlete.country || "VN",
+    weight: athlete.weight || null,
+    isTeam: athlete.isTeam || false,
+    seed: athlete.seed || null,
+    flagUrl: athlete.flagUrl || null,
+  };
+}
+
+function extractAthletesFromBracket(bracket) {
+  const restored = new Map();
+  const addAthlete = (athlete, fallbackClub = "") => {
+    if (!athlete?.name) return;
+    const normalized = normalizeRestoredAthlete(athlete, fallbackClub);
+    restored.set(getParticipantRestoreKey(normalized), normalized);
+  };
+
+  (bracket?.matches || []).forEach((match) => {
+    [match.athlete1, match.athlete2, match.winner].forEach((participant) => {
+      if (!participant) return;
+      if (Array.isArray(participant.members) && participant.members.length > 0) {
+        participant.members.forEach((member) => addAthlete(member, participant.club || participant.name));
+      } else if (!participant.isTeam) {
+        addAthlete(participant);
+      }
+    });
+  });
+
+  return Array.from(restored.values());
+}
+
+function syncParticipantAthlete(participant, updatedAthlete) {
+  if (!participant) return { participant, changed: false };
+  let changed = false;
+  let nextParticipant = participant;
+
+  if (participant.id === updatedAthlete.id) {
+    nextParticipant = { ...nextParticipant, ...updatedAthlete };
+    changed = true;
+  }
+
+  if (Array.isArray(participant.members)) {
+    const nextMembers = participant.members.map((member) => {
+      if (member.id !== updatedAthlete.id) return member;
+      changed = true;
+      return { ...member, ...updatedAthlete };
+    });
+    if (changed) nextParticipant = { ...nextParticipant, members: nextMembers };
+  }
+
+  return { participant: nextParticipant, changed };
+}
+
+function removeAthleteFromParticipant(participant, athleteId) {
+  if (!participant) return { participant, changed: false };
+
+  if (Array.isArray(participant.members)) {
+    const nextMembers = participant.members.filter((member) => member.id !== athleteId);
+    if (nextMembers.length === participant.members.length) {
+      return { participant, changed: false };
+    }
+    if (nextMembers.length === 0) {
+      return { participant: null, changed: true };
+    }
+    return {
+      participant: { ...participant, members: nextMembers },
+      changed: true,
+    };
+  }
+
+  if (participant.id === athleteId) {
+    return { participant: null, changed: true };
+  }
+
+  return { participant, changed: false };
+}
+
+function syncAthleteInBracket(bracket, updatedAthlete) {
+  if (!bracket?.matches) return bracket;
+  const updatedMatches = bracket.matches.map((match) => {
+    let changed = false;
+    const nextMatch = { ...match };
+
+    ["athlete1", "athlete2", "winner"].forEach((field) => {
+      const synced = syncParticipantAthlete(match[field], updatedAthlete);
+      if (synced.changed) {
+        nextMatch[field] = synced.participant;
+        changed = true;
+      }
+    });
+
+    return changed ? nextMatch : match;
+  });
+
+  return { ...bracket, matches: updatedMatches };
+}
+
+function removeAthleteFromBracket(bracket, athleteId) {
+  if (!bracket?.matches) return bracket;
+  const updatedMatches = bracket.matches.map((match) => {
+    let changed = false;
+    const nextMatch = { ...match };
+
+    ["athlete1", "athlete2", "winner"].forEach((field) => {
+      const removed = removeAthleteFromParticipant(match[field], athleteId);
+      if (removed.changed) {
+        nextMatch[field] = removed.participant;
+        changed = true;
+      }
+    });
+
+    if (match.winnerId === athleteId) {
+      nextMatch.winnerId = null;
+      nextMatch.winner = null;
+      changed = true;
+    }
+
+    return changed ? nextMatch : match;
+  });
+
+  return { ...bracket, matches: updatedMatches };
+}
+
+function bracketHasParticipants(bracket) {
+  return (bracket?.matches || []).some(
+    (match) => match?.athlete1 || match?.athlete2 || match?.winner || match?.winnerId
+  );
+}
+
+function addAthleteToExistingTeamBracket(bracket, athlete) {
+  if (!bracket?.isTeamBracket || !bracket.matches || !athlete?.club) return bracket;
+
+  const clubKey = athlete.club.trim().toLowerCase();
+  const teamIds = new Set();
+  bracket.matches.forEach((match) => {
+    ["athlete1", "athlete2", "winner"].forEach((field) => {
+      const participant = match[field];
+      const participantClub = (participant?.club || participant?.name || "").trim().toLowerCase();
+      if (participant?.isTeam && participantClub === clubKey) {
+        teamIds.add(participant.id || participant.name);
+      }
+    });
+  });
+
+  if (teamIds.size !== 1) return bracket;
+  const [targetTeamId] = Array.from(teamIds);
+
+  const updatedMatches = bracket.matches.map((match) => {
+    let changed = false;
+    const nextMatch = { ...match };
+
+    ["athlete1", "athlete2", "winner"].forEach((field) => {
+      const participant = match[field];
+      const participantId = participant?.id || participant?.name;
+      if (!participant?.isTeam || participantId !== targetTeamId) return;
+
+      const members = Array.isArray(participant.members) ? participant.members : [];
+      if (members.some((member) => member.id === athlete.id)) return;
+
+      nextMatch[field] = {
+        ...participant,
+        members: [...members, athlete],
+      };
+      changed = true;
+    });
+
+    return changed ? nextMatch : match;
+  });
+
+  return { ...bracket, matches: updatedMatches };
+}
+
 // Actions
 const ACTIONS = {
   LOAD_DATA: "LOAD_DATA",
@@ -73,6 +264,7 @@ const ACTIONS = {
   MOVE_ATHLETE: "MOVE_ATHLETE",
   SYNC_MATCH_RESULT: "SYNC_MATCH_RESULT",
   CLEAR_TOURNAMENT_ATHLETES: "CLEAR_TOURNAMENT_ATHLETES",
+  RESTORE_ATHLETES_FROM_BRACKET: "RESTORE_ATHLETES_FROM_BRACKET",
 };
 
 function tournamentReducer(state, action) {
@@ -102,8 +294,12 @@ function tournamentReducer(state, action) {
         );
       }
       break;
-    case ACTIONS.LOAD_DATA:
-      return { ...state, ...action.payload };
+    case ACTIONS.LOAD_DATA: {
+      return {
+        ...state,
+        ...action.payload,
+      };
+    }
 
     case ACTIONS.ADD_TOURNAMENT:
       newState = {
@@ -281,7 +477,19 @@ function tournamentReducer(state, action) {
       };
       break;
 
-    case ACTIONS.ADD_ATHLETE:
+    case ACTIONS.ADD_ATHLETE: {
+      const newAthlete = {
+        id: uuidv4(),
+        name: action.payload.name,
+        gender: action.payload.gender || null,
+        birthDate: action.payload.birthDate || null,
+        club: action.payload.club,
+        country: action.payload.country || "VN",
+        weight: action.payload.weight || null,
+        isTeam: action.payload.isTeam || false,
+        seed: action.payload.seed || null,
+        flagUrl: action.payload.flagUrl || null,
+      };
       newState = {
         ...state,
         tournaments: state.tournaments.map((t) => ({
@@ -290,21 +498,8 @@ function tournamentReducer(state, action) {
             c.id === action.payload.categoryId
               ? {
                   ...c,
-                  athletes: [
-                    ...c.athletes,
-                    {
-                      id: uuidv4(),
-                      name: action.payload.name,
-                      gender: action.payload.gender || null,
-                      birthDate: action.payload.birthDate || null,
-                      club: action.payload.club,
-                      country: action.payload.country || "VN",
-                      weight: action.payload.weight || null,
-                      isTeam: action.payload.isTeam || false,
-                      seed: action.payload.seed || null,
-                      flagUrl: action.payload.flagUrl || null,
-                    },
-                  ],
+                  athletes: [...c.athletes, newAthlete],
+                  bracket: addAthleteToExistingTeamBracket(c.bracket, newAthlete),
                 }
               : c
           ),
@@ -321,31 +516,9 @@ function tournamentReducer(state, action) {
         );
       }
       break;
+    }
 
     case ACTIONS.UPDATE_ATHLETE: {
-      // Helper: sync updated athlete fields into a bracket's matches
-      const syncAthleteInBracket = (bracket, updatedAthlete) => {
-        if (!bracket) return bracket;
-        const updatedMatches = bracket.matches.map((m) => {
-          let changed = false;
-          const updated = { ...m };
-          if (m.athlete1?.id === updatedAthlete.id) {
-            updated.athlete1 = { ...m.athlete1, ...updatedAthlete };
-            changed = true;
-          }
-          if (m.athlete2?.id === updatedAthlete.id) {
-            updated.athlete2 = { ...m.athlete2, ...updatedAthlete };
-            changed = true;
-          }
-          if (m.winner?.id === updatedAthlete.id) {
-            updated.winner = { ...m.winner, ...updatedAthlete };
-            changed = true;
-          }
-          return changed ? updated : m;
-        });
-        return { ...bracket, matches: updatedMatches };
-      };
-
       newState = {
         ...state,
         tournaments: state.tournaments.map((t) => ({
@@ -355,7 +528,6 @@ function tournamentReducer(state, action) {
             athletes: c.athletes.map((a) =>
               a.id === action.payload.id ? { ...a, ...action.payload } : a
             ),
-            // Also sync athlete info into bracket matches so sigma stays up-to-date
             bracket: syncAthleteInBracket(c.bracket, action.payload),
           })),
         })),
@@ -378,10 +550,15 @@ function tournamentReducer(state, action) {
         ...state,
         tournaments: state.tournaments.map((t) => ({
           ...t,
-          categories: t.categories.map((c) => ({
-            ...c,
-            athletes: c.athletes.filter((a) => a.id !== action.payload),
-          })),
+          categories: t.categories.map((c) => {
+            const athletes = c.athletes.filter((a) => a.id !== action.payload);
+            const bracket = removeAthleteFromBracket(c.bracket, action.payload);
+            return {
+              ...c,
+              athletes,
+              bracket: athletes.length === 0 && !bracketHasParticipants(bracket) ? null : bracket,
+            };
+          }),
         })),
       };
       if (state.currentTournament) {
@@ -413,11 +590,21 @@ function tournamentReducer(state, action) {
             categories: t.categories.map((c) => {
               if (c.id === newCategoryId) {
                 if (c.athletes.some((a) => a.id === athleteId)) return c;
-                return { ...c, athletes: [...c.athletes, athleteToMove] };
+                return {
+                  ...c,
+                  athletes: [...c.athletes, athleteToMove],
+                  bracket: addAthleteToExistingTeamBracket(c.bracket, athleteToMove),
+                };
               }
               return {
                 ...c,
                 athletes: c.athletes.filter((a) => a.id !== athleteId),
+                bracket: (() => {
+                  if (!c.athletes.some((a) => a.id === athleteId)) return c.bracket;
+                  const athletes = c.athletes.filter((a) => a.id !== athleteId);
+                  const bracket = removeAthleteFromBracket(c.bracket, athleteId);
+                  return athletes.length === 0 && !bracketHasParticipants(bracket) ? null : bracket;
+                })(),
               };
             }),
           };
@@ -468,6 +655,35 @@ function tournamentReducer(state, action) {
                 }
               : c
           ),
+        })),
+      };
+      if (state.currentTournament) {
+        newState.currentTournament = newState.tournaments.find(
+          (t) => t.id === state.currentTournament.id
+        );
+      }
+      if (state.currentCategory?.id === action.payload.categoryId) {
+        newState.currentCategory = newState.currentTournament?.categories.find(
+          (c) => c.id === action.payload.categoryId
+        );
+      }
+      break;
+
+    case ACTIONS.RESTORE_ATHLETES_FROM_BRACKET:
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) => ({
+          ...t,
+          categories: t.categories.map((c) => {
+            if (c.id !== action.payload.categoryId) return c;
+            const restoredAthletes = extractAthletesFromBracket(c.bracket);
+            if (restoredAthletes.length === 0) return c;
+            return {
+              ...c,
+              athletes: restoredAthletes,
+              restoredAthletesFromBracket: true,
+            };
+          }),
         })),
       };
       if (state.currentTournament) {
@@ -709,9 +925,9 @@ async function saveToStorage(state, actionType) {
 
 async function loadFromStorage() {
   try {
-    const tournaments = await dbGetTournaments();
-    if (tournaments && tournaments.length > 0) {
-      return { tournaments };
+    const loadedTournaments = await dbGetTournaments();
+    if (loadedTournaments && loadedTournaments.length > 0) {
+      return { tournaments: loadedTournaments };
     }
   } catch (error) {
     console.error("Failed to load from database:", error);

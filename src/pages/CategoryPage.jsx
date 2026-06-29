@@ -6,6 +6,7 @@ import {
   ACTIONS,
 } from "../context/TournamentContext";
 import { generateBracket } from "../utils/drawEngine";
+import { getTeamCountFromAthletes, getTeamsFromAthletes, isTeamCategory as isTeamCategoryMeta } from "../utils/teamDraw";
 import AthleteForm from "../components/AthleteForm/AthleteForm";
 import AthleteList from "../components/AthleteList/AthleteList";
 import Modal from "../components/common/Modal";
@@ -115,6 +116,13 @@ export default function CategoryPage() {
       payload: { categoryId: id, athletes },
     });
   };
+  const handleRestoreAthletesFromBracket = () => {
+    dispatch({
+      type: ACTIONS.RESTORE_ATHLETES_FROM_BRACKET,
+      payload: { categoryId: id },
+    });
+    toast.success("Đã khôi phục danh sách VĐV từ sơ đồ thi đấu.");
+  };
   const handleClearAllAthletes = () => {
     setConfirmDialog({
       open: true,
@@ -137,34 +145,12 @@ export default function CategoryPage() {
   }, []);
 
   // Detect if this is a team category
-  const isTeamCategory = category.name?.toLowerCase().includes('đồng đội') ||
-    category.isTeam || (category.athletes || []).some(a => a.isTeam);
+  const isTeamCategory = isTeamCategoryMeta(category);
 
   // Check for unticked isTeam athletes in team categories
   const untickedTeamAthletes = isTeamCategory
     ? category.athletes.filter(a => !a.isTeam)
     : [];
-
-  // Group athletes by club for team categories
-  const getTeamsFromAthletes = (athletes) => {
-    const clubMap = {};
-    athletes.forEach(a => {
-      const clubKey = (a.club || 'Không CLB').trim();
-      if (!clubMap[clubKey]) {
-        clubMap[clubKey] = {
-          id: `team_${clubKey.replace(/\s+/g, '_').toLowerCase()}_${Date.now()}`,
-          name: clubKey,
-          club: clubKey,
-          country: a.country || 'VN',
-          gender: a.gender,
-          isTeam: true,
-          members: [],
-        };
-      }
-      clubMap[clubKey].members.push(a);
-    });
-    return Object.values(clubMap);
-  };
 
   const handleDraw = () => {
     setDrawError(null);
@@ -172,9 +158,9 @@ export default function CategoryPage() {
       let drawEntries;
       if (isTeamCategory) {
         // For team categories: group athletes by club
-        drawEntries = getTeamsFromAthletes(category.athletes);
+        drawEntries = getTeamsFromAthletes(category.athletes, category, tournament);
         if (drawEntries.length < 2) {
-          setDrawError('Cần ít nhất 2 đội (CLB) khác nhau để bốc thăm đồng đội!');
+          setDrawError('Cần ít nhất 2 đội để bốc thăm đồng đội!');
           return;
         }
       } else {
@@ -198,7 +184,7 @@ export default function CategoryPage() {
       // Start countdown loading animation
       setDrawCountdown(5);
       const displayNames = isTeamCategory
-        ? getTeamsFromAthletes(category.athletes).map(t => t.name)
+        ? getTeamsFromAthletes(category.athletes, category, tournament).map(t => t.name)
         : category.athletes.map((a) => a.name);
 
       // Shuffle names rapidly
@@ -229,11 +215,11 @@ export default function CategoryPage() {
     }
   };
 
+  const teamCount = isTeamCategory
+    ? getTeamCountFromAthletes(category.athletes, category, tournament)
+    : 0;
   const canDraw = isTeamCategory
-    ? (() => {
-        const clubs = new Set(category.athletes.map(a => (a.club || '').trim().toLowerCase()).filter(Boolean));
-        return clubs.size >= 3;
-      })()
+    ? teamCount >= 3
     : category.athletes.length >= 3;
   const allSameClub = (() => {
     if (category.athletes.length < 3) return false;
@@ -241,6 +227,9 @@ export default function CategoryPage() {
     return clubs.size === 1;
   })();
   const hasBracket = !!category.bracket;
+  const canRestoreAthletesFromBracket =
+    category.athletes.length === 0 &&
+    category.bracket?.matches?.some((m) => m.athlete1 || m.athlete2 || m.winner);
   return (
     <div className="page category-page">
       <div className="container">
@@ -298,7 +287,7 @@ export default function CategoryPage() {
                   clearHint();
                   if (!canDraw) {
                     if (isTeamCategory) {
-                      toast.warning("Nội dung đồng đội cần ít nhất 3 đội (CLB) khác nhau để bốc thăm!");
+                      toast.warning("Nội dung đồng đội cần ít nhất 3 đội để bốc thăm!");
                     } else {
                       toast.warning("Cần ít nhất 3 VĐV để bốc thăm!");
                     }
@@ -340,6 +329,14 @@ export default function CategoryPage() {
             >
               🔄 Bốc thăm lại
             </button>
+            {canRestoreAthletesFromBracket && (
+              <button
+                className="btn btn-secondary"
+                onClick={handleRestoreAthletesFromBracket}
+              >
+                Khôi phục VĐV từ sơ đồ
+              </button>
+            )}
           </div>
         )}
         <div className="athlete-section card">
@@ -392,7 +389,7 @@ export default function CategoryPage() {
               <p>
                 Bốc thăm đồng đội cho <strong>{category.athletes.length}</strong> VĐV
                 {' '}từ <strong>
-                  {new Set(category.athletes.map(a => (a.club || '').trim()).filter(Boolean)).size}
+                  {teamCount}
                 </strong> đội (CLB).
               </p>
             ) : (
@@ -421,14 +418,14 @@ export default function CategoryPage() {
                 <div className="draw-info-item">
                   <span className="label">Số đội:</span>
                   <span className="value">
-                    {new Set(category.athletes.map(a => (a.club || '').trim()).filter(Boolean)).size}
+                    {teamCount}
                   </span>
                 </div>
                 <div className="draw-info-item">
                   <span className="label">Số slots dự kiến:</span>
                   <span className="value">
                     {Math.pow(2, Math.ceil(Math.log2(
-                      new Set(category.athletes.map(a => (a.club || '').trim()).filter(Boolean)).size
+                      teamCount
                     )))}
                   </span>
                 </div>

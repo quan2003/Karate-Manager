@@ -32,23 +32,56 @@ function shuffle(array) {
   return arr;
 }
 
-function sameClub(athlete1, athlete2) {
-  if (!athlete1 || !athlete2) return false;
-  if (!athlete1.club || !athlete2.club) return false;
-  return (
-    athlete1.club.toLowerCase().trim() === athlete2.club.toLowerCase().trim()
-  );
+function getClubKey(athlete, fallbackIndex) {
+  const club = athlete?.club?.trim();
+  if (!club) return `__no_club_${fallbackIndex}`;
+
+  return club
+    .toLocaleLowerCase("vi")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
 }
 
 /**
- * Trả về thứ tự ưu tiên của các trận đấu (Match Indices) để đặt hạt giống/Bye.
- * Dựa trên vị trí Seed chuẩn WKF.
- *
- * Ví dụ 16 trận (Bracket 32):
- * Match 0 (chứa Seed 1) -> Ưu tiên 1
- * Match 15 (chứa Seed 2) -> Ưu tiên 2
- * Match 8 (chứa Seed 3) -> Ưu tiên 3
- * ...
+ * Select and pair athletes for round one. Different-club pairs are consumed
+ * first, so available BYEs cannot accidentally create an avoidable conflict.
+ */
+function selectCombatPairs(candidates, pairCount) {
+  const clubGroups = new Map();
+  candidates.forEach((athlete, index) => {
+    const key = getClubKey(athlete, index);
+    if (!clubGroups.has(key)) clubGroups.set(key, []);
+    clubGroups.get(key).push(athlete);
+  });
+
+  const groups = shuffle([...clubGroups.values()]).map((group) =>
+    shuffle(group),
+  );
+  const pairs = [];
+
+  while (pairs.length < pairCount) {
+    const activeGroups = groups
+      .filter((group) => group.length > 0)
+      .sort((a, b) => b.length - a.length);
+
+    if (activeGroups.length === 0) break;
+
+    if (activeGroups.length >= 2) {
+      pairs.push([activeGroups[0].pop(), activeGroups[1].pop()]);
+    } else {
+      pairs.push([activeGroups[0].pop(), activeGroups[0].pop()]);
+    }
+  }
+
+  return {
+    pairs,
+    unusedAthletes: groups.flat(),
+  };
+}
+
+/**
+ * Return match indices in seed-priority order.
  */
 function getMatchPriorityOrder(numMatches) {
   // Mảng thứ tự match index dựa trên seeding chuẩn
@@ -115,7 +148,6 @@ export function generateBracket(athletes, options = {}) {
   // Số trận có 2 VĐV (Full Match) = 16 - 12 = 4.
   const numByes = bracketSize - athletes.length;
   const numByeMatches = numByes;
-  const numFullMatches = numMatches - numByeMatches;
 
   // 2. Xác định trận nào là Bye Match, trận nào là Full Match
   // Dùng thứ tự ưu tiên seeding: Các trận ưu tiên cao nhất được nhận Bye trước (giữ sức cho hạt giống).
@@ -132,23 +164,21 @@ export function generateBracket(athletes, options = {}) {
       .sort((a, b) => a.seed - b.seed),
     unseeded = shuffle(athletes.filter((a) => !a.seed || a.seed <= 0));
 
-  const orderedAthletes = [...seeded, ...unseeded];
-
-  // 4. Đặt VĐV vào Slots
-  // Nguyên tắc:
-  // - Những VĐV "xịn" nhất (đầu danh sách) sẽ vào các trận Bye Match (chỉ chiếm 1 slot).
-  // - Những VĐV còn lại sẽ vào các trận Full Match (chiếm 2 slot).
-
   const slots = new Array(bracketSize).fill(null);
 
-  // Nhóm 1: VĐV vào Bye Matches (được vào thẳng vòng 2)
-  // Số lượng VĐV = numByeMatches (12 người)
-  const byeAthletes = orderedAthletes.slice(0, numByeMatches);
-
-  // Nhóm 2: VĐV vào Full Matches (phải đấu vòng 1)
-  // Số lượng VĐV = numFullMatches * 2 (4 * 2 = 8 người)
-  const combatAthletes = orderedAthletes.slice(numByeMatches);
-
+  const protectedByeAthletes = seeded.slice(
+    0,
+    Math.min(seeded.length, numByeMatches),
+  );
+  const combatCandidates = [
+    ...seeded.slice(numByeMatches),
+    ...unseeded,
+  ];
+  const {
+    pairs: combatPairs,
+    unusedAthletes,
+  } = selectCombatPairs(combatCandidates, numMatches - numByeMatches);
+  const byeAthletes = [...protectedByeAthletes, ...unusedAthletes];
   // Điền Bye Athletes vào các trận Bye Matches
   // Lưu ý: Bye Match chỉ điền slot 1 (chẵn), slot 2 để trống
   let currentByeAthIdx = 0;
@@ -164,21 +194,15 @@ export function generateBracket(athletes, options = {}) {
 
   // Điền Combat Athletes vào các trận Full Matches
   // Duyệt theo thứ tự priority (từ dưới lên hoặc trên xuống đều được, nhưng thường fill tiếp)
-  let currentCombatAthIdx = 0;
+
+  let currentCombatPairIdx = 0;
   for (const matchIdx of matchPriority) {
     if (!byeMatchIndices.has(matchIdx)) {
-      // Full Match -> điền cả 2 slot
-      if (currentCombatAthIdx < combatAthletes.length) {
-        slots[matchIdx * 2] = combatAthletes[currentCombatAthIdx++];
-      }
-      if (currentCombatAthIdx < combatAthletes.length) {
-        slots[matchIdx * 2 + 1] = combatAthletes[currentCombatAthIdx++];
-      }
+      const pair = combatPairs[currentCombatPairIdx++];
+      if (pair) [slots[matchIdx * 2], slots[matchIdx * 2 + 1]] = pair;
     }
   }
 
-  // Swap tránh cùng CLB cho các trận Full Match
-  // TODO: Có thể thêm logic swap ở đây nếu cần thiết
 
   // TẠO MATCHES OBJECTS
   const matches = [];

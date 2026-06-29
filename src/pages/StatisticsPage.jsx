@@ -3471,7 +3471,7 @@ export default function StatisticsPage() {
                   <div style={{ display: 'flex', gap: '15px', fontSize: '13px', color: '#475569', background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px' }}>
                     {teamCategoryAvailability.kata && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        Số HC Kata ĐĐ/đội:
+                        Số VĐV Kata ĐĐ/đội:
                         <input
                           type="number"
                           min="1"
@@ -3494,7 +3494,7 @@ export default function StatisticsPage() {
                     )}
                     {teamCategoryAvailability.kumite && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        Số HC Kumite ĐĐ/đội:
+                        Số VĐV Kumite ĐĐ/đội:
                         <input
                           type="number"
                           min="1"

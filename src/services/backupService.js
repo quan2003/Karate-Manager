@@ -40,9 +40,12 @@ async function createBackupMeta(description = "") {
 /**
  * Tạo backup data object
  */
-export async function createBackupData(description = "") {
+export async function createBackupData(description = "", tournamentId = null) {
   try {
-    const tournaments = await dbGetTournaments();
+    const allTournaments = await dbGetTournaments();
+    const tournaments = tournamentId
+      ? allTournaments.filter((tournament) => tournament.id === tournamentId)
+      : allTournaments;
     if (!tournaments || tournaments.length === 0) {
       return { success: false, error: "Không có dữ liệu để backup" };
     }
@@ -57,6 +60,9 @@ export async function createBackupData(description = "") {
         ...meta,
         dataSize: rawData.length,
         tournamentCount: tournaments.length,
+        backupScope: tournamentId ? "single" : "all",
+        tournamentId: tournamentId || null,
+        tournamentName: tournamentId ? tournaments[0]?.name || "" : null,
       },
       data: dataObj,
     };
@@ -70,8 +76,8 @@ export async function createBackupData(description = "") {
 /**
  * Xuất backup ra file .kbackup
  */
-export async function exportBackup(description = "") {
-  const result = await createBackupData(description);
+export async function exportBackup(description = "", tournamentId = null) {
+  const result = await createBackupData(description, tournamentId);
   if (!result.success) {
     return result;
   }
@@ -80,7 +86,15 @@ export async function exportBackup(description = "") {
   const blob = new Blob([jsonString], { type: "application/json" });
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const suggestedName = `karate_backup_${timestamp}.kbackup`;
+  const safeTournamentName = result.data.meta.tournamentName
+    ?.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 50);
+  const suggestedName = tournamentId
+    ? `karate_${safeTournamentName || "tournament"}_${timestamp}.kbackup`
+    : `karate_backup_all_${timestamp}.kbackup`;
 
   try {
     // Electron mode
@@ -274,7 +288,7 @@ export async function compareBackupWithCurrent(backupData) {
     }
 
     return result;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -303,6 +317,79 @@ export async function restoreBackup(backupData, mode = "replace") {
     }
 
     return { success: false, error: "Chế độ restore không hợp lệ" };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Merge (gộp) dữ liệu backup với dữ liệu hiện tại
+ */
+export async function restoreSingleTournament(backupData, mode = "add") {
+  try {
+    const backupTournaments = backupData?.data?.tournaments || [];
+    if (backupTournaments.length !== 1) {
+      return { success: false, error: "File backup phải chứa đúng một giải đấu" };
+    }
+
+    await createAutoBackup("Trước khi nhập một giải đấu");
+
+    const sourceTournament = backupTournaments[0];
+    const currentTournaments = await dbGetTournaments();
+    const existingIndex = currentTournaments.findIndex(
+      (tournament) => tournament.id === sourceTournament.id,
+    );
+
+    if (mode === "add") {
+      if (existingIndex >= 0) {
+        return {
+          success: false,
+          error: "Giải đấu này đã tồn tại. Hãy chọn Ghi đè hoặc Tạo bản sao.",
+        };
+      }
+      await dbSaveTournaments([...currentTournaments, sourceTournament]);
+      return {
+        success: true,
+        message: `Đã thêm giải "${sourceTournament.name}"`,
+        tournamentId: sourceTournament.id,
+      };
+    }
+
+    if (mode === "overwrite") {
+      const updatedTournaments = [...currentTournaments];
+      if (existingIndex >= 0) {
+        updatedTournaments[existingIndex] = sourceTournament;
+      } else {
+        updatedTournaments.push(sourceTournament);
+      }
+      await dbSaveTournaments(updatedTournaments);
+      return {
+        success: true,
+        message: `Đã cập nhật giải "${sourceTournament.name}"`,
+        tournamentId: sourceTournament.id,
+      };
+    }
+
+    if (mode === "copy") {
+      const copyId =
+        globalThis.crypto?.randomUUID?.() ||
+        `tournament_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const tournamentCopy = {
+        ...sourceTournament,
+        id: copyId,
+        name: `${sourceTournament.name} (Bản sao)`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await dbSaveTournaments([...currentTournaments, tournamentCopy]);
+      return {
+        success: true,
+        message: `Đã tạo bản sao "${tournamentCopy.name}"`,
+        tournamentId: copyId,
+      };
+    }
+
+    return { success: false, error: "Chế độ nhập giải không hợp lệ" };
   } catch (error) {
     return { success: false, error: error.message };
   }
