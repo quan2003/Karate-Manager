@@ -681,7 +681,7 @@ function CoachPage() {
             }
           } else {
             const str = String(dateVal).trim();
-            if (/^d{4}$/.test(str)) {
+            if (/^\d{4}$/.test(str)) {
               const yr = parseInt(str);
               if (yr>=1900 && yr<=2050) birthYearOnly = yr;
             } else {

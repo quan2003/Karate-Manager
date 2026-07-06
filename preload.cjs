@@ -31,6 +31,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   // =============================================
+  // Encrypted license storage owned by the Electron main process.
+  licenseStore: {
+    get: (key) => ipcRenderer.sendSync("license-store:get", key),
+    set: (key, value) => ipcRenderer.sendSync("license-store:set", key, value),
+    remove: (key) => ipcRenderer.sendSync("license-store:remove", key),
+    clear: () => ipcRenderer.sendSync("license-store:clear"),
+  },
   // Clipboard Operations
   // =============================================
 

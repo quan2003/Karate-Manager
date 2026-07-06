@@ -6,6 +6,60 @@
 // ĐỊA CHỈ SERVER LICENSE - Cần thay đổi khi deploy lên VPS
 export const SERVER_URL = "https://admin.luuquancoder.id.vn";
 
+const SECURE_LICENSE_KEYS = new Set([
+  "krt_active_license",
+  "krt_machine_id",
+  "krt_trial_used",
+]);
+
+function getElectronLicenseStore() {
+  return window.electronAPI?.licenseStore || null;
+}
+
+function readLicenseValue(key) {
+  if (!SECURE_LICENSE_KEYS.has(key)) throw new Error("Unsupported license key");
+  const secureStore = getElectronLicenseStore();
+  if (!secureStore) return localStorage.getItem(key);
+
+  const result = secureStore.get(key);
+  if (!result?.success) throw new Error(result?.error || "Secure store read failed");
+  if (result.value !== null) return result.value;
+
+  // One-time migration for existing installations.
+  const legacyValue = localStorage.getItem(key);
+  if (legacyValue !== null) {
+    const migrated = secureStore.set(key, legacyValue);
+    if (!migrated?.success) {
+      throw new Error(migrated?.error || "Secure store migration failed");
+    }
+    localStorage.removeItem(key);
+  }
+  return legacyValue;
+}
+
+function writeLicenseValue(key, value) {
+  if (!SECURE_LICENSE_KEYS.has(key)) throw new Error("Unsupported license key");
+  const secureStore = getElectronLicenseStore();
+  if (!secureStore) {
+    localStorage.setItem(key, value);
+    return;
+  }
+
+  const result = secureStore.set(key, value);
+  if (!result?.success) throw new Error(result?.error || "Secure store write failed");
+  localStorage.removeItem(key);
+}
+
+function removeLicenseValue(key) {
+  if (!SECURE_LICENSE_KEYS.has(key)) throw new Error("Unsupported license key");
+  const secureStore = getElectronLicenseStore();
+  if (secureStore) {
+    const result = secureStore.remove(key);
+    if (!result?.success) throw new Error(result?.error || "Secure store remove failed");
+  }
+  localStorage.removeItem(key);
+}
+
 export function normalizeVietnameseMessage(message) {
   if (typeof message !== "string") return message;
 
@@ -102,7 +156,7 @@ export const LICENSE_CONFIG = {
  * Tạo Machine ID duy nhất
  */
 export function generateMachineId() {
-  let machineId = localStorage.getItem("krt_machine_id");
+  let machineId = readLicenseValue("krt_machine_id");
   if (machineId) return machineId;
 
   const canvas = document.createElement("canvas");
@@ -131,50 +185,8 @@ export function generateMachineId() {
     Math.abs(hash).toString(16).toUpperCase().padStart(8, "0") +
     "-" +
     Date.now().toString(36).toUpperCase();
-  localStorage.setItem("krt_machine_id", machineId);
+  writeLicenseValue("krt_machine_id", machineId);
   return machineId;
-}
-
-/**
- * Gọi API Server để tạo License (Admin Only)
- */
-export async function generateLicenseKey(options) {
-  try {
-    const response = await fetch(`${SERVER_URL}/api/license/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        secret:
-          "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a", // Đã khớp với VPS
-        type: options.type,
-        days: options.customDuration,
-        maxMachines: options.customMachines,
-        clientName: options.organizationName,
-      }),
-    });
-
-    const data = await response.json();
-    if (data.success) {
-      return {
-        key: data.license.key,
-        raw: data.license.key,
-        data: {
-          t: data.license.type,
-          o: data.license.clientName,
-          e: data.license.expiryDate,
-          mm: data.license.maxMachines,
-        },
-        expiryDate: data.license.expiryDate,
-        version: 1,
-        machineIds: [], // Server manages this now
-      };
-    } else {
-      throw new Error(data.message);
-    }
-  } catch (error) {
-    console.error("Generate error:", error);
-    throw error;
-  }
 }
 
 /**
@@ -248,7 +260,7 @@ export async function activateLicense(licenseKey, machineId) {
     lastCheck: new Date().toISOString(),
   };
 
-  localStorage.setItem("krt_active_license", JSON.stringify(activationData));
+  writeLicenseValue("krt_active_license", JSON.stringify(activationData));
 
   // Dispatch Custom Event
   window.dispatchEvent(
@@ -265,7 +277,7 @@ export async function activateLicense(licenseKey, machineId) {
  */
 export function getCurrentLicense() {
   try {
-    const saved = localStorage.getItem("krt_active_license");
+    const saved = readLicenseValue("krt_active_license");
     if (!saved) return null;
 
     const license = JSON.parse(saved);
@@ -306,7 +318,7 @@ export async function revalidateLicenseWithServer() {
       lastCheck: new Date().toISOString(),
     };
 
-    localStorage.setItem(
+    writeLicenseValue(
       "krt_active_license",
       JSON.stringify(invalidatedLicense)
     );
@@ -334,7 +346,7 @@ export async function revalidateLicenseWithServer() {
     lastCheck: new Date().toISOString(),
   };
 
-  localStorage.setItem("krt_active_license", JSON.stringify(refreshedLicense));
+  writeLicenseValue("krt_active_license", JSON.stringify(refreshedLicense));
 
   window.dispatchEvent(
     new CustomEvent("licenseChanged", {
@@ -359,14 +371,13 @@ export function getDaysRemaining() {
 }
 
 export function deactivateLicense() {
-  localStorage.removeItem("krt_active_license");
+  removeLicenseValue("krt_active_license");
 }
 
 export function resetAllLicenseData() {
-  localStorage.removeItem("krt_active_license");
-  localStorage.removeItem("krt_trial_used");
-  localStorage.removeItem("krt_machine_id");
-  localStorage.removeItem("krt_generated_licenses");
+  removeLicenseValue("krt_active_license");
+  removeLicenseValue("krt_trial_used");
+  removeLicenseValue("krt_machine_id");
   console.log("All license data has been reset.");
   return true;
 }
@@ -377,7 +388,7 @@ export function initializeTrialIfNeeded() {
   const currentLicense = getCurrentLicense();
   if (currentLicense) return currentLicense;
 
-  const trialUsed = localStorage.getItem("krt_trial_used");
+  const trialUsed = readLicenseValue("krt_trial_used");
   if (trialUsed) return null;
 
   const expiryDate = new Date();
@@ -397,8 +408,8 @@ export function initializeTrialIfNeeded() {
     isTrial: true,
   };
 
-  localStorage.setItem("krt_active_license", JSON.stringify(activationData));
-  localStorage.setItem("krt_trial_used", "true");
+  writeLicenseValue("krt_active_license", JSON.stringify(activationData));
+  writeLicenseValue("krt_trial_used", "true");
   return activationData;
 }
 
@@ -453,85 +464,6 @@ export function getLicenseStatus() {
     daysRemaining,
     license,
   };
-}
-
-export function getGeneratedLicenses() {
-  try {
-    const saved = localStorage.getItem("krt_generated_licenses");
-    return saved ? JSON.parse(saved) : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-export async function getAllLicensesFromServer() {
-  try {
-    const secret =
-      "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
-    const response = await fetch(
-      `${SERVER_URL}/api/license/list?secret=${secret}`
-    );
-    const data = await response.json();
-    if (data.success) {
-      return data.licenses || [];
-    }
-    return [];
-  } catch (e) {
-    console.error("Fetch license error:", e);
-    return [];
-  }
-}
-
-export async function revokeLicense(key) {
-  try {
-    const secret =
-      "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
-    const response = await fetch(`${SERVER_URL}/api/license/revoke`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secret, key }),
-    });
-    return await response.json();
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
-}
-
-export async function resetLicenseMachines(key) {
-  try {
-    const secret =
-      "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
-    const response = await fetch(`${SERVER_URL}/api/license/reset`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secret, key }),
-    });
-    return await response.json();
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
-}
-
-export async function extendLicense(key, days) {
-  try {
-    const secret =
-      "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a";
-    const response = await fetch(`${SERVER_URL}/api/license/extend`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secret, key, days }),
-    });
-    return await response.json();
-  } catch (e) {
-    return { success: false, message: e.message };
-  }
-}
-
-export function saveGeneratedLicense(licenseInfo) {
-  const licenses = getGeneratedLicenses();
-  licenses.unshift({ ...licenseInfo, generatedAt: new Date().toISOString() });
-  if (licenses.length > 100) licenses.length = 100;
-  localStorage.setItem("krt_generated_licenses", JSON.stringify(licenses));
 }
 
 /**

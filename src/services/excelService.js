@@ -22,6 +22,8 @@ function parseDateValue(val) {
 
   // Excel serial number
   if (typeof val === "number") {
+    // A 4-digit value in a "Năm sinh" column is a year, not an Excel date serial.
+    if (Number.isInteger(val) && val >= 1900 && val <= 2100) return null;
     const excelEpoch = new Date(1899, 11, 30);
     const date = new Date(excelEpoch.getTime() + val * 86400000);
     return date.toISOString().split("T")[0]; // YYYY-MM-DD
@@ -44,6 +46,14 @@ function parseDateValue(val) {
   }
 
   return null;
+}
+
+function parseBirthYearValue(val) {
+  if (val === undefined || val === null || val === "") return null;
+  const str = String(val).trim();
+  if (!/^\d{4}$/.test(str)) return null;
+  const year = Number(str);
+  return year >= 1900 && year <= 2100 ? year : null;
 }
 
 function parseGenderValue(val) {
@@ -133,6 +143,7 @@ export function parseExcelFile(file) {
           const name = String(row[0] || "").trim();
           const gender = parseGenderValue(row[1]);
           const birthDate = parseDateValue(row[2]);
+          const birthYear = parseBirthYearValue(row[2]);
           const club = String(row[3] || "").trim();
 
           if (hasEventCol) {
@@ -168,6 +179,7 @@ export function parseExcelFile(file) {
             name,
             gender,
             birthDate,
+            birthYear,
             club,
             eventName,
             weight: weight && !isNaN(weight) ? weight : null,
@@ -362,6 +374,7 @@ export function parseCoachExcelFile(file) {
 
           const gender = parseGenderValue(row[genderCol]);
           const birthDate = parseDateValue(row[birthCol]);
+          const birthYear = parseBirthYearValue(row[birthCol]);
           const athleteClub = String(row[clubCol] || clubName || "").trim();
           const eventName = String(row[eventCol] || "").trim();
           const weight = row[weightCol] ? parseFloat(row[weightCol]) : null;
@@ -372,6 +385,7 @@ export function parseCoachExcelFile(file) {
             name,
             gender,
             birthDate,
+            birthYear,
             club: athleteClub,
             eventName,
             weight: weight && !isNaN(weight) ? weight : null,

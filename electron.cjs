@@ -6,6 +6,7 @@ const fs = require("fs");
 const http = require("http");
 const os = require("os");
 const dbService = require("./database.cjs");
+const licenseVault = require("./licenseVault.cjs");
 
 // Thiết lập ngôn ngữ mặc định của Chromium cho app để input date formating là vi-VN (dd/mm/yyyy)
 app.commandLine.appendSwitch('lang', 'vi-VN');
@@ -422,6 +423,38 @@ ipcMain.handle("db:deleteSetting", (event, key) => {
   return dbService.deleteSetting(key);
 });
 
+// License data is encrypted by Electron safeStorage (DPAPI on Windows).
+ipcMain.on("license-store:get", (event, key) => {
+  try {
+    event.returnValue = { success: true, value: licenseVault.get(key) };
+  } catch (error) {
+    event.returnValue = { success: false, error: error.message };
+  }
+});
+
+ipcMain.on("license-store:set", (event, key, value) => {
+  try {
+    event.returnValue = { success: licenseVault.set(key, value) };
+  } catch (error) {
+    event.returnValue = { success: false, error: error.message };
+  }
+});
+
+ipcMain.on("license-store:remove", (event, key) => {
+  try {
+    event.returnValue = { success: licenseVault.remove(key) };
+  } catch (error) {
+    event.returnValue = { success: false, error: error.message };
+  }
+});
+
+ipcMain.on("license-store:clear", (event) => {
+  try {
+    event.returnValue = { success: licenseVault.clear() };
+  } catch (error) {
+    event.returnValue = { success: false, error: error.message };
+  }
+});
 // --- Auto Backups ---
 ipcMain.handle("db:saveAutoBackup", (event, id, reason, data, size) => {
   return dbService.saveAutoBackup(id, reason, data, size);

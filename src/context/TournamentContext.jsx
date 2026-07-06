@@ -54,7 +54,7 @@ function getParticipantRestoreKey(athlete) {
     "fallback",
     athlete?.name || "",
     athlete?.club || "",
-    athlete?.birthDate || "",
+    athlete?.birthDate || athlete?.birthYear || "",
   ]
     .join("|")
     .normalize("NFC")
@@ -67,6 +67,7 @@ function normalizeRestoredAthlete(athlete, fallbackClub = "") {
     name: athlete.name || "",
     gender: athlete.gender || null,
     birthDate: athlete.birthDate || null,
+    birthYear: athlete.birthYear || null,
     club: athlete.club || fallbackClub || "",
     country: athlete.country || "VN",
     weight: athlete.weight || null,
@@ -644,6 +645,7 @@ function tournamentReducer(state, action) {
                         name: a.name,
                         gender: a.gender || null,
                         birthDate: a.birthDate || null,
+                        birthYear: a.birthYear || null,
                         club: a.club,
                         country: a.country || "VN",
                         weight: a.weight || null,

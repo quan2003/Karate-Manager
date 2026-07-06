@@ -1,7 +1,7 @@
 {
   "name": "k-sport",
   "private": true,
-  "version": "2.0.8",
+  "version": "2.0.9",
   "type": "module",
   "main": "electron.cjs",
   "author": "K-SPORT",
@@ -67,6 +67,7 @@
     "files": [
       "dist/**/*",
       "electron.cjs",
+      "licenseVault.cjs",
       "preload.cjs",
       "database.cjs",
       "public/**/*",
@@ -119,5 +120,5 @@
       "target": "AppImage"
     }
   },
-  "buildDate": "29/06/2026"
+  "buildDate": "06/07/2026"
 }

@@ -34,7 +34,7 @@ Sau khi cài đặt xong, bạn **PHẢI** tạo file `.env` để bảo mật s
    nano .env
    ```
 2. Sửa nội dung file `.env`:
-   - `ADMIN_SECRET`: Đổi thành một chuỗi ký tự dài, ngẫu nhiên và khó đoán. **Lưu lại chuỗi này để nhập vào App Owner Page**.
+   - JWT_SECRET: Dùng chuỗi ngẫu nhiên tối thiểu 64 ký tự; API quản trị chỉ chấp nhận JWT từ Admin Web.
    - `PORT`: Mặc định 2000.
 
 3. Khởi động lại Server để áp dụng cấu hình:

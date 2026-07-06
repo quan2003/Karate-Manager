@@ -14,9 +14,11 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 2000;
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "admin_secret_key_change_me";
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_change_me";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 64 || JWT_SECRET.includes("CHANGE_ME")) {
+  throw new Error("A strong JWT_SECRET (64+ characters) is required");
+}
 const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const axios = require("axios");
@@ -491,25 +493,17 @@ app.use(bodyParser.urlencoded({ extended: true, limit: "10mb" }));
 // --- Auth Middleware ---
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (authHeader) {
-    const token = authHeader.split(" ")[1];
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-      if (err) {
-        return res.sendStatus(403);
-      }
-      req.user = user;
-      next();
-    });
-  } else {
-    // Fallback to legacy secret query param for existing electron app
-    if (req.query.secret === ADMIN_SECRET || req.body.secret === ADMIN_SECRET) {
-      next();
-    } else {
-      res.sendStatus(401);
-    }
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.sendStatus(401);
   }
-};
 
+  const token = authHeader.slice("Bearer ".length);
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
+};
 // --- Auth Routes ---
 // Google Auth Route (Updated to accept Access Token)
 
@@ -1209,10 +1203,9 @@ app.get("/", (req, res) => {
 /**
  * CREATE LICENSE (Admin Only)
  */
-app.post("/api/license/create", async (req, res) => {
+app.post("/api/license/create", authMiddleware, async (req, res) => {
   try {
     const {
-      secret,
       type,
       days,
       maxMachines,
@@ -1221,27 +1214,6 @@ app.post("/api/license/create", async (req, res) => {
       clientEmail,
       notes,
     } = req.body;
-
-    // Auth check: JWT token OR admin secret
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      try {
-        const decoded = jwt.verify(authHeader.split(" ")[1], JWT_SECRET);
-        req.user = decoded;
-      } catch (err) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Token không hợp lệ" });
-      }
-    } else if (
-      secret !== process.env.ADMIN_SECRET &&
-      secret !==
-        "b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a"
-    ) {
-      return res
-        .status(403)
-        .json({ success: false, message: "Sai mã bảo mật Admin" });
-    }
 
     const duration = parseInt(days) || 30;
     const machines = parseInt(maxMachines) || 1;
@@ -1424,8 +1396,6 @@ app.post("/api/license/verify", async (req, res) => {
  * LIST LICENSES (Admin)
  */
 app.get("/api/license/list", authMiddleware, async (req, res) => {
-  // Legacy secret check handled by authMiddleware fallback or here if needed but Middleware is cleaner
-  // However, if called from Electron with secret query param, authMiddleware handles it.
   try {
     const result = await pool.query(
       `

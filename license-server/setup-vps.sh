@@ -44,7 +44,7 @@ systemctl enable postgresql
 
 # Create Database (idempotent)
 echo "Configuring Database..."
-runuser -u postgres -- psql -c "ALTER USER postgres WITH PASSWORD 'quan2003';"
+runuser -u postgres -- psql -c "ALTER USER postgres WITH PASSWORD 'CHANGE_ME_BEFORE_RUNNING';"
 runuser -u postgres -- psql -tc "SELECT 1 FROM pg_database WHERE datname = 'karate_license_db'" | grep -q 1 || \
     runuser -u postgres -- psql -c "CREATE DATABASE karate_license_db;"
 
@@ -121,8 +121,7 @@ PORT=2000
 NODE_ENV=production
 
 # Security
-ADMIN_SECRET=b3f9a2c7e8d1f6a4b9c2e7d5f8a1c3e6b4d9a7f2c1e8b6d3a5f7c9e1b2d4f6a
-JWT_SECRET=karate_jwt_secret_2026_change_me
+JWT_SECRET=CHANGE_ME_USE_A_RANDOM_64_BYTE_SECRET
 
 # CORS Configuration
 ALLOWED_ORIGINS=https://admin.luuquancoder.id.vn,http://admin.luuquancoder.id.vn,http://103.82.193.133,http://103.82.193.133.nip.io,https://103.82.193.133.nip.io
@@ -135,7 +134,7 @@ MAX_REQUESTS=5000
 PG_USER=postgres
 PG_HOST=localhost
 PG_DATABASE=karate_license_db
-PG_PASSWORD=quan2003
+PG_PASSWORD=CHANGE_ME_USE_A_STRONG_DATABASE_PASSWORD
 PG_PORT=5432
 
 # Google OAuth

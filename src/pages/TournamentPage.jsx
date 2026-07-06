@@ -29,6 +29,69 @@ import { downloadAthleteImportTemplate } from "../services/athleteTemplateServic
 import appIcon from "../assets/icon.png";
 import "./TournamentPage.css";
 
+const categoryNameCollator = new Intl.Collator("vi", {
+  sensitivity: "base",
+  numeric: true,
+});
+
+const normalizeCategorySortText = (value = "") =>
+  String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u0111/g, "d")
+    .replace(/\u0110/g, "D")
+    .toLowerCase();
+
+const getCategoryAgeOrder = (category) => {
+  const ageText = normalizeCategorySortText(
+    category.ageGroup || category.name || ""
+  );
+  const numericAge = ageText.match(/\d+(?:[.,]\d+)?/);
+  if (numericAge) return Number(numericAge[0].replace(",", "."));
+
+  const namedAgeGroups = [
+    ["mam non", 0],
+    ["mau giao", 0],
+    ["nhi dong", 6],
+    ["thieu nhi", 6],
+    ["thieu nien", 12],
+    ["tre", 15],
+    ["thanh nien", 18],
+    ["senior", 18],
+    ["truong thanh", 18],
+  ];
+  return namedAgeGroups.find(([label]) => ageText.includes(label))?.[1]
+    ?? Number.POSITIVE_INFINITY;
+};
+
+const getCategoryFormatOrder = (category) => {
+  const name = normalizeCategorySortText(category.name);
+  const gender = normalizeCategorySortText(category.gender);
+  const isMixed = gender === "mixed" || name.includes("hon hop") || name.includes("mixed");
+  if (isMixed) return 3;
+
+  const isTeam = category.isTeam || name.includes("dong doi") || name.includes("team");
+  if (isTeam) return 2;
+
+  const isFemale = gender === "female" || name.includes(" nu ") || /\bnu\b/.test(name);
+  return isFemale ? 1 : 0;
+};
+
+const compareCategoriesForPDF = (a, b) => {
+  const ageA = getCategoryAgeOrder(a);
+  const ageB = getCategoryAgeOrder(b);
+  if (ageA !== ageB) return ageA - ageB;
+
+  const formatDifference = getCategoryFormatOrder(a) - getCategoryFormatOrder(b);
+  if (formatDifference !== 0) return formatDifference;
+
+  const genderOrder = { male: 0, female: 1, mixed: 2 };
+  const genderDifference = (genderOrder[a.gender] ?? 3) - (genderOrder[b.gender] ?? 3);
+  if (genderDifference !== 0) return genderDifference;
+
+  return categoryNameCollator.compare(a.name || "", b.name || "");
+};
+
 export default function TournamentPage() {
   const { id } = useParams();
   const { tournaments, currentTournament } = useTournament();
@@ -541,11 +604,9 @@ export default function TournamentPage() {
       const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
       const sponsorLogos = tournament.sponsorLogos || null;
 
-      // Sort logic to make the PDF organized: Type -> Format -> Name
-      const sorted = [...categoriesToExport].sort((a, b) => {
-        if (a.type !== b.type) return a.type.localeCompare(b.type);
-        return a.name.localeCompare(b.name);
-      });
+      // PDF order: youngest to oldest, then individual men, individual women,
+      // team events, and mixed events.
+      const sorted = [...categoriesToExport].sort(compareCategoriesForPDF);
 
       await exportAllBracketsToPDF(
         sorted,
@@ -819,6 +880,10 @@ export default function TournamentPage() {
     }
 
     setBulkDrawing(true);
+    const loadingStartedAt = Date.now();
+
+    // Give React a chance to paint the loading state before generating brackets.
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const results = { success: [], failed: [], skipped: [] };
 
     for (const cat of cats) {
@@ -867,6 +932,12 @@ export default function TournamentPage() {
           results.failed.push({ name: cat.name, error: error.message });
         }
       }
+    }
+
+    // Keep the loading feedback visible long enough to be perceived on fast draws.
+    const remainingLoadingTime = Math.max(0, 450 - (Date.now() - loadingStartedAt));
+    if (remainingLoadingTime > 0) {
+      await new Promise(resolve => setTimeout(resolve, remainingLoadingTime));
     }
 
     setBulkDrawing(false);
@@ -2263,7 +2334,9 @@ export default function TournamentPage() {
         {/* Bulk Draw Modal */}
         <Modal
           isOpen={showBulkDrawModal}
-          onClose={() => setShowBulkDrawModal(false)}
+          onClose={() => {
+            if (!bulkDrawing) setShowBulkDrawModal(false);
+          }}
           title="🎲 Bốc thăm hàng loạt"
         >
           <div style={{maxHeight: '60vh', overflowY: 'auto'}}>
@@ -2277,6 +2350,7 @@ export default function TournamentPage() {
                 <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'8px 12px',background:'#f1f5f9',borderRadius:'8px',marginBottom:'8px'}}>
                   <input
                     type="checkbox"
+                    disabled={bulkDrawing}
                     checked={bulkDrawableCategories.length > 0 && bulkDrawableCategories.every(c => bulkDrawSelection[c.id])}
                     onChange={(e) => {
                       const newSel = {...bulkDrawSelection};
@@ -2313,7 +2387,7 @@ export default function TournamentPage() {
                         <input
                           type="checkbox"
                           checked={!!bulkDrawSelection[cat.id]}
-                          disabled={!canDraw}
+                          disabled={!canDraw || bulkDrawing}
                           onChange={(e) => setBulkDrawSelection(prev => ({...prev, [cat.id]: e.target.checked}))}
                           style={{width:'16px',height:'16px',accentColor:'#6366f1'}}
                         />
@@ -2328,13 +2402,18 @@ export default function TournamentPage() {
                 </div>
 
                 <div className="modal-actions" style={{marginTop:'16px'}}>
-                  <button className="btn btn-secondary" onClick={() => setShowBulkDrawModal(false)}>Hủy</button>
+                  <button className="btn btn-secondary" onClick={() => setShowBulkDrawModal(false)} disabled={bulkDrawing}>Hủy</button>
                   <button
                     className="btn btn-primary"
                     onClick={handleBulkDraw}
                     disabled={bulkDrawing || Object.values(bulkDrawSelection).filter(Boolean).length === 0}
                   >
-                    {bulkDrawing ? '⏳ Đang bốc thăm...' : `🎲 Bốc thăm ${Object.values(bulkDrawSelection).filter(Boolean).length} nội dung`}
+                    {bulkDrawing ? (
+                      <span className="bulk-draw-loading">
+                        <span className="bulk-draw-spinner" aria-hidden="true" />
+                        Đang bốc thăm...
+                      </span>
+                    ) : `🎲 Bốc thăm ${Object.values(bulkDrawSelection).filter(Boolean).length} nội dung`}
                   </button>
                 </div>
               </>
