@@ -60,6 +60,7 @@ export default function StatisticsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedForExport, setSelectedForExport] = useState(new Set());
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exportBirthYear, setExportBirthYear] = useState(false);
   const [importPreview, setImportPreview] = useState(null); // { rows, fileName, mergedResults, stats }
   const [importMode, setImportMode] = useState("merge"); // 'merge' | 'overwrite'
   const [editingClubReg, setEditingClubReg] = useState(null); // club name being edited
@@ -693,6 +694,43 @@ export default function StatisticsPage() {
     );
     if (members.length === 0) return "";
     return members.map((m) => m.name).join(", ");
+  };
+  const formatAthleteBirthYear = (athlete) => {
+    if (!athlete) return "";
+    if (athlete.birthYear) return String(athlete.birthYear);
+    return athlete.birthDate ? String(athlete.birthDate).slice(0, 4) : "";
+  };
+
+  const findResultAthlete = (cat, athleteName, clubName) => {
+    const normalize = (value) => String(value || "").trim().toLowerCase();
+    const name = normalize(athleteName);
+    const club = normalize(clubName);
+    return (cat.athletes || []).find((athlete) => {
+      if (normalize(athlete.name) !== name) return false;
+      return !club || normalize(athlete.club) === club;
+    });
+  };
+
+  const getResultBirthYears = (cat, athleteName, clubName) => {
+    const isTeamCat =
+      cat.name?.toLowerCase().includes("đồng đội") ||
+      cat.isTeam ||
+      (cat.athletes || []).some((athlete) => athlete.isTeam);
+    if (!isTeamCat) {
+      return formatAthleteBirthYear(
+        findResultAthlete(cat, athleteName, clubName)
+      );
+    }
+
+    const teamName = String(clubName || athleteName || "").trim().toLowerCase();
+    return (cat.athletes || [])
+      .filter(
+        (athlete) =>
+          String(athlete.club || "").trim().toLowerCase() === teamName
+      )
+      .map(formatAthleteBirthYear)
+      .filter(Boolean)
+      .join(", ");
   };
 
   // Helper: generate medal cell HTML for PDF
@@ -4728,9 +4766,31 @@ export default function StatisticsPage() {
                         boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
                         border: "1px solid #e2e8f0",
                         overflow: "hidden",
-                        minWidth: "180px",
+                        minWidth: "220px",
                       }}
                     >
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          padding: "10px 16px",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          color: "#334155",
+                          background: "#f8fafc",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={exportBirthYear}
+                          onChange={(e) => setExportBirthYear(e.target.checked)}
+                        />
+                        Xuất kèm năm sinh
+                      </label>
+                      <div style={{ height: "1px", background: "#e2e8f0" }} />
+
                       <button
                         style={{
                           display: "block",
@@ -4781,6 +4841,9 @@ export default function StatisticsPage() {
                                   data.push({
                                     "Hạng mục": cat.name,
                                     "Họ và tên": m.name || "",
+                                    ...(exportBirthYear
+                                      ? { "Năm sinh": formatAthleteBirthYear(m) }
+                                      : {}),
                                     "Đơn vị": clubName || athleteName || "",
                                     "Huy chương": medal
                                   });
@@ -4789,6 +4852,15 @@ export default function StatisticsPage() {
                                 data.push({
                                   "Hạng mục": cat.name,
                                   "Họ và tên": athleteName || "",
+                                  ...(exportBirthYear
+                                    ? {
+                                        "Năm sinh": getResultBirthYears(
+                                          cat,
+                                          athleteName,
+                                          clubName
+                                        ),
+                                      }
+                                    : {}),
                                   "Đơn vị": clubName || "",
                                   "Huy chương": medal
                                 });
@@ -4871,24 +4943,60 @@ export default function StatisticsPage() {
                                 getTeamMemberNames(cat, result?.first) ||
                                 getTeamMemberNames(cat, result?.club1) ||
                                 "",
+                              ...(exportBirthYear
+                                ? {
+                                    "Năm sinh HCV": getResultBirthYears(
+                                      cat,
+                                      result?.first,
+                                      result?.club1
+                                    ),
+                                  }
+                                : {}),
                               HCB: result?.second || "",
                               "CLB HCB": result?.club2 || "",
                               "Thành viên HCB":
                                 getTeamMemberNames(cat, result?.second) ||
                                 getTeamMemberNames(cat, result?.club2) ||
                                 "",
+                              ...(exportBirthYear
+                                ? {
+                                    "Năm sinh HCB": getResultBirthYears(
+                                      cat,
+                                      result?.second,
+                                      result?.club2
+                                    ),
+                                  }
+                                : {}),
                               "HCĐ 1": result?.third1 || "",
                               "CLB HCĐ 1": result?.club3a || "",
                               "Thành viên HCĐ 1":
                                 getTeamMemberNames(cat, result?.third1) ||
                                 getTeamMemberNames(cat, result?.club3a) ||
                                 "",
+                              ...(exportBirthYear
+                                ? {
+                                    "Năm sinh HCĐ 1": getResultBirthYears(
+                                      cat,
+                                      result?.third1,
+                                      result?.club3a
+                                    ),
+                                  }
+                                : {}),
                               "HCĐ 2": result?.third2 || "",
                               "CLB HCĐ 2": result?.club3b || "",
                               "Thành viên HCĐ 2":
                                 getTeamMemberNames(cat, result?.third2) ||
                                 getTeamMemberNames(cat, result?.club3b) ||
                                 "",
+                              ...(exportBirthYear
+                                ? {
+                                    "Năm sinh HCĐ 2": getResultBirthYears(
+                                      cat,
+                                      result?.third2,
+                                      result?.club3b
+                                    ),
+                                  }
+                                : {}),
                             };
                           });
                           if (!data.length) return;

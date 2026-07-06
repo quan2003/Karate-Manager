@@ -1,7 +1,7 @@
 {
   "name": "k-sport",
   "private": true,
-  "version": "2.0.9",
+  "version": "2.0.10",
   "type": "module",
   "main": "electron.cjs",
   "author": "K-SPORT",
