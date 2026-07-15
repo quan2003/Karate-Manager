@@ -4,6 +4,8 @@ const STORAGE_KEY = "kumite_scoreboard";
 // State management
 let state = {
   mode: "individual", // 'individual' or 'team'
+  displayLayout: "horizontal", // 'horizontal' or 'vertical'
+  swapPositions: false,
   category: "PENALTY",
   tournamentTitle:
     "GIẢI KARATE-DO SINH VIÊN TRƯỜNG ĐẠI HỌC CNTT VÀ TT VIỆT-HÀN MỞ RỘNG LẦN THỨ I - 2025", // Tournament title
@@ -55,18 +57,37 @@ function loadState() {
 
 // Update display from state
 function updateDisplay() {
+  const displayLayout = state.displayLayout === "vertical"
+    ? "vertical"
+    : "horizontal";
+  document.body.classList.toggle("vertical-layout", displayLayout === "vertical");
+  document.body.classList.toggle("horizontal-layout", displayLayout === "horizontal");
+  document.body.classList.toggle("positions-swapped", state.swapPositions === true);
+
   // Update tournament title
   if (document.getElementById("tournamentTitle")) {
     document.getElementById("tournamentTitle").textContent =
       state.tournamentTitle ||
       "GIẢI KARATE-DO SINH VIÊN TRƯỜNG ĐẠI HỌC CNTT VÀ TT VIỆT-HÀN MỞ RỘNG LẦN THỨ I - 2025";
   } // Update category
-  document.getElementById("categoryTitle").textContent = state.category;
+  document.getElementById("categoryTitle").textContent =
+    state.displayLayout === "vertical" ? "WARNING" : state.category;
   // Update event title
   if (document.getElementById("eventTitle")) {
     document.getElementById("eventTitle").textContent =
       state.eventTitle || "THẢM 1";
   } 
+  const matchRoundDisplay = document.getElementById("matchRoundDisplay");
+  if (matchRoundDisplay) {
+    matchRoundDisplay.textContent = state.matchRound || "";
+    matchRoundDisplay.style.display = state.matchRound ? "block" : "none";
+  }
+  const matchModeDisplay = document.getElementById("matchModeDisplay");
+  if (matchModeDisplay) {
+    matchModeDisplay.textContent =
+      state.category ||
+      (state.mode === "team" ? "KUMITE ĐỒNG ĐỘI" : "KUMITE");
+  }
   
   // Update sponsor text/logos - Enhanced logic to check multiple storage locations
   const logoContainer = document.getElementById("logoContainer");

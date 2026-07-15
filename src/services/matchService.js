@@ -27,6 +27,12 @@ export function createKmatchData(tournament, categories, settings = {}, targetRo
     tournamentDate: tournament.startDate || tournament.date,
     location: tournament.location,
 
+    // Giữ lịch thi đấu trong file để máy Thư ký biết đúng thảm của
+    // từng hạng mục khi mở bảng điểm. Trước đây trường này bị bỏ sót,
+    // khiến SecretaryPage không tìm thấy scheduleInfo và scoreboard
+    // luôn rơi về giá trị mặc định "Thảm 1".
+    schedule: tournament.schedule || {},
+    sponsorLogos: tournament.sponsorLogos || null,
     // Thời gian cho phép bấm điểm
     startTime: settings.startTime || null,
     endTime: settings.endTime || null,

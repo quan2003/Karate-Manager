@@ -264,6 +264,7 @@ const ACTIONS = {
   UPDATE_CLUB_REGISTRATIONS: "UPDATE_CLUB_REGISTRATIONS",
   MOVE_ATHLETE: "MOVE_ATHLETE",
   SYNC_MATCH_RESULT: "SYNC_MATCH_RESULT",
+  SYNC_CATEGORY_MEDALS: "SYNC_CATEGORY_MEDALS",
   CLEAR_TOURNAMENT_ATHLETES: "CLEAR_TOURNAMENT_ATHLETES",
   RESTORE_ATHLETES_FROM_BRACKET: "RESTORE_ATHLETES_FROM_BRACKET",
 };
@@ -821,6 +822,42 @@ function tournamentReducer(state, action) {
       }
       break;
 
+    case ACTIONS.SYNC_CATEGORY_MEDALS: {
+      const { tournamentId, categoryId, categoryName, medals, syncedAt } = action.payload;
+      if (!tournamentId || !medals) return state;
+
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) => {
+          if (t.id !== tournamentId) return t;
+          const category = t.categories.find(
+            (c) => c.id === categoryId || (categoryName && c.name === categoryName)
+          );
+          if (!category) return t;
+          return {
+            ...t,
+            categoryResults: {
+              ...(t.categoryResults || {}),
+              [category.id]: {
+                first: medals.gold?.name || "",
+                club1: medals.gold?.club || "",
+                second: medals.silver?.name || "",
+                club2: medals.silver?.club || "",
+                third1: medals.bronze1?.name || "",
+                club3a: medals.bronze1?.club || "",
+                third2: medals.bronze2?.name || "",
+                club3b: medals.bronze2?.club || "",
+                _lanSyncedAt: syncedAt || new Date().toISOString(),
+              },
+            },
+          };
+        }),
+      };
+      if (state.currentTournament?.id === tournamentId) {
+        newState.currentTournament = newState.tournaments.find((t) => t.id === tournamentId);
+      }
+      break;
+    }
     case ACTIONS.SYNC_MATCH_RESULT: {
       const { matchId, matchCode, score1, score2, winnerId, tournamentId } = action.payload;
       
@@ -965,7 +1002,9 @@ export function TournamentProvider({ children }) {
         
         if (targetTournamentId) {
           dispatch({
-            type: ACTIONS.SYNC_MATCH_RESULT,
+            type: data.syncType === "category-medals"
+              ? ACTIONS.SYNC_CATEGORY_MEDALS
+              : ACTIONS.SYNC_MATCH_RESULT,
             payload: {
               ...data,
               tournamentId: targetTournamentId,

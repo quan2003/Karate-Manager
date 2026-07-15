@@ -61,6 +61,7 @@ export default function StatisticsPage() {
   const [selectedForExport, setSelectedForExport] = useState(new Set());
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exportBirthYear, setExportBirthYear] = useState(false);
+  const [filterPrinted, setFilterPrinted] = useState("all"); // all | printed | unprinted
   const [importPreview, setImportPreview] = useState(null); // { rows, fileName, mergedResults, stats }
   const [importMode, setImportMode] = useState("merge"); // 'merge' | 'overwrite'
   const [editingClubReg, setEditingClubReg] = useState(null); // club name being edited
@@ -257,7 +258,31 @@ export default function StatisticsPage() {
       const q = searchQuery.toLowerCase().trim();
       cats = cats.filter((c) => c.name.toLowerCase().includes(q));
     }
+    if (filterPrinted !== "all") {
+      const printedSet = tournament.printedResults || {};
+      cats = cats.filter((c) =>
+        filterPrinted === "printed" ? !!printedSet[c.id] : !printedSet[c.id]
+      );
+    }
     return cats;
+  };
+
+  // ===== TOGGLE PRINTED STATUS =====
+  const handleTogglePrinted = (catId) => {
+    const current = tournament.printedResults || {};
+    const newPrinted = { ...current, [catId]: !current[catId] };
+    dispatch({
+      type: ACTIONS.UPDATE_TOURNAMENT,
+      payload: { id: tournament.id, printedResults: newPrinted },
+    });
+  };
+
+  const handleResetPrintedStatus = () => {
+    dispatch({
+      type: ACTIONS.UPDATE_TOURNAMENT,
+      payload: { id: tournament.id, printedResults: {} },
+    });
+    toast.success("Đã reset trạng thái in!");
   };
 
   // ===== STATISTICS HELPERS =====
@@ -1988,7 +2013,15 @@ export default function StatisticsPage() {
   };
 
   const normalizeAgeGroupLabel = (value) =>
-    (value || "").toString().replace(/\s+/g, " ").trim();
+    (value || "")
+      .toString()
+      .normalize("NFC")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const getAgeGroupKey = (label) =>
+    normalizeAgeGroupLabel(label).toLocaleLowerCase("vi");
 
   const getCategoryAgeGroupLabel = (cat) =>
     normalizeAgeGroupLabel(cat.ageGroup) || "Chưa xác định lứa tuổi";
@@ -2054,26 +2087,31 @@ export default function StatisticsPage() {
   };
 
   const getMedalTallyByAgeGroup = () => {
-    const groupMaps = {};
+    const groups = new Map();
 
     getFilteredCategories().forEach((cat) => {
       const groupLabel = getCategoryAgeGroupLabel(cat);
-      if (!groupMaps[groupLabel]) {
-        groupMaps[groupLabel] = createMedalTallyMap();
+      const groupKey = getAgeGroupKey(groupLabel);
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, {
+          label: groupLabel,
+          clubMap: createMedalTallyMap(),
+        });
       }
+      const clubMap = groups.get(groupKey).clubMap;
 
       const result = getCategoryResults(cat.id);
       if (!result) return;
 
-      if (result.club1) addMedalToTallyMap(groupMaps[groupLabel], result.club1, "gold");
-      if (result.club2) addMedalToTallyMap(groupMaps[groupLabel], result.club2, "silver");
-      if (result.club3a) addMedalToTallyMap(groupMaps[groupLabel], result.club3a, "bronze");
-      if (result.club3b) addMedalToTallyMap(groupMaps[groupLabel], result.club3b, "bronze");
+      if (result.club1) addMedalToTallyMap(clubMap, result.club1, "gold");
+      if (result.club2) addMedalToTallyMap(clubMap, result.club2, "silver");
+      if (result.club3a) addMedalToTallyMap(clubMap, result.club3a, "bronze");
+      if (result.club3b) addMedalToTallyMap(clubMap, result.club3b, "bronze");
     });
 
-    return Object.entries(groupMaps)
-      .map(([label, clubMap]) => ({
-        id: label,
+    return Array.from(groups.entries())
+      .map(([id, { label, clubMap }]) => ({
+        id,
         label,
         tally: sortMedalTally(clubMap, true),
       }))
@@ -2251,8 +2289,11 @@ export default function StatisticsPage() {
         th { color: #000; padding: 8px 6px; text-align: center; font-size: 12px; font-weight: bold; border: 1px solid #000; }
         td { padding: 6px; border: 1px solid #000; }
         tfoot td { border: 1px solid #000; font-weight: bold; }
-        .age-group-title { font-size: 16px; font-weight: bold; margin: 22px 0 8px; text-transform: uppercase; }
-        .age-group-table { page-break-inside: avoid; margin-bottom: 12px; }
+        .age-group-title { font-size: 16px; font-weight: bold; margin: 22px 0 8px; text-transform: uppercase; break-after: avoid; page-break-after: avoid; }
+        .age-group-table { break-inside: auto; page-break-inside: auto; margin-bottom: 12px; }
+        .age-group-table thead { display: table-header-group; }
+        .age-group-table tfoot { display: table-row-group; }
+        .age-group-table tr { break-inside: avoid; page-break-inside: avoid; }
         .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
         .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; }
         .header-left { justify-content: flex-start; }
@@ -2425,8 +2466,11 @@ export default function StatisticsPage() {
         td { padding: 6px; border: 1px solid #000; }
         small { font-size: 11px; }
         tfoot td { border: 1px solid #000; font-weight: bold; }
-        .age-group-title { font-size: 16px; font-weight: bold; margin: 22px 0 8px; text-transform: uppercase; }
-        .age-group-table { page-break-inside: avoid; margin-bottom: 12px; }
+        .age-group-title { font-size: 16px; font-weight: bold; margin: 22px 0 8px; text-transform: uppercase; break-after: avoid; page-break-after: avoid; }
+        .age-group-table { break-inside: auto; page-break-inside: auto; margin-bottom: 12px; }
+        .age-group-table thead { display: table-header-group; }
+        .age-group-table tfoot { display: table-row-group; }
+        .age-group-table tr { break-inside: avoid; page-break-inside: avoid; }
         .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
         .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; }
         .header-left { justify-content: flex-start; }
@@ -4688,10 +4732,24 @@ export default function StatisticsPage() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
+              <div className="filter-group">
+                <label>Trạng thái in:</label>
+                <select
+                  value={filterPrinted}
+                  onChange={(e) => setFilterPrinted(e.target.value)}
+                  className="filter-select"
+                  style={{ minWidth: "130px" }}
+                >
+                  <option value="all">Tất cả</option>
+                  <option value="printed">✅ Đã in</option>
+                  <option value="unprinted">⬜ Chưa in</option>
+                </select>
+              </div>
               {(filterType !== "all" ||
                 filterGender !== "all" ||
                 filterSession !== "all" ||
                 filterClub !== "all" ||
+                filterPrinted !== "all" ||
                 searchQuery !== "") && (
                 <button
                   className="btn btn-sm btn-secondary"
@@ -4700,6 +4758,7 @@ export default function StatisticsPage() {
                     setFilterGender("all");
                     setFilterSession("all");
                     setFilterClub("all");
+                    setFilterPrinted("all");
                     setSearchQuery("");
                   }}
                 >
@@ -4708,6 +4767,25 @@ export default function StatisticsPage() {
               )}
             </div>
             <div className="results-actions">
+              {(() => {
+                const printedSet = tournament.printedResults || {};
+                const printedCount = tournament.categories.filter(c => printedSet[c.id]).length;
+                const total = tournament.categories.length;
+                return printedCount > 0 ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "13px", color: "#16a34a", fontWeight: 600 }}>
+                      ✅ Đã in: {printedCount}/{total}
+                    </span>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      style={{ fontSize: "11px", padding: "3px 8px" }}
+                      onClick={handleResetPrintedStatus}
+                    >
+                      🔄 Reset trạng thái in
+                    </button>
+                  </div>
+                ) : null;
+              })()}
               <button
                 className="btn btn-secondary"
                 onClick={handleExportResults}
@@ -5205,8 +5283,13 @@ export default function StatisticsPage() {
                 <tbody>
                   {filteredCategories.map((cat, idx) => {
                     const result = getCategoryResults(cat.id);
+                    const isPrinted = !!(tournament.printedResults || {})[cat.id];
                     return (
-                      <tr key={cat.id} className={result ? "has-result" : ""}>
+                      <tr
+                        key={cat.id}
+                        className={result ? "has-result" : ""}
+                        style={isPrinted ? { opacity: 0.55, background: "#f0fdf4" } : {}}
+                      >
                         <td>
                           <input
                             type="checkbox"
@@ -5295,6 +5378,25 @@ export default function StatisticsPage() {
                                 📄
                               </button>
                             )}
+                            <button
+                              title={isPrinted ? "Bỏ đánh dấu đã in" : "Đánh dấu đã in"}
+                              onClick={() => handleTogglePrinted(cat.id)}
+                              style={{
+                                minWidth: "28px",
+                                padding: "3px 7px",
+                                fontSize: "13px",
+                                border: isPrinted ? "1.5px solid #22c55e" : "1.5px solid #cbd5e1",
+                                background: isPrinted ? "#dcfce7" : "#f8fafc",
+                                color: isPrinted ? "#16a34a" : "#94a3b8",
+                                borderRadius: "6px",
+                                cursor: "pointer",
+                                lineHeight: 1,
+                                transition: "all 0.2s",
+                                fontWeight: isPrinted ? 700 : 400,
+                              }}
+                            >
+                              {isPrinted ? "✓" : "🖨️"}
+                            </button>
                           </div>
                         </td>
                       </tr>

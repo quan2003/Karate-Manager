@@ -390,3 +390,312 @@ button[onclick*="clear"]:hover {
     font-size: 2em;
   }
 }
+
+/* Kata admin single-screen dashboard */
+body {
+  height: 100vh;
+  padding: 10px;
+  overflow: hidden;
+  background: #edf2f7;
+}
+
+.container {
+  width: 100%;
+  max-width: 1800px;
+  height: calc(100vh - 20px);
+  padding: 12px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.dashboard-header {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #123f53, #1a5f7a);
+}
+
+.dashboard-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  color: white;
+}
+
+.dashboard-brand img {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  padding: 4px;
+  border-radius: 50%;
+  background: white;
+}
+
+.dashboard-brand span,
+.dashboard-brand strong {
+  display: block;
+  line-height: 1.1;
+}
+
+.dashboard-brand span {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.dashboard-brand strong {
+  margin-top: 3px;
+  font-size: 1.15rem;
+}
+
+.general-settings {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+.general-settings h2 {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: white;
+  white-space: nowrap;
+}
+
+.general-settings .btn-group {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.general-settings .btn {
+  padding: 9px 16px;
+  box-shadow: none;
+}
+
+.section {
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+.section h2 {
+  margin-bottom: 7px;
+  padding-bottom: 5px;
+  font-size: 1.05rem;
+}
+
+.event-section .form-group {
+  margin-bottom: 0;
+}
+
+.event-section .form-group label {
+  margin-bottom: 4px;
+  font-size: 0.82rem;
+}
+
+.event-section .form-group input {
+  padding: 8px 10px;
+}
+
+.competitors-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 10px;
+}
+
+.competitors-grid > div,
+.competitor-section {
+  height: 100%;
+  min-height: 0;
+}
+
+.competitor-section {
+  padding: 10px 14px;
+  overflow: hidden;
+}
+
+.competitor-section h2 {
+  margin-bottom: 7px;
+}
+
+.competitor-section .form-group {
+  margin-bottom: 7px;
+}
+
+.competitor-section .form-group label {
+  margin-bottom: 3px;
+  font-size: 0.82rem;
+}
+
+.competitor-section .form-group input,
+.competitor-section .form-group select {
+  padding: 7px 9px;
+  font-size: 0.9rem;
+}
+
+#akaKataSelect,
+#aoKataSelect {
+  height: 36px;
+  margin-top: 5px;
+  font-size: 0.88rem;
+}
+
+.score-control {
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.score-control .btn {
+  padding: 7px 22px;
+}
+
+.score-display {
+  min-width: 70px;
+  font-size: 2.15rem;
+  line-height: 1;
+}
+
+.finish-action {
+  display: flex;
+  justify-content: center;
+}
+
+.finish-action .btn {
+  padding: 8px 28px !important;
+  font-size: 0.95rem !important;
+}
+
+.bottom-controls {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.32fr) minmax(760px, 1fr);
+  gap: 8px;
+}
+
+.font-scale-section h2 {
+  margin-bottom: 4px;
+}
+
+.font-scale-section .btn {
+  padding: 6px 12px;
+  margin-left: 8px;
+}
+
+.font-scale-section input[type="range"] {
+  width: calc(100% - 92px) !important;
+  vertical-align: middle;
+}
+
+.timer-section {
+  display: grid;
+  grid-template-columns: auto 105px minmax(390px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.timer-section h2 {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  white-space: nowrap;
+}
+
+.time-display {
+  margin: 0;
+  font-size: 2.35rem;
+  line-height: 1;
+}
+
+.time-controls,
+.time-presets {
+  margin: 0;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.time-controls .btn,
+.time-presets .btn {
+  min-width: auto;
+  padding: 7px 12px;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.help-btn {
+  right: 14px !important;
+  bottom: 14px !important;
+  width: 42px !important;
+  height: 42px !important;
+  font-size: 20px !important;
+}
+
+@media (max-width: 1100px) {
+  body {
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+  }
+
+  .container {
+    height: auto;
+    overflow: visible;
+  }
+
+  .dashboard-header,
+  .general-settings {
+    flex-wrap: wrap;
+  }
+
+  .competitors-grid {
+    min-height: 420px;
+  }
+
+  .bottom-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .timer-section {
+    grid-template-columns: auto 100px 1fr;
+  }
+
+  .time-presets {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-header,
+  .general-settings {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .general-settings .btn-group {
+    flex-wrap: wrap;
+  }
+
+  .event-section > div {
+    grid-template-columns: 1fr !important;
+  }
+
+  .competitors-grid {
+    min-height: 0;
+  }
+
+  .timer-section {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .time-controls,
+  .time-presets {
+    grid-column: auto;
+    flex-wrap: wrap;
+  }
+}

@@ -48,7 +48,7 @@ export default function SchedulePage() {
   const { id } = useParams();
   const { tournaments, currentTournament } = useTournament();
   const dispatch = useTournamentDispatch();
-  const toast = useToast();
+  const { toast } = useToast();
   const navigate = useNavigate();
 
   const [matCount, setMatCount] = useState(4);

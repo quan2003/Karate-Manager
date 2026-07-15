@@ -534,7 +534,7 @@ ipcMain.handle("lan:startServer", (event) => {
         return;
       }
 
-      if (req.method === "POST" && req.url === "/api/match-result") {
+      if (req.method === "POST" && ["/api/match-result", "/api/category-medals"].includes(req.url)) {
         let body = "";
         req.on("data", (chunk) => { body += chunk.toString(); });
         req.on("end", () => {

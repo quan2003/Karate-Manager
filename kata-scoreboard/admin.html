@@ -34,48 +34,18 @@
   </head>
   <body>
     <div class="container">
-      <!-- Logo Header -->
-      <div
-        style="
-          text-align: center;
-          padding: 15px;
-          background: #1a5f7a;
-          border-radius: 10px;
-          margin-bottom: 15px;
-        "
-      >
-        <img
-          src="../public/Logo_den.png"
-          alt="Logo"
-          style="
-            max-width: 80px;
-            height: auto;
-            border-radius: 50%;
-            background: white;
-            padding: 8px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-          "
-        />
-        <h2 style="color: white; margin-top: 10px; font-size: 1.2em">
-          KATA SCOREBOARD - ADMIN PANEL
-        </h2>
-      </div>
-
-      <h1>KARATE SCOREBOARD - ADMIN PANEL</h1>
-
+      <header class="dashboard-header">
+        <div class="dashboard-brand">
+          <img src="../public/Logo_den.png" alt="Logo" />
+          <div>
+            <span>KARATE SCOREBOARD</span>
+            <strong>ADMIN KATA</strong>
+          </div>
+        </div>
       <!-- TOP SECTION - Full Width -->
-      <div class="section full-width">
+      <div class="general-settings">
         <h2>⚙️ Cài Đặt Chung</h2>
         <div class="btn-group">
-          <button
-            class="btn btn-primary active"
-            onclick="setContentType('individual')"
-          >
-            Cá Nhân
-          </button>
-          <button class="btn btn-primary" onclick="setContentType('team')">
-            Đồng Đội
-          </button>
           <button class="btn btn-warning" onclick="swapPositions()">
             🔄 Đổi AKA ⇄ AO
           </button>
@@ -84,8 +54,9 @@
           </button>
         </div>
       </div>
+      </header>
       <!-- Event Info - Full Width -->
-      <div class="section full-width">
+      <div class="section full-width event-section">
         <h2>📋 Thông Tin Trận Đấu</h2>
         <div
           style="display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 15px"
@@ -121,7 +92,7 @@
       </div>
 
       <!-- TWO COLUMN LAYOUT -->
-      <div class="admin-grid">
+      <div class="admin-grid competitors-grid">
         <!-- LEFT COLUMN - AKA -->
         <div>
           <div class="section competitor-section aka-section">
@@ -518,14 +489,7 @@
       </div>
 
       <!-- Quick Send Result Button -->
-      <div
-        style="
-          display: flex;
-          justify-content: center;
-          margin: 15px 0;
-          gap: 15px;
-        "
-      >
+      <div class="finish-action">
         <button
           class="btn btn-lg"
           onclick="finishMatch()"
@@ -543,26 +507,9 @@
       </div>
 
       <!-- BOTTOM SECTION - Full Width -->
-      <div class="admin-grid">
-        <!-- Upload File -->
-        <div class="section">
-          <h2>📁 Upload CSV</h2>
-          <div class="upload-area">
-            <input
-              type="file"
-              id="fileUpload"
-              accept=".csv"
-              onchange="handleFileUpload(event)"
-            />
-            <label for="fileUpload" class="upload-label">
-              <span>Chọn File CSV</span>
-            </label>
-            <div id="uploadStatus"></div>
-          </div>
-        </div>
-
+      <div class="bottom-controls">
         <!-- Font Scale -->
-        <div class="section">
+        <div class="section font-scale-section">
           <h2>📏 Cỡ Chữ Display</h2>
           <label>
             Tỷ lệ:
@@ -582,10 +529,9 @@
             🔄 Reset
           </button>
         </div>
-      </div>
 
-      <!-- Timer Controls - Full Width -->
-      <div class="section full-width">
+        <!-- Timer Controls - Full Width -->
+      <div class="section timer-section">
         <h2>⏱️ Điều Khiển Thời Gian</h2>
         <div class="time-display" id="timeDisplay">5:00</div>
         <div class="time-controls">
@@ -609,6 +555,7 @@
           <button class="btn" onclick="setTime(300)">5:00</button>
         </div>
       </div>
+      </div>
     </div>
 
     <script src="js/admin.js"></script>
@@ -621,27 +568,7 @@
       });
     </script>
 
-    <!-- Author Footer -->
-    <div
-      style="
-        text-align: center;
-        margin-top: 30px;
-        padding-top: 20px;
-        border-top: 2px solid #e0e0e0;
-        color: #666;
-        font-size: 0.9em;
-      "
-    >
-      <p style="margin: 5px 0">
-        <strong>Tác giả:</strong> Trương Lưu Quân -
-        <a href="tel:0336440523" style="color: #667eea; text-decoration: none"
-          >0336.440.523</a
-        >
-      </p>
-      <p style="margin: 5px 0; color: #999; font-size: 0.85em">
-        Phát hành ngày 01/01/2026
-      </p>
-    </div>
+
 
     <!-- Help Button -->
     <button class="help-btn" onclick="openHelp()" title="Hướng dẫn sử dụng">❓</button>

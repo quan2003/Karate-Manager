@@ -522,3 +522,227 @@ body {
     justify-content: center;
   }
 }
+/* Single-screen symmetric admin layout */
+body {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.main-container {
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+}
+
+.control-panel,
+.preview-panel {
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-panel .section,
+.preview-panel .section,
+.preview-panel .mini-display {
+  margin-bottom: 0;
+}
+
+.control-panel .section,
+.preview-panel .section {
+  padding: 10px 12px;
+}
+
+/* Hai nửa AKA/AO luôn có bốn cột bằng nhau và soi gương qua trục giữa. */
+.score-action-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.score-action-grid .btn {
+  min-width: 0;
+  width: 100%;
+  padding: 10px 5px;
+  white-space: nowrap;
+}
+
+.score-buttons {
+  padding: 10px 12px;
+}
+
+.score-buttons > .btn-row[style] {
+  margin-top: 10px !important;
+  margin-bottom: 0;
+}
+
+#finishMatchBtn {
+  padding: 10px 28px !important;
+  font-size: 16px !important;
+}
+
+.timer-row {
+  flex-wrap: nowrap;
+}
+
+.timer-controls .timer-row + .timer-row {
+  margin-top: 7px !important;
+}
+
+.penalty-row {
+  flex-wrap: nowrap;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.penalty-row:last-child {
+  margin-bottom: 0;
+}
+
+.btn-reset,
+.btn-open-display {
+  padding: 11px;
+}
+
+/* Cột preview phân phối phần chiều cao còn lại cho log trận đấu. */
+.mini-display {
+  flex: 0 0 auto;
+}
+
+.mini-header {
+  padding: 8px;
+}
+
+.mini-competitor {
+  padding: 8px 14px;
+}
+
+.mini-timer {
+  padding: 9px;
+}
+
+.custom-names,
+.additional-settings {
+  flex: 0 0 auto;
+}
+
+.names-row {
+  flex-wrap: nowrap;
+  margin-bottom: 7px;
+}
+
+.names-row:last-child,
+.additional-settings .setting-row:last-child {
+  margin-bottom: 0;
+}
+
+.names-row input {
+  min-width: 0;
+  flex: 1;
+  padding: 7px 5px;
+}
+
+.additional-settings .setting-row {
+  margin-bottom: 7px;
+  flex-wrap: nowrap;
+}
+
+.additional-settings .btn {
+  padding: 8px 14px;
+}
+
+.match-log-section {
+  flex: 1 1 100px;
+  min-height: 90px;
+  display: flex;
+  flex-direction: column;
+}
+
+#matchEventLog {
+  flex: 1 1 auto;
+  min-height: 45px;
+  height: auto !important;
+}
+
+.help-btn {
+  right: 14px !important;
+  bottom: 14px !important;
+  width: 44px !important;
+  height: 44px !important;
+  font-size: 21px !important;
+}
+
+@media (max-width: 1200px) {
+  body {
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+  }
+
+  .main-container {
+    height: auto;
+  }
+
+  .control-panel,
+  .preview-panel {
+    overflow: visible;
+  }
+
+  .match-log-section {
+    min-height: 220px;
+  }
+}
+
+@media (max-width: 768px) {
+  .score-action-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .score-action-grid .btn {
+    white-space: normal;
+  }
+
+  .timer-row,
+  .penalty-row,
+  .names-row,
+  .additional-settings .setting-row {
+    flex-wrap: wrap;
+  }
+}
+/* AKA/AO display position switch */
+.btn-swap-positions {
+  border-color: #d97706;
+  color: #9a4f00;
+}
+
+.btn-swap-positions.active {
+  background: #f59e0b;
+  border-color: #d97706;
+  color: #1f1600;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.28);
+}
+
+.mini-display.positions-swapped {
+  display: flex;
+  flex-direction: column;
+}
+
+.mini-display.positions-swapped .mini-header {
+  order: 0;
+}
+
+.mini-display.positions-swapped .mini-ao {
+  order: 1;
+}
+
+.mini-display.positions-swapped .mini-aka {
+  order: 2;
+}
+
+.mini-display.positions-swapped .mini-timer {
+  order: 3;
+}

@@ -153,6 +153,18 @@
   color: #7c3aed;
 }
 
+.tournament-action-btn.action-referee {
+  border-color: rgba(15, 118, 110, 0.24);
+}
+.tournament-action-btn.action-referee:hover {
+  background: rgba(15, 118, 110, 0.05);
+  border-color: #0f766e;
+}
+.tournament-action-btn.action-referee .action-icon {
+  background: rgba(15, 118, 110, 0.1);
+  color: #0f766e;
+}
+
 .tournament-action-btn.action-add {
   border-color: rgba(37, 99, 235, 0.2);
 }

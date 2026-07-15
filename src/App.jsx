@@ -14,6 +14,7 @@ import StatisticsPage from "./pages/StatisticsPage";
 import SchedulePage from "./pages/SchedulePage";
 import AthletesPage from "./pages/AthletesPage";
 import CertificatePage from "./pages/CertificatePage";
+import RefereesPage from "./pages/RefereesPage";
 import SmartFileRouter from "./components/SmartFileRouter/SmartFileRouter";
 import OnboardingChecklist, { NavHintBanner } from "./components/OnboardingChecklist/OnboardingChecklist";
 import WelcomePopup from "./components/OnboardingChecklist/WelcomePopup";
@@ -157,6 +158,14 @@ function App() {
                     element={
                       <LicenseGuard>
                         <CertificatePage />
+                      </LicenseGuard>
+                    }
+                  />
+                  <Route
+                    path="/referees/:id"
+                    element={
+                      <LicenseGuard>
+                        <RefereesPage />
                       </LicenseGuard>
                     }
                   />

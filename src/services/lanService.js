@@ -9,7 +9,7 @@
  * @param {Object} matchData - Dữ liệu trận đấu { matchId, winnerId, score1, score2, categoryName, etc. }
  * @returns {Promise<Object>} - { success: boolean, message: string }
  */
-export async function sendMatchResult(adminIp, port = 3000, matchData) {
+async function postLanPayload(adminIp, port, endpoint, payload) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
@@ -23,12 +23,12 @@ export async function sendMatchResult(adminIp, port = 3000, matchData) {
       finalPort = parts[1];
     }
 
-    const response = await fetch(`http://${finalIp}:${finalPort}/api/match-result`, {
+    const response = await fetch(`http://${finalIp}:${finalPort}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(matchData),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
 
@@ -48,6 +48,19 @@ export async function sendMatchResult(adminIp, port = 3000, matchData) {
   }
 }
 
+export async function sendMatchResult(adminIp, port = 3000, matchData) {
+  return postLanPayload(adminIp, port, "/api/match-result", matchData);
+}
+
+/**
+ * Gửi trọn bộ huy chương của một nội dung về máy Admin.
+ */
+export async function sendCategoryMedals(adminIp, port = 3000, medalData) {
+  return postLanPayload(adminIp, port, "/api/category-medals", {
+    ...medalData,
+    syncType: "category-medals",
+  });
+}
 /**
  * Kiểm tra xem máy Admin có đang online không
  * @param {string} adminIp 
@@ -76,7 +89,7 @@ export async function checkAdminAvailability(adminIp, port = 3000) {
 
     clearTimeout(timeoutId);
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 }

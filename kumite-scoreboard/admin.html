@@ -42,72 +42,6 @@
     <div class="main-container">
       <!-- Left Panel - Controls -->
       <div class="control-panel">
-        <!-- Mode Selection -->
-        <div
-          class="section"
-          style="background: #1a5f7a; padding: 15px; border-radius: 10px"
-        >
-          <h3 style="color: white; margin: 0 0 10px 0; text-align: center">
-            ⚙️ Chế Độ Thi Đấu
-          </h3>
-          <div class="btn-row" style="gap: 10px">
-            <button
-              class="btn btn-primary active"
-              id="individualModeBtn"
-              onclick="setMode('individual')"
-              style="flex: 1"
-            >
-              👤 Cá Nhân
-            </button>
-            <button
-              class="btn btn-primary"
-              id="teamModeBtn"
-              onclick="setMode('team')"
-              style="flex: 1"
-            >
-              👥 Đồng Đội
-            </button>
-          </div>
-        </div>
-
-        <!-- Upload Athletes Section -->
-        <div
-          class="section"
-          style="
-            background: rgba(76, 175, 80, 0.1);
-            border: 2px solid #4caf50;
-            padding: 15px;
-            border-radius: 10px;
-          "
-        >
-          <h3 style="color: #4caf50; margin: 0 0 10px 0">
-            📂 Upload Danh Sách VĐV
-          </h3>
-          <input
-            type="file"
-            id="athleteFile"
-            accept=".csv,.txt"
-            onchange="handleFileUpload(event)"
-            style="
-              width: 100%;
-              padding: 8px;
-              border: 2px dashed #4caf50;
-              border-radius: 5px;
-              background: rgba(76, 175, 80, 0.05);
-              margin-bottom: 10px;
-            "
-          />
-          <div
-            id="uploadStatus"
-            style="font-size: 0.9em; color: #ffd700; margin-bottom: 5px"
-          >
-            ℹ️ Format: VĐV, Đơn vị, Loại, Hạng mục
-          </div>
-          <div id="filterStatus" style="font-size: 0.85em; color: #38ef7d">
-            <!-- Filter status will show here -->
-          </div>
-        </div>
-
         <!-- Team Round Info (Only for Team Mode) -->
         <div
           class="section"
@@ -219,7 +153,7 @@
 
         <!-- AKA Score Buttons -->
         <div class="section score-buttons aka-buttons">
-          <div class="btn-row">
+          <div class="btn-row score-action-grid">
             <button class="btn btn-aka" onclick="addPoint('aka', 'senshu')">
               Senshu
             </button>
@@ -245,7 +179,7 @@
               Senshu
             </button>
           </div>
-          <div class="btn-row">
+          <div class="btn-row score-action-grid">
             <button class="btn btn-aka-outline" onclick="redWins()">
               Red Wins
             </button>
@@ -416,188 +350,7 @@
         <div class="section">
           <button class="btn btn-reset" onclick="resetAll()">Reset All</button>
         </div>
-        <!-- Settings Section -->
-        <div class="section settings-section">
-          <!-- Tournament Title -->
-          <div class="setting-row">
-            <label>Tên Giải:</label>
-            <input
-              type="text"
-              id="tournamentTitle"
-              value="GIẢI KARATE-DO SINH VIÊN TRƯỜNG ĐẠI HỌC CNTT VÀ TT VIỆT-HÀN MỞ RỘNG LẦN THỨ I - 2025"
-              oninput="updateTournamentTitle()"
-              placeholder="Tên giải đấu..."
-              style="flex: 1"
-            />
-          </div>
-          <!-- Event Title -->
-          <div class="setting-row">
-            <label>Thảm:</label>
-            <input
-              type="text"
-              id="eventTitle"
-              value="Thảm 1"
-              oninput="updateEventTitle()"
-              placeholder="VD: Thảm 1, Thảm 2..."
-              style="flex: 1"
-            />
-          </div>
-          <!-- Sponsor Text -->
-          <div class="setting-row">
-            <label>Nhà Tài Trợ:</label>
-            <input
-              type="text"
-              id="sponsorText"
-              value="NHÀ TÀI TRỢ"
-              oninput="updateSponsorText()"
-              placeholder="Nhập tên nhà tài trợ hoặc để trống..."
-              style="flex: 1"
-            />
-          </div>
-          <!-- Athlete Selection Dropdowns -->
-          <div class="setting-row">
-            <label>VĐV (AKA):</label>
-            <div style="flex: 1; position: relative">
-              <input
-                type="text"
-                id="redAthleteSearch"
-                placeholder="🔍 Tìm VĐV (Enter để chọn)..."
-                oninput="filterAthletes('aka')"
-                onkeydown="handleAthleteSearchKeyPress(event, 'aka')"
-                style="
-                  width: 100%;
-                  padding: 8px;
-                  padding-right: 30px;
-                  border: 2px solid #ddd;
-                  border-radius: 5px;
-                "
-              />
-              <button
-                onclick="clearAthleteSearch('aka')"
-                style="
-                  position: absolute;
-                  right: 5px;
-                  top: 50%;
-                  transform: translateY(-50%);
-                  background: none;
-                  border: none;
-                  cursor: pointer;
-                  font-size: 14px;
-                  color: #999;
-                "
-                title="Xóa tìm kiếm (ESC)"
-              >
-                ✖
-              </button>
-            </div>
-          </div>
-          <div class="setting-row">
-            <label></label>
-            <select
-              id="redAthleteSelect"
-              onchange="selectAthlete('aka')"
-              style="flex: 1"
-            >
-              <option value="">-- Chọn VĐV --</option>
-            </select>
-          </div>
-          <div class="setting-row">
-            <label>Tên VĐV (AKA):</label>
-            <input
-              type="text"
-              id="redName"
-              value="AKA"
-              oninput="updateNames()"
-            />
-          </div>
-          <div class="setting-row">
-            <label>VĐV (AO):</label>
-            <div style="flex: 1; position: relative">
-              <input
-                type="text"
-                id="blueAthleteSearch"
-                placeholder="🔍 Tìm VĐV (Enter để chọn)..."
-                oninput="filterAthletes('ao')"
-                onkeydown="handleAthleteSearchKeyPress(event, 'ao')"
-                style="
-                  width: 100%;
-                  padding: 8px;
-                  padding-right: 30px;
-                  border: 2px solid #ddd;
-                  border-radius: 5px;
-                "
-              />
-              <button
-                onclick="clearAthleteSearch('ao')"
-                style="
-                  position: absolute;
-                  right: 5px;
-                  top: 50%;
-                  transform: translateY(-50%);
-                  background: none;
-                  border: none;
-                  cursor: pointer;
-                  font-size: 14px;
-                  color: #999;
-                "
-                title="Xóa tìm kiếm (ESC)"
-              >
-                ✖
-              </button>
-            </div>
-          </div>
-          <div class="setting-row">
-            <label></label>
-            <select
-              id="blueAthleteSelect"
-              onchange="selectAthlete('ao')"
-              style="flex: 1"
-            >
-              <option value="">-- Chọn VĐV --</option>
-            </select>
-          </div>
-          <div class="setting-row">
-            <label>Tên VĐV (AO):</label>
-            <input
-              type="text"
-              id="blueName"
-              value="AO"
-              oninput="updateNames()"
-            />
-          </div>
 
-          <div class="setting-row">
-            <label>Nội dung thi đấu:</label>
-            <input
-              type="text"
-              id="category"
-              value="PENALTY"
-              oninput="updateCategory()"
-            />
-          </div>
-
-          <!-- Match Round Selection -->
-          <div class="setting-row">
-            <label>Vòng thi đấu:</label>
-            <select
-              id="matchRound"
-              style="
-                flex: 1;
-                padding: 10px;
-                border: 2px solid #ddd;
-                border-radius: 8px;
-                font-size: 14px;
-              "
-            >
-              <option value="">-- Chọn vòng --</option>
-              <option value="Chung Kết">🏆 Chung Kết (HCV/HCB)</option>
-              <option value="Bán Kết 1">🥉 Bán Kết 1 (HCĐ #1)</option>
-              <option value="Bán Kết 2">🥉 Bán Kết 2 (HCĐ #2)</option>
-              <option value="Tứ Kết">📍 Tứ Kết</option>
-              <option value="Vòng Loại">📝 Vòng Loại</option>
-            </select>
-          </div>
-        </div>
       </div>
 
       <!-- Right Panel - Preview -->
@@ -713,6 +466,13 @@
         <!-- Additional Settings -->
         <div class="section additional-settings">
           <div class="setting-row">
+            <label for="displayLayout">Kiểu bảng điểm:</label>
+            <select id="displayLayout" onchange="updateDisplayLayout()">
+              <option value="horizontal">Ngang (AKA/AO trên - dưới)</option>
+              <option value="vertical">Dọc (AKA/AO chia 2 cột)</option>
+            </select>
+          </div>
+          <div class="setting-row">
             <label>Font Scale: <span id="fontScaleLabel">100%</span></label>
             <input
               type="range"
@@ -726,6 +486,15 @@
             />
           </div>
           <div class="setting-row">
+            <button
+              class="btn btn-swap-positions"
+              id="swapPositionsBtn"
+              type="button"
+              aria-pressed="false"
+              onclick="swapPositions()"
+            >
+              🔄 Đổi AKA ⇄ AO
+            </button>
             <button class="btn" onclick="resetAllSettings()">
               Reset All Settings
             </button>
@@ -744,7 +513,7 @@
         </div>
 
         <!-- Match Event Log Panel -->
-        <div class="section" style="padding: 0; overflow: hidden; border-radius: 10px; border: 2px solid #2a2a4a;">
+        <div class="section match-log-section" style="padding: 0; overflow: hidden; border-radius: 10px; border: 2px solid #2a2a4a;">
           <div style="background: #1a1a3e; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;">
             <span style="color: #a78bfa; font-weight: bold; font-size: 0.95em;">📋 Log Trận Đấu</span>
             <div style="display: flex; gap: 6px;">
@@ -790,27 +559,7 @@
       });
     </script>
 
-    <!-- Author Footer -->
-    <div
-      style="
-        text-align: center;
-        margin-top: 30px;
-        padding-top: 20px;
-        border-top: 2px solid #e0e0e0;
-        color: #666;
-        font-size: 0.9em;
-      "
-    >
-      <p style="margin: 5px 0">
-        <strong>Tác giả:</strong> Trương Lưu Quân -
-        <a href="tel:0336440523" style="color: #667eea; text-decoration: none"
-          >0336.440.523</a
-        >
-      </p>
-      <p style="margin: 5px 0; color: #999; font-size: 0.85em">
-        Phát hành ngày 01/01/2026
-      </p>
-    </div>
+
 
     <!-- Help Button -->
     <button class="help-btn" onclick="openHelp()" title="Hướng dẫn sử dụng">❓</button>

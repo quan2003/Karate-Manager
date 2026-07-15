@@ -81,12 +81,8 @@ function saveState() {
 
 // Update UI from state
 function updateUI() {
-  // Update content type buttons
-  document.querySelectorAll(".btn-primary").forEach((btn) => {
-    btn.classList.remove("active");
-  });
-  const activeBtn = state.contentType === "individual" ? 0 : 1;
-  document.querySelectorAll(".btn-primary")[activeBtn].classList.add("active"); // Update event info inputs
+  // Chế độ cá nhân/đồng đội được nhận tự động từ dữ liệu trận đấu.
+  // Update event info inputs
   document.getElementById("tournamentTitle").value =
     state.tournamentTitle ||
     "GIẢI KARATE-DO SINH VIÊN TRƯỜNG ĐẠI HỌC CNTT VÀ TT VIỆT-HÀN MỞ RỘNG LẦN THỨ I - 2025";

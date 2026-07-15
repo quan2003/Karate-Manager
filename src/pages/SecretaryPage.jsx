@@ -15,7 +15,8 @@ import {
   updateMatchResult as updateBracketWithResult,
   disqualifyAthlete,
 } from "../utils/drawEngine";
-import { sendMatchResult, getMyIp, checkAdminAvailability } from "../services/lanService";
+import { sendMatchResult, sendCategoryMedals, checkAdminAvailability } from "../services/lanService";
+import { publishLiveStatus } from "../services/liveEventService";
 import Modal from "../components/common/Modal";
 import Bracket from "../components/Bracket/Bracket";
 import appIcon from "../assets/icon.png";
@@ -35,7 +36,6 @@ function SecretaryPage() {
     loadMatchData,
     updateMatchResult,
     removeMatchResult,
-    getMatchResult,
     getMatchExportData,
     resetRole,
   } = useRole();
@@ -46,6 +46,8 @@ function SecretaryPage() {
   const [finishedMatch, setFinishedMatch] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [adminIp, setAdminIp] = useState(localStorage.getItem("adminIp") || "");
+  const [autoMedalStatus, setAutoMedalStatus] = useState({ synced: 0, complete: 0 });
+  const medalSyncQueueRef = useRef(Promise.resolve());
   const { activeHint, clearHint } = useOnboarding();
 
   // Sidebar search/filter
@@ -151,6 +153,66 @@ function SecretaryPage() {
     }
     setLoading(false);
   };
+  const publishCategoryLive = (category, extra = {}) => {
+    if (!category || !matchData?.tournamentId) return;
+    publishLiveStatus(matchData, category, extra).then((result) => {
+      if (!result.success) console.warn("Không thể đồng bộ trạng thái TV:", result.message);
+    });
+  };
+  const handleSelectCategory = (category) => {
+    setSelectedCategory(category);
+    publishCategoryLive(category);
+  };
+
+  // Khi đủ HCV, HCB và hai HCĐ, tự động gửi đúng một phiên bản kết quả
+  // qua LAN. Nếu Thư ký sửa kết quả, fingerprint đổi và bản mới sẽ được gửi lại.
+  useEffect(() => {
+    if (!matchData?.tournamentId) return;
+
+    const medals = getMatchExportData()?.categoryMedals || [];
+    const completeMedals = medals.filter(
+      (item) => item.gold && item.silver && item.bronze1 && item.bronze2
+    );
+    const storagePrefix = `lan_medals_${matchData.exportId || matchData.tournamentId}_`;
+    const alreadySynced = completeMedals.filter((item) => {
+      const fingerprint = JSON.stringify({
+        gold: item.gold,
+        silver: item.silver,
+        bronze1: item.bronze1,
+        bronze2: item.bronze2,
+      });
+      return localStorage.getItem(`${storagePrefix}${item.categoryId}`) === fingerprint;
+    }).length;
+    medalSyncQueueRef.current = medalSyncQueueRef.current.then(async () => {
+      let synced = alreadySynced;
+      if (adminIp) {
+        for (const item of completeMedals) {
+          const medalsPayload = {
+            gold: item.gold,
+            silver: item.silver,
+            bronze1: item.bronze1,
+            bronze2: item.bronze2,
+          };
+          const fingerprint = JSON.stringify(medalsPayload);
+          const storageKey = `${storagePrefix}${item.categoryId}`;
+          if (localStorage.getItem(storageKey) === fingerprint) continue;
+
+          const result = await sendCategoryMedals(adminIp, 3000, {
+            tournamentId: matchData.tournamentId,
+            categoryId: item.categoryId,
+            categoryName: item.categoryName,
+            medals: medalsPayload,
+            syncedAt: new Date().toISOString(),
+          });
+          if (result.success) {
+            localStorage.setItem(storageKey, fingerprint);
+            synced += 1;
+          }
+        }
+      }
+      setAutoMedalStatus({ synced, complete: completeMedals.length });
+    });
+  }, [adminIp, getMatchExportData, matchData, matchResults]);
   // Prepare bracket with live scores
   const bracketWithScores = useMemo(() => {
     if (!selectedCategory?.bracket) return null;
@@ -318,6 +380,10 @@ function SecretaryPage() {
         matchData.schedule?.[selectedCategory.id] || null,
         matchData.sponsorLogos || null
       );
+      publishCategoryLive(selectedCategory, {
+        matchCode: match.matchCode || null,
+        roundName,
+      });
       setNotification("📺 Đã mở bảng điểm. Vui lòng thao tác trên cửa sổ mới.");
       setTimeout(() => setNotification(""), 5000);
     } catch (err) {
@@ -588,6 +654,13 @@ function SecretaryPage() {
                 <span style={{ fontSize: '11px', color: '#94a3b8' }}>
                   (Cài đặt một lần, dùng mãi mãi)
                 </span>
+                <span
+                  title="Tự động đồng bộ khi đủ HCV, HCB và hai HCĐ"
+                  style={{ fontSize: '11px', fontWeight: 700, color: autoMedalStatus.complete > 0 && autoMedalStatus.synced === autoMedalStatus.complete ? '#15803d' : '#64748b' }}
+                >
+                  🏅 Tự động: {autoMedalStatus.synced}/{autoMedalStatus.complete}
+                </span>
+
               </div>
               <div className="tournament-info">
                 <strong>{matchData.tournamentName}</strong>
@@ -664,7 +737,7 @@ function SecretaryPage() {
                         className={`category-btn ${
                           selectedCategory?.id === cat.id ? "active" : ""
                         }`}
-                        onClick={() => setSelectedCategory(cat)}
+                        onClick={() => handleSelectCategory(cat)}
                       >
                         <span className="category-btn-name">{cat.name}</span>
                         <span className="match-count">

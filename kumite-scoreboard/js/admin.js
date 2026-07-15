@@ -4,6 +4,8 @@ const STORAGE_KEY = "kumite_scoreboard";
 // State management
 let state = {
   mode: "individual", // 'individual' or 'team'
+  displayLayout: "horizontal", // 'horizontal' or 'vertical'
+  swapPositions: false,
   category: "PENALTY",
   akaName: "AKA",
   aoName: "AO",
@@ -371,27 +373,31 @@ function saveState() {
 
 // Update UI from state
 function updateUI() {
-  // Update mode buttons
-  if (document.getElementById("individualModeBtn")) {
-    document
-      .getElementById("individualModeBtn")
-      .classList.toggle("active", state.mode === "individual");
-    document
-      .getElementById("teamModeBtn")
-      .classList.toggle("active", state.mode === "team");
-    document.getElementById("teamRoundSection").style.display =
-      state.mode === "team" ? "block" : "none";
+  // Chế độ được nhận tự động từ dữ liệu trận đấu.
+  const individualModeBtn = document.getElementById("individualModeBtn");
+  const teamModeBtn = document.getElementById("teamModeBtn");
+  const teamRoundSection = document.getElementById("teamRoundSection");
 
-    // Update team mode display if in team mode
-    if (state.mode === "team") {
-      updateTeamModeDisplay();
-    }
+  if (individualModeBtn) {
+    individualModeBtn.classList.toggle("active", state.mode === "individual");
+  }
+  if (teamModeBtn) {
+    teamModeBtn.classList.toggle("active", state.mode === "team");
+  }
+  if (teamRoundSection) {
+    teamRoundSection.style.display = state.mode === "team" ? "block" : "none";
+  }
+  if (state.mode === "team") {
+    updateTeamModeDisplay();
   }
 
-  // Update names
-  document.getElementById("redName").value = state.akaName;
-  document.getElementById("blueName").value = state.aoName;
-  document.getElementById("category").value = state.category;
+  // Các trường thông tin trận có thể không xuất hiện trên giao diện rút gọn.
+  const redNameInput = document.getElementById("redName");
+  const blueNameInput = document.getElementById("blueName");
+  const categoryInput = document.getElementById("category");
+  if (redNameInput) redNameInput.value = state.akaName;
+  if (blueNameInput) blueNameInput.value = state.aoName;
+  if (categoryInput) categoryInput.value = state.category;
 
   // Update penalties
   ["C1", "C2", "C3", "HC", "H"].forEach((penalty) => {
@@ -422,6 +428,19 @@ function updateUI() {
     document.getElementById("fontScale").value = state.fontScale || 100;
     document.getElementById("fontScaleLabel").textContent =
       (state.fontScale || 100) + "%";
+  }
+  if (document.getElementById("displayLayout")) {
+    document.getElementById("displayLayout").value =
+      state.displayLayout === "vertical" ? "vertical" : "horizontal";
+  }
+  const swapPositionsBtn = document.getElementById("swapPositionsBtn");
+  if (swapPositionsBtn) {
+    const isSwapped = state.swapPositions === true;
+    swapPositionsBtn.classList.toggle("active", isSwapped);
+    swapPositionsBtn.setAttribute("aria-pressed", String(isSwapped));
+    swapPositionsBtn.title = isSwapped
+      ? "Đưa AKA về vị trí ban đầu"
+      : "Đổi vị trí hiển thị AKA và AO";
   }
   // Update timer speed label
   if (document.getElementById("timerSpeedLabel")) {
@@ -454,6 +473,10 @@ function updateUI() {
 
 // Update preview display
 function updatePreview() {
+  const miniDisplay = document.querySelector(".mini-display");
+  if (miniDisplay) {
+    miniDisplay.classList.toggle("positions-swapped", state.swapPositions === true);
+  }
   document.getElementById("previewCategory").textContent = state.category;
   document.getElementById("previewAkaName").textContent = state.akaName;
   document.getElementById("previewAoName").textContent = state.aoName;
@@ -805,6 +828,9 @@ function resetAll() {
 
 function resetAllSettings() {
   state = {
+    mode: "individual",
+    displayLayout: "horizontal",
+    swapPositions: false,
     category: "PENALTY",
     akaName: "AKA",
     aoName: "AO",
@@ -858,6 +884,21 @@ function updateFontScale() {
   saveState();
 }
 
+// Scoreboard audience layout
+function updateDisplayLayout() {
+  const layoutSelect = document.getElementById("displayLayout");
+  state.displayLayout = layoutSelect?.value === "vertical"
+    ? "vertical"
+    : "horizontal";
+  saveState();
+}
+
+// Swap AKA/AO display positions without changing bracket identities.
+function swapPositions() {
+  state.swapPositions = state.swapPositions !== true;
+  saveState();
+  updateUI();
+}
 // Open display window
 function openDisplay() {
   displayWindow = window.open(
@@ -905,6 +946,8 @@ function parseCSV(text) {
 function populateAthleteDropdowns() {
   const redSelect = document.getElementById("redAthleteSelect");
   const blueSelect = document.getElementById("blueAthleteSelect");
+
+  if (!redSelect || !blueSelect) return;
 
   // Clear existing options except first
   redSelect.innerHTML = '<option value="">-- Chọn VĐV --</option>';
@@ -1122,17 +1165,20 @@ function updateMatchRound() {
 function setMode(mode) {
   state.mode = mode;
 
-  // Update UI buttons
-  document
-    .getElementById("individualModeBtn")
-    .classList.toggle("active", mode === "individual");
-  document
-    .getElementById("teamModeBtn")
-    .classList.toggle("active", mode === "team");
-
+  // Nút chọn chế độ không còn xuất hiện trên giao diện rút gọn.
+  const individualModeBtn = document.getElementById("individualModeBtn");
+  const teamModeBtn = document.getElementById("teamModeBtn");
+  if (individualModeBtn) {
+    individualModeBtn.classList.toggle("active", mode === "individual");
+  }
+  if (teamModeBtn) {
+    teamModeBtn.classList.toggle("active", mode === "team");
+  }
   // Show/hide team round section
-  document.getElementById("teamRoundSection").style.display =
-    mode === "team" ? "block" : "none";
+  const teamRoundSection = document.getElementById("teamRoundSection");
+  if (teamRoundSection) {
+    teamRoundSection.style.display = mode === "team" ? "block" : "none";
+  }
 
   // Reset if switching modes
   if (mode === "team") {
@@ -1418,6 +1464,7 @@ function loadPendingMatch() {
   const currentEventTitle = pendingMatchData.matNumber ? `Thảm ${pendingMatchData.matNumber}` : state.eventTitle;
   const currentSponsorText = state.sponsorText;
   const currentFontScale = state.fontScale;
+  const currentDisplayLayout = state.displayLayout;
 
   // KILL TIMER COMPLETELY
   if (timerInterval) {
@@ -1429,6 +1476,7 @@ function loadPendingMatch() {
   // This is the "nuclear" reset to ensure no data from previous match leaks
   state = {
     mode: isTeam ? "team" : "individual",
+    displayLayout: currentDisplayLayout === "vertical" ? "vertical" : "horizontal",
     category: pendingMatchData.categoryName || "PENALTY",
     akaName: akaName,
     aoName: aoName,

@@ -26,6 +26,7 @@ import { useToast } from "../components/common/Toast";
 import { useOnboarding } from "../context/OnboardingContext";
 import { publishTournament, unpublishTournament, fetchTournamentById } from "../services/supabaseService";
 import { downloadAthleteImportTemplate } from "../services/athleteTemplateService";
+import { fetchLiveStatuses, getLiveTvUrl } from "../services/liveEventService";
 import appIcon from "../assets/icon.png";
 import "./TournamentPage.css";
 
@@ -111,6 +112,7 @@ export default function TournamentPage() {
   const [bulkDrawing, setBulkDrawing] = useState(false);
   const fileInputRef = useRef(null);
   const [lanStatus, setLanStatus] = useState({ running: false, ip: '', port: 3000 });
+  const [liveServerStatus, setLiveServerStatus] = useState({ state: "checking", mats: [], message: "" });
   const [publishing, setPublishing] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [showSplitModal, setShowSplitModal] = useState(false);
@@ -207,6 +209,36 @@ export default function TournamentPage() {
   }, [showLinkModal, id]);
 
   const tournament = currentTournament || tournaments.find((t) => t.id === id);
+  useEffect(() => {
+    let active = true;
+
+    const refreshLiveStatus = async () => {
+      const result = await fetchLiveStatuses(id);
+      if (!active) return;
+      if (result.success) {
+        setLiveServerStatus({
+          state: "online",
+          mats: result.data,
+          message: result.data.length > 0 ? "Đang nhận dữ liệu từ Thư ký" : "Đã kết nối, đang chờ Thư ký",
+        });
+      } else {
+        setLiveServerStatus({ state: "error", mats: [], message: result.message || "Không thể kết nối máy chủ" });
+      }
+    };
+
+    refreshLiveStatus();
+    const intervalId = window.setInterval(refreshLiveStatus, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [id]);
+
+  const tvMatIds = Array.from(new Set([
+    ...Object.values(tournament?.schedule || {}).map((item) => String(item.mat || 1)),
+    ...liveServerStatus.mats.map((item) => String(item.mat_id || 1)),
+  ])).sort((a, b) => Number(a) - Number(b));
+  if (tvMatIds.length === 0) tvMatIds.push("1");
 
   const getCategoryMedalMeta = (cat) => {
     const nameLower = cat.name?.toLowerCase() || '';
@@ -377,13 +409,18 @@ export default function TournamentPage() {
     return count;
   };
 
-  const getEstimatedMedals = () => {
+  const isMedalEligibleCategory = (cat) =>
+    isTeamCategoryMeta(cat)
+      ? getTeamCountFromAthletes(cat.athletes || [], cat, tournament) >= 3
+      : (cat.athletes?.length || 0) >= 3;
+
+  const getEstimatedMedals = (categories = tournament.categories) => {
     let gold = 0, silver = 0, bronze = 0;
     const teamKataSize = tournament.teamMedalsSettings?.kata || 3;
     const teamKumiteSize = tournament.teamMedalsSettings?.kumite || 3;
     const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
 
-    tournament.categories.forEach((cat) => {
+    categories.forEach((cat) => {
       const { isTeamCategory, type } = getCategoryMedalMeta(cat);
       
       // Calculate how many sets of medals are awarded (accounts for Sigma splits)
@@ -414,6 +451,12 @@ export default function TournamentPage() {
     });
     return { gold, silver, bronze, total: gold + silver + bronze };
   };
+
+  const estimatedMedals = getEstimatedMedals();
+  const eligibleMedalCategories = tournament.categories.filter(
+    isMedalEligibleCategory
+  );
+  const actualMedals = getEstimatedMedals(eligibleMedalCategories);
 
   const teamCategoryAvailability = (tournament.categories || []).reduce(
     (availability, cat) => {
@@ -851,14 +894,10 @@ export default function TournamentPage() {
   // === Bulk Draw ===
   const isTeamCategoryForDraw = (cat) => isTeamCategoryMeta(cat);
 
-  const getTeamCountForDraw = (cat) =>
-    getTeamCountFromAthletes(cat.athletes || [], cat, tournament);
 
   const canBulkDrawCategory = (cat) => {
     if (cat.bracket) return false;
-    return isTeamCategoryForDraw(cat)
-      ? getTeamCountForDraw(cat) >= 3
-      : (cat.athletes?.length || 0) >= 3;
+    return isMedalEligibleCategory(cat);
   };
 
   const handleOpenBulkDraw = () => {
@@ -1108,6 +1147,15 @@ export default function TournamentPage() {
           </Link>
 
           <Link
+            to={`/referees/${tournament.id}`}
+            className="tournament-action-btn action-referee"
+            title="Quản lý, phân công và xuất PDF trọng tài"
+          >
+            <span className="action-icon">⚖️</span>
+            <span className="action-label">Quản lý<br/>trọng tài</span>
+          </Link>
+
+          <Link
             to={`/athletes/${tournament.id}`}
             className={`tournament-action-btn action-schedule ${activeHint === "import_athletes" ? "hint-pulse" : ""}`}
             title="Quản lý toàn bộ VĐV"
@@ -1272,25 +1320,59 @@ export default function TournamentPage() {
             <div className="medal-items">
               <div className="medal-item gold">
                 <span className="medal-icon">🥇</span>
-                <span className="medal-count">{getEstimatedMedals().gold}</span>
+                <span className="medal-count">{estimatedMedals.gold}</span>
                 <span className="medal-label">Vàng</span>
               </div>
               <div className="medal-item silver">
                 <span className="medal-icon">🥈</span>
-                <span className="medal-count">{getEstimatedMedals().silver}</span>
+                <span className="medal-count">{estimatedMedals.silver}</span>
                 <span className="medal-label">Bạc</span>
               </div>
               <div className="medal-item bronze">
                 <span className="medal-icon">🥉</span>
-                <span className="medal-count">{getEstimatedMedals().bronze}</span>
+                <span className="medal-count">{estimatedMedals.bronze}</span>
                 <span className="medal-label">Đồng</span>
               </div>
               <div className="medal-item total">
                 <span className="medal-icon">🏆</span>
-                <span className="medal-count">{getEstimatedMedals().total}</span>
+                <span className="medal-count">{estimatedMedals.total}</span>
                 <span className="medal-label">Tổng</span>
               </div>
             </div>
+
+            <div style={{ borderTop: '1px solid #cbd5e1', marginTop: '16px', paddingTop: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                <h3 className="medal-estimation-title" style={{ margin: 0, color: '#047857' }}>
+                  ✅ Huy chương thực tế
+                </h3>
+                <span style={{ fontSize: '13px', color: '#64748b' }}>
+                  {eligibleMedalCategories.length}/{tournament.categories.length} nội dung đủ điều kiện
+                </span>
+              </div>
+              <div className="medal-items">
+                <div className="medal-item gold">
+                  <span className="medal-icon">🥇</span>
+                  <span className="medal-count">{actualMedals.gold}</span>
+                  <span className="medal-label">Vàng</span>
+                </div>
+                <div className="medal-item silver">
+                  <span className="medal-icon">🥈</span>
+                  <span className="medal-count">{actualMedals.silver}</span>
+                  <span className="medal-label">Bạc</span>
+                </div>
+                <div className="medal-item bronze">
+                  <span className="medal-icon">🥉</span>
+                  <span className="medal-count">{actualMedals.bronze}</span>
+                  <span className="medal-label">Đồng</span>
+                </div>
+                <div className="medal-item total">
+                  <span className="medal-icon">🏆</span>
+                  <span className="medal-count">{actualMedals.total}</span>
+                  <span className="medal-label">Tổng</span>
+                </div>
+              </div>
+            </div>
+
             <Link to={`/statistics/${tournament.id}`} className={`btn btn-secondary ${activeHint === "check_fees" ? "hint-pulse" : ""}`} style={{marginTop: '12px', alignSelf: 'flex-start'}}>
               📊 Quản lý thống kê & Bảng tổng sắp huy chương
             </Link>
@@ -1434,6 +1516,35 @@ export default function TournamentPage() {
             >
               {lanStatus.running ? '⏹ Tắt máy chủ' : '▶ Bật máy chủ nhận điểm'}
             </button>
+          </div>
+          <div style={{ width: '100%', borderTop: '1px solid #dbe3ec', paddingTop: '14px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '235px' }}>
+              <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: liveServerStatus.state === 'online' ? '#22c55e' : liveServerStatus.state === 'checking' ? '#f59e0b' : '#ef4444', boxShadow: liveServerStatus.state === 'online' ? '0 0 0 4px rgba(34,197,94,.14)' : 'none' }} />
+              <div>
+                <strong style={{ display: 'block', fontSize: '13px', color: '#1e293b' }}>Máy chủ hiển thị TV</strong>
+                <span title={liveServerStatus.message} style={{ fontSize: '11px', color: liveServerStatus.state === 'error' ? '#dc2626' : '#64748b' }}>
+                  {liveServerStatus.state === 'checking' ? 'Đang kiểm tra kết nối...' : liveServerStatus.message}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {tvMatIds.map((matId) => {
+                const liveMat = liveServerStatus.mats.find((item) => String(item.mat_id) === String(matId));
+                return (
+                  <button
+                    key={matId}
+                    type="button"
+                    className="btn btn-sm"
+                    title={liveMat?.data?.current?.name ? `Đang đấu: ${liveMat.data.current.name}` : 'Mở màn hình TV và chờ Thư ký gửi dữ liệu'}
+                    style={{ padding: '8px 12px', background: liveMat ? '#0f766e' : '#0f172a', color: '#fff', borderRadius: '8px', fontWeight: 700 }}
+                    onClick={() => window.open(getLiveTvUrl(tournament.id, matId), '_blank', 'noopener,noreferrer')}
+                  >
+                    📺 TV Thảm {matId}{liveMat ? ' • LIVE' : ''}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
