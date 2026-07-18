@@ -1,6 +1,10 @@
-import { SERVER_URL } from "./licenseService";
+const LIVE_TIMEOUT_MS = 3000;
 
-const LIVE_TIMEOUT_MS = 5000;
+function getLanBaseUrl(adminIp, defaultPort = 3000) {
+  const value = String(adminIp || "").trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+  if (!value) return "";
+  return `http://${value.includes(":") ? value : `${value}:${defaultPort}`}`;
+}
 
 function requestWithTimeout(url, options = {}) {
   const controller = new AbortController();
@@ -46,58 +50,35 @@ export function getCategoryLiveQueue(matchData, currentCategory) {
   };
 }
 
-export async function publishLiveStatus(matchData, currentCategory, extra = {}) {
+export async function publishLiveStatus(adminIp, matchData, currentCategory, extra = {}) {
   const queue = getCategoryLiveQueue(matchData, currentCategory);
-  if (!queue || !matchData?.tournamentId) {
-    return { success: false, message: "Thiếu dữ liệu giải đấu hoặc nội dung" };
+  const baseUrl = getLanBaseUrl(adminIp);
+  if (!baseUrl || !queue || !matchData?.tournamentId) {
+    return { success: false, message: "Thiếu IP máy Admin hoặc dữ liệu nội dung" };
   }
 
   try {
-    const response = await requestWithTimeout(
-      `${SERVER_URL}/api/live-tournaments/${encodeURIComponent(matchData.tournamentId)}/mats/${encodeURIComponent(queue.matId)}`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tournamentName: matchData.tournamentName || "",
-          sourceId: matchData.exportId || "secretary",
-          current: queue.current,
-          next: queue.next,
-          ...extra,
-        }),
-      }
-    );
+    const response = await requestWithTimeout(`${baseUrl}/api/live-status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tournamentId: matchData.tournamentId,
+        tournamentName: matchData.tournamentName || "",
+        sourceId: matchData.exportId || "secretary",
+        matId: queue.matId,
+        current: queue.current,
+        next: queue.next,
+        ...extra,
+      }),
+    });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.message || `Server returned ${response.status}`);
+    if (!response.ok) throw new Error(result.message || `Máy Admin trả về ${response.status}`);
     return { success: true, matId: queue.matId, data: result.data };
   } catch (error) {
     return {
       success: false,
       error: error.name === "AbortError" ? "timeout" : "connection_error",
-      message: error.name === "AbortError" ? "Máy chủ không phản hồi" : error.message,
+      message: error.name === "AbortError" ? "Máy Admin không phản hồi" : error.message,
     };
   }
-}
-
-export async function fetchLiveStatuses(tournamentId) {
-  if (!tournamentId) return { success: false, message: "Thiếu mã giải đấu" };
-  try {
-    const response = await requestWithTimeout(
-      `${SERVER_URL}/api/live-tournaments/${encodeURIComponent(tournamentId)}`,
-      { cache: "no-store" }
-    );
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.message || `Server returned ${response.status}`);
-    return { success: true, data: Array.isArray(result.data) ? result.data : [] };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.name === "AbortError" ? "timeout" : "connection_error",
-      message: error.name === "AbortError" ? "Máy chủ không phản hồi" : error.message,
-    };
-  }
-}
-export function getLiveTvUrl(tournamentId, matId = 1) {
-  if (!tournamentId) return "";
-  return `${SERVER_URL}/tv/${encodeURIComponent(tournamentId)}?mat=${encodeURIComponent(matId)}`;
 }

@@ -20,13 +20,18 @@ import {
 } from "../services/krtService";
 import { createKmatchData, saveKmatchFile } from "../services/matchService";
 import { generateBracket } from "../utils/drawEngine";
-import { getTeamCountFromAthletes, getTeamsFromAthletes, isTeamCategory as isTeamCategoryMeta } from "../utils/teamDraw";
+import {
+  getTeamCountFromAthletes,
+  getTeamSizeForCategory,
+  getTeamsFromAthletes,
+  isTeamCategory as isTeamCategoryMeta,
+  syncTeamBracketMembers,
+} from "../utils/teamDraw";
 import DateTimeInput from "../components/common/DateTimeInput";
 import { useToast } from "../components/common/Toast";
 import { useOnboarding } from "../context/OnboardingContext";
 import { publishTournament, unpublishTournament, fetchTournamentById } from "../services/supabaseService";
 import { downloadAthleteImportTemplate } from "../services/athleteTemplateService";
-import { fetchLiveStatuses, getLiveTvUrl } from "../services/liveEventService";
 import appIcon from "../assets/icon.png";
 import "./TournamentPage.css";
 
@@ -65,17 +70,45 @@ const getCategoryAgeOrder = (category) => {
     ?? Number.POSITIVE_INFINITY;
 };
 
-const getCategoryFormatOrder = (category) => {
+const getCategorySortInfo = (category) => {
   const name = normalizeCategorySortText(category.name);
+  const type = normalizeCategorySortText(category.type);
   const gender = normalizeCategorySortText(category.gender);
   const isMixed = gender === "mixed" || name.includes("hon hop") || name.includes("mixed");
-  if (isMixed) return 3;
-
   const isTeam = category.isTeam || name.includes("dong doi") || name.includes("team");
-  if (isTeam) return 2;
-
   const isFemale = gender === "female" || name.includes(" nu ") || /\bnu\b/.test(name);
-  return isFemale ? 1 : 0;
+  const genderOrder = isMixed ? 2 : isFemale ? 1 : 0;
+  const isKata = type === "kata" || name.includes("kata");
+  const isKumite = type === "kumite" || name.includes("kumite");
+
+  let eventOrder = 8;
+  if (isKata) {
+    if (isMixed) eventOrder = 4;
+    else if (isTeam) eventOrder = isFemale ? 3 : 2;
+    else eventOrder = isFemale ? 1 : 0;
+  } else if (isKumite) {
+    eventOrder = isTeam ? 7 : 6;
+  }
+
+  return { eventOrder, genderOrder, isKumite, isTeam };
+};
+
+const getKumiteWeightOrder = (category) => {
+  const weightText = normalizeCategorySortText(
+    category.weightClass || category.name || ""
+  );
+  const kgMatches = [...weightText.matchAll(/(\d+(?:[.,]\d+)?)\s*kg\b/g)];
+  const allNumbers = [...weightText.matchAll(/\d+(?:[.,]\d+)?/g)];
+  const match = kgMatches.at(-1) || allNumbers.at(-1);
+  if (!match) return Number.POSITIVE_INFINITY;
+
+  const rawWeight = match[1] || match[0];
+  const weight = Number(rawWeight.replace(",", "."));
+  const isUpperClass =
+    weightText.includes(`+${rawWeight}`) ||
+    weightText.includes(`${rawWeight}+`) ||
+    weightText.includes("tren ");
+  return weight + (isUpperClass ? 0.5 : 0);
 };
 
 const compareCategoriesForPDF = (a, b) => {
@@ -83,12 +116,21 @@ const compareCategoriesForPDF = (a, b) => {
   const ageB = getCategoryAgeOrder(b);
   if (ageA !== ageB) return ageA - ageB;
 
-  const formatDifference = getCategoryFormatOrder(a) - getCategoryFormatOrder(b);
-  if (formatDifference !== 0) return formatDifference;
+  const infoA = getCategorySortInfo(a);
+  const infoB = getCategorySortInfo(b);
+  if (infoA.eventOrder !== infoB.eventOrder) {
+    return infoA.eventOrder - infoB.eventOrder;
+  }
 
-  const genderOrder = { male: 0, female: 1, mixed: 2 };
-  const genderDifference = (genderOrder[a.gender] ?? 3) - (genderOrder[b.gender] ?? 3);
-  if (genderDifference !== 0) return genderDifference;
+  if (infoA.isKumite && infoB.isKumite) {
+    if (infoA.genderOrder !== infoB.genderOrder) {
+      return infoA.genderOrder - infoB.genderOrder;
+    }
+    if (!infoA.isTeam && !infoB.isTeam) {
+      const weightDifference = getKumiteWeightOrder(a) - getKumiteWeightOrder(b);
+      if (weightDifference !== 0) return weightDifference;
+    }
+  }
 
   return categoryNameCollator.compare(a.name || "", b.name || "");
 };
@@ -213,27 +255,30 @@ export default function TournamentPage() {
     let active = true;
 
     const refreshLiveStatus = async () => {
-      const result = await fetchLiveStatuses(id);
-      if (!active) return;
-      if (result.success) {
-        setLiveServerStatus({
-          state: "online",
-          mats: result.data,
-          message: result.data.length > 0 ? "Đang nhận dữ liệu từ Thư ký" : "Đã kết nối, đang chờ Thư ký",
-        });
-      } else {
-        setLiveServerStatus({ state: "error", mats: [], message: result.message || "Không thể kết nối máy chủ" });
+      if (!window.electronAPI?.lan) {
+        if (active) setLiveServerStatus({ state: "error", mats: [], message: "Chỉ hỗ trợ trong ứng dụng desktop" });
+        return;
       }
+      const status = await window.electronAPI.lan.getServerStatus();
+      if (!active) return;
+      setLanStatus(status || { running: false, ip: "", port: 3000 });
+      const mats = status?.liveStatuses || [];
+      setLiveServerStatus({
+        state: status?.running ? "online" : "error",
+        mats,
+        message: status?.running
+          ? (mats.length > 0 ? "Đang nhận dữ liệu từ Thư ký qua LAN" : "Đang chờ Thư ký gửi dữ liệu qua LAN")
+          : "Máy chủ LAN đang tắt",
+      });
     };
 
     refreshLiveStatus();
-    const intervalId = window.setInterval(refreshLiveStatus, 5000);
+    const intervalId = window.setInterval(refreshLiveStatus, 1500);
     return () => {
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [id]);
-
+  }, []);
   const tvMatIds = Array.from(new Set([
     ...Object.values(tournament?.schedule || {}).map((item) => String(item.mat || 1)),
     ...liveServerStatus.mats.map((item) => String(item.mat_id || 1)),
@@ -416,12 +461,10 @@ export default function TournamentPage() {
 
   const getEstimatedMedals = (categories = tournament.categories) => {
     let gold = 0, silver = 0, bronze = 0;
-    const teamKataSize = tournament.teamMedalsSettings?.kata || 3;
-    const teamKumiteSize = tournament.teamMedalsSettings?.kumite || 3;
     const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
 
     categories.forEach((cat) => {
-      const { isTeamCategory, type } = getCategoryMedalMeta(cat);
+      const { isTeamCategory } = getCategoryMedalMeta(cat);
       
       // Calculate how many sets of medals are awarded (accounts for Sigma splits)
       let setsCount = 1;
@@ -438,7 +481,7 @@ export default function TournamentPage() {
 
       if (isTeamCategory) {
         // Team: medals per participant depending on type
-        const teamSize = type === 'kata' ? teamKataSize : teamKumiteSize;
+        const teamSize = getTeamSizeForCategory(cat, tournament);
         gold += teamSize * setsCount;
         silver += teamSize * setsCount;
         bronze += (teamSize * 2) * setsCount;
@@ -635,7 +678,20 @@ export default function TournamentPage() {
 
   const handleExportSelectedPDF = async () => {
     if (exportingPDF) return;
-    const categoriesToExport = tournament.categories.filter(c => exportSelectedIds.includes(c.id) && c.bracket);
+    const categoriesToExport = tournament.categories
+      .filter(c => exportSelectedIds.includes(c.id) && c.bracket)
+      .map((category) => {
+        if (!isTeamCategoryMeta(category)) return category;
+        return {
+          ...category,
+          bracket: syncTeamBracketMembers(
+            category.bracket,
+            category.athletes || [],
+            category,
+            tournament
+          ),
+        };
+      });
     if (categoriesToExport.length === 0) {
       alert("Vui lòng chọn ít nhất một hạng mục đã bốc thăm!");
       return;
@@ -647,8 +703,9 @@ export default function TournamentPage() {
       const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
       const sponsorLogos = tournament.sponsorLogos || null;
 
-      // PDF order: youngest to oldest, then individual men, individual women,
-      // team events, and mixed events.
+      // PDF order: youngest to oldest; within each age group:
+      // Kata individual men/women, Kata team men/women, Kata mixed,
+      // Kumite individual (lightest to heaviest), then Kumite team.
       const sorted = [...categoriesToExport].sort(compareCategoriesForPDF);
 
       await exportAllBracketsToPDF(
@@ -1267,7 +1324,7 @@ export default function TournamentPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
               <h3 className="medal-estimation-title" style={{ margin: 0 }}>🏅 Dự tính huy chương</h3>
               {(teamCategoryAvailability.kata || teamCategoryAvailability.kumite) && (
-                <div style={{ display: 'flex', gap: '15px', fontSize: '13px', color: '#475569', background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', fontSize: '13px', color: '#475569', background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px' }}>
                   {teamCategoryAvailability.kata && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                       Số VĐV Kata ĐĐ/đội:
@@ -1292,27 +1349,50 @@ export default function TournamentPage() {
                     </label>
                   )}
                   {teamCategoryAvailability.kumite && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      Số VĐV Kumite ĐĐ/đội:
-                      <input
-                        type="number"
-                        min="1"
-                        value={tournament.teamMedalsSettings?.kumite || 3}
-                        onChange={(e) => {
-                          dispatch({
-                            type: ACTIONS.UPDATE_TOURNAMENT,
-                            payload: {
-                              id: tournament.id,
-                              teamMedalsSettings: {
-                                ...(tournament.teamMedalsSettings || {}),
-                                kumite: parseInt(e.target.value) || 3
+                    <>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        Số VĐV Kumite Nam/đội:
+                        <input
+                          type="number"
+                          min="1"
+                          value={tournament.teamMedalsSettings?.kumiteMale ?? tournament.teamMedalsSettings?.kumite ?? 3}
+                          onChange={(e) => {
+                            dispatch({
+                              type: ACTIONS.UPDATE_TOURNAMENT,
+                              payload: {
+                                id: tournament.id,
+                                teamMedalsSettings: {
+                                  ...(tournament.teamMedalsSettings || {}),
+                                  kumiteMale: parseInt(e.target.value) || 3
+                                }
                               }
-                            }
-                          });
-                        }}
-                        style={{ width: '45px', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center' }}
-                      />
-                    </label>
+                            });
+                          }}
+                          style={{ width: '45px', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center' }}
+                        />
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        Số VĐV Kumite Nữ/đội:
+                        <input
+                          type="number"
+                          min="1"
+                          value={tournament.teamMedalsSettings?.kumiteFemale ?? tournament.teamMedalsSettings?.kumite ?? 3}
+                          onChange={(e) => {
+                            dispatch({
+                              type: ACTIONS.UPDATE_TOURNAMENT,
+                              payload: {
+                                id: tournament.id,
+                                teamMedalsSettings: {
+                                  ...(tournament.teamMedalsSettings || {}),
+                                  kumiteFemale: parseInt(e.target.value) || 3
+                                }
+                              }
+                            });
+                          }}
+                          style={{ width: '45px', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center' }}
+                        />
+                      </label>
+                    </>
                   )}
                 </div>
               )}
@@ -1521,7 +1601,7 @@ export default function TournamentPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '235px' }}>
               <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: liveServerStatus.state === 'online' ? '#22c55e' : liveServerStatus.state === 'checking' ? '#f59e0b' : '#ef4444', boxShadow: liveServerStatus.state === 'online' ? '0 0 0 4px rgba(34,197,94,.14)' : 'none' }} />
               <div>
-                <strong style={{ display: 'block', fontSize: '13px', color: '#1e293b' }}>Máy chủ hiển thị TV</strong>
+                <strong style={{ display: 'block', fontSize: '13px', color: '#1e293b' }}>Màn hình TV nội bộ</strong>
                 <span title={liveServerStatus.message} style={{ fontSize: '11px', color: liveServerStatus.state === 'error' ? '#dc2626' : '#64748b' }}>
                   {liveServerStatus.state === 'checking' ? 'Đang kiểm tra kết nối...' : liveServerStatus.message}
                 </span>
@@ -1529,21 +1609,22 @@ export default function TournamentPage() {
             </div>
 
             <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              {tvMatIds.map((matId) => {
-                const liveMat = liveServerStatus.mats.find((item) => String(item.mat_id) === String(matId));
-                return (
-                  <button
-                    key={matId}
-                    type="button"
-                    className="btn btn-sm"
-                    title={liveMat?.data?.current?.name ? `Đang đấu: ${liveMat.data.current.name}` : 'Mở màn hình TV và chờ Thư ký gửi dữ liệu'}
-                    style={{ padding: '8px 12px', background: liveMat ? '#0f766e' : '#0f172a', color: '#fff', borderRadius: '8px', fontWeight: 700 }}
-                    onClick={() => window.open(getLiveTvUrl(tournament.id, matId), '_blank', 'noopener,noreferrer')}
-                  >
-                    📺 TV Thảm {matId}{liveMat ? ' • LIVE' : ''}
-                  </button>
-                );
-              })}
+              <span style={{ alignSelf: 'center', color: '#475569', fontSize: '12px', fontWeight: 600 }}>
+                {liveServerStatus.mats.length}/{tvMatIds.length} thảm đã gửi dữ liệu
+              </span>
+              <button
+                type="button"
+                className="btn btn-sm"
+                title="Mở một màn hình tổng hợp tất cả các thảm"
+                style={{ padding: '8px 14px', background: liveServerStatus.mats.length ? '#0f766e' : '#0f172a', color: '#fff', borderRadius: '8px', fontWeight: 700 }}
+                onClick={async () => {
+                  const result = await window.electronAPI?.lan?.openTvDisplay();
+                  if (!result?.success) toast.error(result?.error || 'Không thể mở màn hình TV tổng');
+                }}
+                disabled={!lanStatus.running}
+              >
+                📺 Mở TV tổng • {tvMatIds.length} thảm
+              </button>
             </div>
           </div>
         </div>

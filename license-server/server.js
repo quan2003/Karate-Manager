@@ -45,7 +45,6 @@ pool.query("SELECT NOW()", (err, res) => {
     initializeAccountsSchema();
     initializeRequestsSchema();
     initializeCommerceSchema();
-    initializeLiveDisplaySchema();
     // Start cleanup jobs after schemas are ready
     setTimeout(() => {
       cleanupRevokedExpiredLicenses();
@@ -242,28 +241,6 @@ const initializeCommerceSchema = async () => {
   }
 };
 
-const initializeLiveDisplaySchema = async () => {
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS tournament_live_status (
-        tournament_id TEXT NOT NULL,
-        mat_id TEXT NOT NULL,
-        tournament_name TEXT DEFAULT '',
-        source_id TEXT DEFAULT '',
-        data JSONB NOT NULL DEFAULT '{}'::jsonb,
-        updated_at TIMESTAMPTZ DEFAULT NOW(),
-        PRIMARY KEY (tournament_id, mat_id)
-      );
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_tournament_live_status_updated
-      ON tournament_live_status (tournament_id, updated_at DESC);
-    `);
-    console.log("Live display schema initialized successfully.");
-  } catch (err) {
-    console.error("Error creating live display schema:", err);
-  }
-};
 const createLicenseRecord = async (
   {
     type,
@@ -1213,112 +1190,6 @@ app.post("/api/admin/payment-orders/:id/mark-paid", authMiddleware, async (req, 
   }
 });
 
-// --- Public live tournament display ---
-const LIVE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
-const normalizeLiveCategory = (category) => {
-  if (!category || typeof category !== "object") return null;
-  return {
-    id: String(category.id || "").slice(0, 128),
-    name: String(category.name || "").trim().slice(0, 300),
-    type: category.type === "kata" ? "kata" : "kumite",
-    scheduledTime: category.scheduledTime ? String(category.scheduledTime).slice(0, 32) : null,
-  };
-};
-
-app.put("/api/live-tournaments/:tournamentId/mats/:matId", async (req, res) => {
-  const { tournamentId, matId } = req.params;
-  if (!LIVE_ID_PATTERN.test(tournamentId) || !LIVE_ID_PATTERN.test(matId)) {
-    return res.status(400).json({ success: false, message: "Mã giải hoặc mã thảm không hợp lệ" });
-  }
-
-  const current = normalizeLiveCategory(req.body.current);
-  const next = normalizeLiveCategory(req.body.next);
-  if (!current?.id || !current?.name) {
-    return res.status(400).json({ success: false, message: "Thiếu nội dung đang thi đấu" });
-  }
-
-  const liveData = {
-    current,
-    next,
-    matchCode: req.body.matchCode ? String(req.body.matchCode).slice(0, 64) : null,
-    roundName: req.body.roundName ? String(req.body.roundName).slice(0, 128) : null,
-  };
-
-  try {
-    const result = await pool.query(
-      `INSERT INTO tournament_live_status
-        (tournament_id, mat_id, tournament_name, source_id, data, updated_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
-       ON CONFLICT (tournament_id, mat_id) DO UPDATE SET
-         tournament_name = EXCLUDED.tournament_name,
-         source_id = EXCLUDED.source_id,
-         data = EXCLUDED.data,
-         updated_at = NOW()
-       RETURNING tournament_id, mat_id, tournament_name, data, updated_at`,
-      [
-        tournamentId,
-        matId,
-        String(req.body.tournamentName || "").slice(0, 300),
-        String(req.body.sourceId || "secretary").slice(0, 128),
-        JSON.stringify(liveData),
-      ]
-    );
-    res.json({ success: true, data: result.rows[0] });
-  } catch (err) {
-    console.error("Live status update error:", err);
-    res.status(500).json({ success: false, message: "Không thể cập nhật màn hình trực tiếp" });
-  }
-});
-
-app.get("/api/live-tournaments/:tournamentId", async (req, res) => {
-  const { tournamentId } = req.params;
-  if (!LIVE_ID_PATTERN.test(tournamentId)) {
-    return res.status(400).json({ success: false, message: "Mã giải không hợp lệ" });
-  }
-  try {
-    const result = await pool.query(
-      `SELECT tournament_id, mat_id, tournament_name, data, updated_at
-       FROM tournament_live_status
-       WHERE tournament_id = $1
-       ORDER BY mat_id ASC`,
-      [tournamentId]
-    );
-    res.set("Cache-Control", "no-store");
-    res.json({ success: true, data: result.rows });
-  } catch (err) {
-    console.error("Live status fetch error:", err);
-    res.status(500).json({ success: false, message: "Không thể tải trạng thái trực tiếp" });
-  }
-});
-
-app.get("/tv/:tournamentId", (req, res) => {
-  const tournamentId = req.params.tournamentId;
-  const matId = String(req.query.mat || "1");
-  if (!LIVE_ID_PATTERN.test(tournamentId) || !LIVE_ID_PATTERN.test(matId)) {
-    return res.status(400).send("Mã giải hoặc mã thảm không hợp lệ");
-  }
-
-  const safeTournamentId = JSON.stringify(tournamentId).replace(/</g, "\\u003c");
-  const safeMatId = JSON.stringify(matId).replace(/</g, "\\u003c");
-  res.type("html").send(`<!doctype html>
-<html lang="vi">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>K-SPORT Live TV</title>
-<style>
-*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% 0,#152e4a 0,#07111e 48%,#03070d 100%);color:#f8fafc;font-family:Inter,Arial,sans-serif;overflow:hidden}.screen{min-height:100vh;display:grid;grid-template-rows:auto 1fr auto;padding:clamp(24px,4vw,64px)}header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;padding-bottom:22px}.brand{font-weight:900;font-size:clamp(24px,3vw,52px);letter-spacing:.08em}.mat{color:#facc15;border:2px solid #facc15;border-radius:14px;padding:10px 22px;font-size:clamp(20px,2vw,36px);font-weight:900}.content{display:grid;align-content:center;gap:clamp(32px,5vh,70px);max-width:1500px;width:100%;margin:auto}.label{font-size:clamp(18px,2vw,34px);font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#94a3b8}.current{font-size:clamp(46px,7vw,112px);font-weight:950;line-height:1.08;text-transform:uppercase;text-shadow:0 8px 35px #000;max-width:1400px}.nextbox{border-left:8px solid #22c55e;background:linear-gradient(90deg,rgba(34,197,94,.17),rgba(34,197,94,.02));padding:22px 30px;border-radius:0 18px 18px 0}.next{font-size:clamp(28px,4vw,64px);font-weight:850;margin-top:8px}.meta{display:flex;gap:24px;color:#cbd5e1;font-size:clamp(16px,1.5vw,26px)}footer{display:flex;justify-content:space-between;align-items:center;color:#64748b;font-size:clamp(14px,1.2vw,21px)}.dot{display:inline-block;width:12px;height:12px;border-radius:50%;background:#22c55e;margin-right:10px;box-shadow:0 0 16px #22c55e}.offline .dot{background:#ef4444;box-shadow:0 0 16px #ef4444}.empty{color:#94a3b8}.clock{font-variant-numeric:tabular-nums;color:#e2e8f0}
-</style>
-</head>
-<body><main class="screen"><header><div class="brand">K-SPORT LIVE</div><div class="mat">THẢM <span id="mat"></span></div></header><section class="content"><div><div class="label">Đang thi đấu</div><div id="current" class="current empty">Đang chờ Thư ký cập nhật...</div><div id="meta" class="meta"></div></div><div class="nextbox"><div class="label">Nội dung tiếp theo</div><div id="next" class="next empty">Chưa có lịch tiếp theo</div></div></section><footer><div id="connection"><span class="dot"></span><span id="status">Đang kết nối máy chủ</span></div><div class="clock" id="clock"></div></footer></main>
-<script>
-const tournamentId=${safeTournamentId};const matId=${safeMatId};document.getElementById('mat').textContent=matId;
-const el={current:document.getElementById('current'),next:document.getElementById('next'),meta:document.getElementById('meta'),connection:document.getElementById('connection'),status:document.getElementById('status')};
-function setOnline(ok,text){el.connection.className=ok?'':'offline';el.status.textContent=text}
-function render(row){const data=row&&row.data||{};const current=data.current;const next=data.next;el.current.textContent=current&&current.name||'Đang chờ Thư ký cập nhật...';el.current.className=current&&current.name?'current':'current empty';el.next.textContent=next&&next.name||'Chưa có lịch tiếp theo';el.next.className=next&&next.name?'next':'next empty';const pieces=[];if(data.roundName)pieces.push(data.roundName);if(data.matchCode)pieces.push('Trận '+data.matchCode);if(current&&current.scheduledTime)pieces.push('Lịch '+current.scheduledTime);el.meta.textContent=pieces.join(' • ');const updated=row&&row.updated_at?new Date(row.updated_at):null;setOnline(true,updated?'Cập nhật '+updated.toLocaleTimeString('vi-VN'):'Đã kết nối')}
-async function refresh(){try{const response=await fetch('/api/live-tournaments/'+encodeURIComponent(tournamentId),{cache:'no-store'});if(!response.ok)throw new Error('HTTP '+response.status);const result=await response.json();const row=(result.data||[]).find(function(item){return String(item.mat_id)===String(matId)});render(row)}catch(error){setOnline(false,'Mất kết nối — đang thử lại');}}
-setInterval(function(){document.getElementById('clock').textContent=new Date().toLocaleString('vi-VN')},1000);refresh();setInterval(refresh,2000);
-</script></body></html>`);
-});
 // Serve Admin Web
 const path = require("path");
 app.use(express.static(path.join(__dirname, "../admin-web/dist")));

@@ -746,3 +746,234 @@ body {
 .mini-display.positions-swapped .mini-timer {
   order: 3;
 }
+/* HANTEI result controls and modal */
+.result-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 4px 0 8px;
+}
+
+.result-action-grid .btn {
+  width: 100%;
+  min-height: 42px;
+}
+
+.btn-hantei {
+  background: #d99b00;
+  border-color: #9a6b00;
+  color: #171006;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.btn-hantei span {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.btn-hantei:hover { background: #f0ad00; }
+.btn-hantei:active { background: #bd8500; transform: translateY(1px); }
+
+.hantei-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(5, 7, 15, 0.82);
+  backdrop-filter: blur(4px);
+}
+
+.hantei-modal.show { display: flex; }
+
+.hantei-dialog {
+  width: min(920px, 96vw);
+  max-height: 94vh;
+  overflow-y: auto;
+  color: #f5f7ff;
+  background: #101426;
+  border: 2px solid #d99b00;
+  border-radius: 14px;
+  box-shadow: 0 22px 65px rgba(0, 0, 0, 0.55);
+}
+
+.hantei-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 22px;
+  background: linear-gradient(135deg, #29200d, #15182a);
+  border-bottom: 1px solid #6e5310;
+}
+
+.hantei-dialog-header h2 {
+  margin: 0 0 5px;
+  color: #ffc62e;
+  font-size: clamp(20px, 2.4vw, 30px);
+}
+
+.hantei-dialog-header p { margin: 0; color: #c6cada; }
+
+.hantei-close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: white;
+  font-size: 30px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hantei-competitors {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  padding: 16px 22px;
+}
+
+.hantei-competitor {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 16px;
+  border-radius: 10px;
+}
+
+.hantei-competitor > strong {
+  overflow: hidden;
+  font-size: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hantei-competitor small { min-height: 1.2em; opacity: 0.82; }
+.hantei-aka { background: #5d1119; border: 1px solid #e44350; }
+.hantei-ao { text-align: right; background: #082d62; border: 1px solid #2683df; }
+.hantei-side-label { font-weight: 900; letter-spacing: 0.12em; }
+.hantei-current-score { font-size: 16px; }
+
+.hantei-score-summary {
+  display: flex;
+  min-width: 125px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #cbd1e3;
+}
+
+.hantei-score-summary strong { color: white; font-size: 30px; }
+
+.hantei-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 22px 12px;
+}
+
+.hantei-toolbar label { font-weight: 700; }
+.hantei-toolbar select {
+  padding: 7px 12px;
+  color: white;
+  background: #20263b;
+  border: 1px solid #747d9a;
+  border-radius: 6px;
+}
+.hantei-toolbar span { color: #aeb5ca; font-size: 13px; }
+
+.hantei-vote-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  gap: 8px;
+  padding: 0 22px 14px;
+}
+
+.hantei-judge {
+  padding: 9px;
+  text-align: center;
+  background: #181e31;
+  border: 1px solid #363e58;
+  border-radius: 9px;
+}
+
+.hantei-judge-label {
+  display: block;
+  margin-bottom: 7px;
+  color: #c4cada;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hantei-judge-options { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+
+.hantei-vote {
+  padding: 9px 4px;
+  border: 1px solid #626b84;
+  border-radius: 6px;
+  color: white;
+  background: #252b40;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.hantei-vote.aka.selected { background: #c91f31; border-color: #ff6673; }
+.hantei-vote.ao.selected { background: #086bc4; border-color: #54aeff; }
+
+.hantei-totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 0 22px 16px;
+}
+
+.hantei-total {
+  padding: 10px 14px;
+  text-align: center;
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.aka-total { color: #ff8089; background: #371117; }
+.ao-total { color: #79bdff; background: #092649; }
+
+.hantei-dialog-actions {
+  display: grid;
+  grid-template-columns: auto auto minmax(220px, 1fr);
+  gap: 10px;
+  padding: 15px 22px 20px;
+  border-top: 1px solid #303750;
+}
+
+.hantei-cancel-btn { color: #e1e5ef; background: #343a4c; border-color: #555e76; }
+.hantei-clear-btn { color: #ffe09a; background: #4a3611; border-color: #8c671c; }
+.hantei-confirm-btn { color: #151006; background: #e8aa0b; border-color: #ffc83d; font-weight: 800; }
+
+@media (max-width: 760px) {
+  .hantei-competitors { grid-template-columns: 1fr 1fr; }
+  .hantei-score-summary { grid-column: 1 / -1; grid-row: 2; }
+  .hantei-vote-list { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
+  .hantei-dialog-actions { grid-template-columns: 1fr; }
+  .hantei-toolbar { flex-wrap: wrap; }
+}
+
+.result-action-grid.has-undo {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.hantei-undo-btn {
+  color: #ffe39b;
+  background: #40310e;
+  border-color: #b98714;
+  font-weight: 800;
+}
+
+.hantei-undo-btn:hover { background: #574313; }

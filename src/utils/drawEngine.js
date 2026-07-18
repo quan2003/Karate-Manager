@@ -339,12 +339,24 @@ function getRoundNames(n) {
   return names;
 }
 
-export function updateMatchResult(bracket, matchId, score1, score2, winnerId) {
+export function updateMatchResult(
+  bracket,
+  matchId,
+  score1,
+  score2,
+  winnerId,
+  resultMeta = null
+) {
   const match = bracket.matches.find((m) => m.id === matchId);
   if (!match) return bracket;
 
   match.score1 = score1;
   match.score2 = score2;
+  if (resultMeta) {
+    match.winMethod = resultMeta.winMethod || null;
+    match.hantei = resultMeta.hantei || null;
+  }
+
 
   if (winnerId) {
     match.winner =

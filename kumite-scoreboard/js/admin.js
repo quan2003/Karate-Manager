@@ -30,6 +30,14 @@ let state = {
   },
   fontScale: 100, // Font scale percentage
   winnerFlash: null, // 'aka', 'ao', or null
+  hantei: {
+    status: "idle",
+    judgeCount: 5,
+    votes: [null, null, null, null, null],
+    akaFlags: 0,
+    aoFlags: 0,
+    winner: null,
+  },
   timerSpeed: 1, // Timer speed multiplier (1 = normal, 2 = 2x, 0.5 = half speed)
   matchRound: "", // Current match round (Chung Kết, Bán Kết, etc.)
   // Fullscreen display for animations
@@ -359,6 +367,7 @@ function loadState() {
   if (saved) {
     const parsedState = JSON.parse(saved);
     state = { ...state, ...parsedState };
+    state.hantei = normalizeHanteiState(parsedState.hantei);
   }
   updateUI();
   updatePreview();
@@ -469,6 +478,7 @@ function updateUI() {
   document.getElementById("startStopBtn").textContent = state.timer.isRunning
     ? "Stop"
     : "Start";
+  renderHanteiAdmin();
 }
 
 // Update preview display
@@ -698,6 +708,239 @@ function blueWins() {
   }
 }
 
+function createDefaultHanteiState(judgeCount = 5) {
+  const count = Math.min(5, Math.max(1, Number.parseInt(judgeCount, 10) || 5));
+  return {
+    status: "idle",
+    judgeCount: count,
+    votes: Array(count).fill(null),
+    akaFlags: 0,
+    aoFlags: 0,
+    winner: null,
+  };
+}
+
+function normalizeHanteiState(value) {
+  const normalized = createDefaultHanteiState(value?.judgeCount);
+  if (!value || typeof value !== "object") return normalized;
+
+  normalized.status = ["idle", "open", "confirmed"].includes(value.status)
+    ? value.status
+    : "idle";
+  normalized.votes = Array.from(
+    { length: normalized.judgeCount },
+    (_, index) => value.votes?.[index] === "aka" || value.votes?.[index] === "ao"
+      ? value.votes[index]
+      : null
+  );
+
+  const counts = getHanteiCounts(normalized.votes);
+  normalized.akaFlags = counts.aka;
+  normalized.aoFlags = counts.ao;
+  normalized.winner = normalized.status === "confirmed" &&
+    (value.winner === "aka" || value.winner === "ao")
+    ? value.winner
+    : null;
+  return normalized;
+}
+
+function getHanteiCounts(votes = state.hantei?.votes || []) {
+  return votes.reduce((counts, vote) => {
+    if (vote === "aka") counts.aka += 1;
+    if (vote === "ao") counts.ao += 1;
+    return counts;
+  }, { aka: 0, ao: 0 });
+}
+
+function splitHanteiCompetitor(fullName, fallback) {
+  const parts = String(fullName || fallback).split(" - ");
+  return {
+    name: parts.shift() || fallback,
+    unit: parts.join(" - "),
+  };
+}
+
+function isMatchTimeFinished() {
+  return Number(state.timer?.minutes || 0) === 0 &&
+    Number(state.timer?.seconds || 0) === 0 &&
+    Number(state.timer?.deciseconds || 0) === 0;
+}
+
+function openHantei() {
+  if (state.akaScore !== state.aoScore) {
+    alert("Kh\u00f4ng th\u1ec3 th\u1ef1c hi\u1ec7n HANTEI v\u00ec t\u1ef7 s\u1ed1 hi\u1ec7n t\u1ea1i kh\u00f4ng h\u00f2a.");
+    return;
+  }
+  if (state.akaSenshu || state.aoSenshu) {
+    alert("Tr\u1eadn \u0111\u1ea5u \u0111ang c\u00f3 SENSHU. Vui l\u00f2ng ki\u1ec3m tra l\u1ea1i tr\u01b0\u1edbc khi th\u1ef1c hi\u1ec7n HANTEI.");
+    return;
+  }
+  if (state.hantei?.status === "confirmed") {
+    alert("HANTEI \u0111\u00e3 \u0111\u01b0\u1ee3c x\u00e1c nh\u1eadn. H\u00e3y ho\u00e0n t\u00e1c ho\u1eb7c Reset tr\u1eadn tr\u01b0\u1edbc khi th\u1ef1c hi\u1ec7n l\u1ea1i.");
+    return;
+  }
+  if (state.winnerFlash) {
+    alert("Tr\u1eadn \u0111\u00e3 c\u00f3 ng\u01b0\u1eddi th\u1eafng. Vui l\u00f2ng ki\u1ec3m tra ho\u1eb7c ho\u00e0n t\u00e1c k\u1ebft qu\u1ea3 tr\u01b0\u1edbc khi m\u1edf HANTEI.");
+    return;
+  }
+  if (!isMatchTimeFinished() &&
+      !confirm("Th\u1eddi gian thi \u0111\u1ea5u ch\u01b0a k\u1ebft th\u00fac. B\u1ea1n c\u00f3 ch\u1eafc ch\u1eafn mu\u1ed1n m\u1edf HANTEI kh\u00f4ng?")) {
+    return;
+  }
+
+  const judgeCount = state.hantei?.judgeCount || 5;
+  state.hantei = createDefaultHanteiState(judgeCount);
+  state.hantei.status = "open";
+  stopTimer();
+  saveState();
+  renderHanteiAdmin();
+}
+
+function setHanteiJudgeCount(value) {
+  if (state.hantei?.status !== "open") return;
+  const judgeCount = Math.min(5, Math.max(1, Number.parseInt(value, 10) || 5));
+  state.hantei.judgeCount = judgeCount;
+  state.hantei.votes = Array.from(
+    { length: judgeCount },
+    (_, index) => state.hantei.votes[index] || null
+  );
+  const counts = getHanteiCounts();
+  state.hantei.akaFlags = counts.aka;
+  state.hantei.aoFlags = counts.ao;
+  saveState();
+  renderHanteiAdmin();
+}
+
+function selectHanteiVote(index, side) {
+  if (state.hantei?.status !== "open" || index < 0 || index >= state.hantei.judgeCount) return;
+  state.hantei.votes[index] = state.hantei.votes[index] === side ? null : side;
+  const counts = getHanteiCounts();
+  state.hantei.akaFlags = counts.aka;
+  state.hantei.aoFlags = counts.ao;
+  saveState();
+  renderHanteiAdmin();
+}
+
+function clearHanteiVotes() {
+  if (state.hantei?.status !== "open") return;
+  state.hantei.votes = Array(state.hantei.judgeCount).fill(null);
+  state.hantei.akaFlags = 0;
+  state.hantei.aoFlags = 0;
+  saveState();
+  renderHanteiAdmin();
+}
+
+function cancelHantei() {
+  if (state.hantei?.status !== "open") return;
+  state.hantei = createDefaultHanteiState(state.hantei.judgeCount);
+  saveState();
+  renderHanteiAdmin();
+}
+
+function confirmHanteiResult() {
+  if (state.hantei?.status !== "open") return;
+  const counts = getHanteiCounts();
+  const selectedCount = counts.aka + counts.ao;
+
+  if (selectedCount !== state.hantei.judgeCount) {
+    alert("Vui l\u00f2ng nh\u1eadp \u0111\u1ee7 l\u1ef1a ch\u1ecdn c\u1ee7a c\u00e1c tr\u1ecdng t\u00e0i \u0111ang c\u1ea5u h\u00ecnh.");
+    return;
+  }
+  if (counts.aka === counts.ao) {
+    alert("Ch\u01b0a th\u1ec3 x\u00e1c nh\u1eadn HANTEI v\u00ec s\u1ed1 c\u1edd c\u1ee7a AKA v\u00e0 AO \u0111ang b\u1eb1ng nhau.");
+    return;
+  }
+
+  const winner = counts.aka > counts.ao ? "aka" : "ao";
+  const winnerInfo = splitHanteiCompetitor(state[winner + "Name"], winner.toUpperCase());
+  const message =
+    "X\u00e1c nh\u1eadn " + winnerInfo.name + " th\u1eafng b\u1eb1ng HANTEI?\\n\\n" +
+    "T\u1ef7 s\u1ed1 \u0111i\u1ec3m: " + state.akaScore + "\u2013" + state.aoScore + "\\n" +
+    "K\u1ebft qu\u1ea3 c\u1edd: AKA " + counts.aka + "\u2013" + counts.ao + " AO\\n\\n" +
+    "HANTEI kh\u00f4ng thay \u0111\u1ed5i t\u1ef7 s\u1ed1 \u0111i\u1ec3m.";
+  if (!confirm(message)) return;
+
+  state.hantei.status = "confirmed";
+  state.hantei.akaFlags = counts.aka;
+  state.hantei.aoFlags = counts.ao;
+  state.hantei.winner = winner;
+  state.winnerFlash = winner;
+  addMatchLog("win", winner, "HANTEI: AKA " + counts.aka + "-" + counts.ao + " AO");
+  saveState();
+  renderHanteiAdmin();
+}
+
+function undoHantei() {
+  if (state.hantei?.status !== "confirmed") return;
+
+  state.hantei.status = "open";
+  state.hantei.winner = null;
+  state.winnerFlash = null;
+  addMatchLog("system", "", "Ho\u00e0n t\u00e1c k\u1ebft qu\u1ea3 HANTEI");
+  saveState();
+  renderHanteiAdmin();
+}
+
+function renderHanteiAdmin() {
+  const modal = document.getElementById("hanteiModal");
+  if (!modal) return;
+
+  const hantei = normalizeHanteiState(state.hantei);
+  state.hantei = hantei;
+  const undoButton = document.getElementById("undoHanteiBtn");
+  const actionGroup = document.querySelector(".result-action-grid");
+  const isConfirmed = hantei.status === "confirmed";
+  if (undoButton) undoButton.hidden = !isConfirmed;
+  if (actionGroup) actionGroup.classList.toggle("has-undo", isConfirmed);
+
+  modal.classList.toggle("show", hantei.status === "open");
+  if (hantei.status !== "open") return;
+
+  const aka = splitHanteiCompetitor(state.akaName, "AKA");
+  const ao = splitHanteiCompetitor(state.aoName, "AO");
+  document.getElementById("hanteiAkaName").textContent = aka.name;
+  document.getElementById("hanteiAkaUnit").textContent = aka.unit;
+  document.getElementById("hanteiAoName").textContent = ao.name;
+  document.getElementById("hanteiAoUnit").textContent = ao.unit;
+  document.getElementById("hanteiAkaScore").textContent = state.akaScore;
+  document.getElementById("hanteiAoScore").textContent = state.aoScore;
+  document.getElementById("hanteiScoreAka").textContent = state.akaScore;
+  document.getElementById("hanteiScoreAo").textContent = state.aoScore;
+  document.getElementById("hanteiJudgeCount").value = String(hantei.judgeCount);
+
+  const counts = getHanteiCounts(hantei.votes);
+  document.getElementById("hanteiAkaFlags").textContent = counts.aka;
+  document.getElementById("hanteiAoFlags").textContent = counts.ao;
+
+  const list = document.getElementById("hanteiVoteList");
+  list.innerHTML = "";
+  hantei.votes.forEach((vote, index) => {
+    const judge = document.createElement("div");
+    judge.className = "hantei-judge";
+
+    const label = document.createElement("span");
+    label.className = "hantei-judge-label";
+    label.textContent = hantei.judgeCount === 5 && index === 4
+      ? "Tr\u1ecdng t\u00e0i ch\u00ednh"
+      : "Tr\u1ecdng t\u00e0i " + (index + 1);
+
+    const options = document.createElement("div");
+    options.className = "hantei-judge-options";
+    ["aka", "ao"].forEach((side) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "hantei-vote " + side + (vote === side ? " selected" : "");
+      button.textContent = side.toUpperCase();
+      button.setAttribute("aria-pressed", String(vote === side));
+      button.onclick = () => selectHanteiVote(index, side);
+      options.appendChild(button);
+    });
+
+    judge.append(label, options);
+    list.appendChild(judge);
+  });
+
+}
 // Penalty functions
 function togglePenalty(competitor, type) {
   if (competitor === "aka") {
@@ -807,6 +1050,7 @@ function resetAll() {
   state.akaSenshu = false;
   state.aoSenshu = false;
   state.winnerFlash = null; // Reset winner flash
+  state.hantei = createDefaultHanteiState(state.hantei?.judgeCount);
   state.fullscreenDisplay = null; // Clear any pending overlays
   
   // Clear pending match data to ensure next match is fresh
@@ -855,6 +1099,7 @@ function resetAllSettings() {
     },
     fontScale: 100, // Font scale percentage
     winnerFlash: null, // Reset winner flash
+    hantei: createDefaultHanteiState(),
     timerSpeed: 1, // Reset timer speed to normal
   };
   saveState();
@@ -991,6 +1236,7 @@ function selectAthlete(side) {
   state.akaSenshu = false;
   state.aoSenshu = false;
   state.winnerFlash = null;
+  state.hantei = createDefaultHanteiState(state.hantei?.judgeCount);
   resetTimer();
 
   updateNames();
@@ -1341,6 +1587,7 @@ function resetScoresOnly() {
   state.akaSenshu = false;
   state.aoSenshu = false;
   state.winnerFlash = null;
+  state.hantei = createDefaultHanteiState(state.hantei?.judgeCount);
   // Giữ nguyên Tên Đoàn/VĐV và UI Dropdown (không reset) để người dùng tự chọn VĐV tiếp theo!
 
   resetTimer();
@@ -1501,11 +1748,14 @@ function loadPendingMatch() {
     },
     fontScale: currentFontScale || 100,
     winnerFlash: null,
+    hantei: createDefaultHanteiState(),
     fullscreenDisplay: null,
     tournamentTitle: currentTournamentTitle,
     eventTitle: currentEventTitle,
     sponsorText: currentSponsorText,
-    sponsorLogos: pendingMatchData.sponsorLogos || state.sponsorLogos,
+    // Logos must belong to the match's tournament. Never retain logos from
+    // the previously opened match when the current tournament has none.
+    sponsorLogos: pendingMatchData.sponsorLogos || { sponsors: [] },
     swapPositions: false,
     matchId: pendingMatchData.matchId || null,
     matchRound: pendingMatchData.roundName || "",
@@ -1631,6 +1881,9 @@ function finishTeamMatch(autoSubmit = false) {
     score1: state.teamMode.akaWins,
     score2: state.teamMode.aoWins,
     timestamp: Date.now(),
+    winMethod: state.hantei?.status === "confirmed" ? "HANTEI" : undefined,
+    hantei: state.hantei?.status === "confirmed"
+      ? { akaFlags: state.hantei.akaFlags, aoFlags: state.hantei.aoFlags } : undefined,
   };
 
   localStorage.setItem(MATCH_RESULT_KEY, JSON.stringify(result));
@@ -1706,6 +1959,9 @@ function finishMatch(autoSubmit = false) {
     score1: state.akaScore,
     score2: state.aoScore,
     timestamp: Date.now(),
+    winMethod: state.hantei?.status === "confirmed" ? "HANTEI" : undefined,
+    hantei: state.hantei?.status === "confirmed"
+      ? { akaFlags: state.hantei.akaFlags, aoFlags: state.hantei.aoFlags } : undefined,
   };
   
   // Lưu vào localStorage

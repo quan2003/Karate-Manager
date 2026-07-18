@@ -138,6 +138,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     startServer: () => ipcRenderer.invoke('lan:startServer'),
     stopServer: () => ipcRenderer.invoke('lan:stopServer'),
     getServerStatus: () => ipcRenderer.invoke('lan:getServerStatus'),
+    openTvDisplay: (matId) => ipcRenderer.invoke('lan:openTvDisplay', matId),
   },
 
   // =============================================

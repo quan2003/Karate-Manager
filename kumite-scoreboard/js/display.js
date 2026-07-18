@@ -34,6 +34,15 @@ let state = {
   },
   fontScale: 100, // Font scale percentage
   winnerFlash: null, // 'aka', 'ao', or null
+  hantei: {
+    status: "idle",
+    judgeCount: 5,
+    votes: [null, null, null, null, null],
+    akaFlags: 0,
+    aoFlags: 0,
+    winner: null,
+  },
+
 
   // Team mode specific
   teamMode: {
@@ -89,7 +98,7 @@ function updateDisplay() {
       (state.mode === "team" ? "KUMITE ĐỒNG ĐỘI" : "KUMITE");
   }
   
-  // Update sponsor text/logos - Enhanced logic to check multiple storage locations
+  // Render only sponsor logos supplied by the current match.
   const logoContainer = document.getElementById("logoContainer");
   if (logoContainer) {
     // 1. Try Kumite-specific state first
@@ -138,7 +147,9 @@ function updateDisplay() {
     const hasImageLogos = sLogos && (sLogos.systemLogo || sLogos.tournamentLogos || (sLogos.sponsors && sLogos.sponsors.length > 0));
     
     // Updated logic: Only show sponsors if they exist, otherwise fallback to icon.png
-    const sponsors = sLogos && sLogos.sponsors && sLogos.sponsors.length > 0 ? sLogos.sponsors : [];
+    const sponsors = Array.isArray(state.sponsorLogos?.sponsors)
+      ? state.sponsorLogos.sponsors
+      : [];
     
     logoContainer.innerHTML = "";
     logoContainer.style.display = "flex";
@@ -152,7 +163,7 @@ function updateDisplay() {
         logoContainer.appendChild(img);
       });
     } else {
-      // Fallback to app icon ONLY if no sponsors are configured
+      // No sponsors for this tournament: show the K-SPORT default logo.
       const appImg = document.createElement("img");
       appImg.src = "../public/Logo_den.png"; // Changed to Logo_den.png as requested
       appImg.className = "sponsor-logo-img";
@@ -232,8 +243,120 @@ function updateDisplay() {
     const scale = state.fontScale / 100;
     document.documentElement.style.setProperty("--font-scale", scale);
   }
+  renderHanteiDisplay();
 }
 
+function getDisplayHanteiState() {
+  const value = state.hantei;
+  const judgeCount = Math.min(5, Math.max(1, Number.parseInt(value?.judgeCount, 10) || 5));
+  const votes = Array.from({ length: judgeCount }, (_, index) =>
+    value?.votes?.[index] === "aka" || value?.votes?.[index] === "ao"
+      ? value.votes[index]
+      : null
+  );
+  const counts = votes.reduce((result, vote) => {
+    if (vote === "aka") result.aka += 1;
+    if (vote === "ao") result.ao += 1;
+    return result;
+  }, { aka: 0, ao: 0 });
+
+  return {
+    status: value?.status === "open" || value?.status === "confirmed"
+      ? value.status
+      : "idle",
+    winner: value?.winner === "aka" || value?.winner === "ao" ? value.winner : null,
+    akaFlags: value?.status === "confirmed" ? Number(value.akaFlags ?? counts.aka) : counts.aka,
+    aoFlags: value?.status === "confirmed" ? Number(value.aoFlags ?? counts.ao) : counts.ao,
+  };
+}
+
+function splitDisplayCompetitor(fullName, fallback) {
+  const parts = String(fullName || fallback).split(" - ");
+  return { name: parts.shift() || fallback, unit: parts.join(" - ") };
+}
+
+function createHanteiFlag(side, index) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 90 140");
+  svg.setAttribute("class", "hantei-flag-icon");
+  svg.setAttribute("aria-hidden", "true");
+  svg.style.animationDelay = (index * 45) + "ms";
+
+  const color = side === "aka" ? "#e52335" : "#087bd4";
+  svg.innerHTML =
+    '<line x1="20" y1="8" x2="20" y2="132" stroke="#e8e8ea" stroke-width="6" stroke-linecap="round"/>' +
+    '<path d="M24 15 L82 30 L24 65 Z" fill="' + color + '" stroke="rgba(255,255,255,.82)" stroke-width="2.5"/>' +
+    '<circle cx="20" cy="132" r="5" fill="#d7b56d"/>';
+  return svg;
+}
+
+function renderHanteiFlags(containerId, side, count) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const safeCount = Math.min(5, Math.max(0, Number.parseInt(count, 10) || 0));
+  container.innerHTML = "";
+  container.classList.toggle("single", safeCount === 1);
+  container.classList.toggle("compact", safeCount >= 4);
+  for (let index = 0; index < safeCount; index += 1) {
+    container.appendChild(createHanteiFlag(side, index));
+  }
+}
+
+function renderHanteiDisplay() {
+  const overlay = document.getElementById("hanteiDisplay");
+  if (!overlay) return;
+
+  const hantei = getDisplayHanteiState();
+  const isVisible = hantei.status === "open" ||
+    (hantei.status === "confirmed" && hantei.winner);
+  overlay.classList.toggle("show", Boolean(isVisible));
+  overlay.classList.toggle("winner-aka", hantei.status === "confirmed" && hantei.winner === "aka");
+  overlay.classList.toggle("winner-ao", hantei.status === "confirmed" && hantei.winner === "ao");
+  if (!isVisible) return;
+
+  const aka = splitDisplayCompetitor(state.akaName, "AKA");
+  const ao = splitDisplayCompetitor(state.aoName, "AO");
+  document.getElementById("displayHanteiAkaName").textContent = aka.name;
+  document.getElementById("displayHanteiAkaUnit").textContent = aka.unit;
+  document.getElementById("displayHanteiAoName").textContent = ao.name;
+  document.getElementById("displayHanteiAoUnit").textContent = ao.unit;
+  document.getElementById("displayHanteiAkaScore").textContent = state.akaScore;
+  document.getElementById("displayHanteiAoScore").textContent = state.aoScore;
+  document.getElementById("displayHanteiPointAka").textContent = state.akaScore;
+  document.getElementById("displayHanteiPointAo").textContent = state.aoScore;
+  document.getElementById("displayHanteiFlagAka").textContent = hantei.akaFlags;
+  document.getElementById("displayHanteiFlagAo").textContent = hantei.aoFlags;
+  document.getElementById("displayHanteiEvent").textContent = state.eventTitle || "";
+  document.getElementById("displayHanteiCategory").textContent = state.category || "";
+
+  renderHanteiFlags("displayHanteiAkaFlags", "aka", hantei.akaFlags);
+  renderHanteiFlags("displayHanteiAoFlags", "ao", hantei.aoFlags);
+
+  const status = document.getElementById("displayHanteiStatus");
+  const notice = document.getElementById("displayHanteiNotice");
+  const winnerName = document.getElementById("displayHanteiWinnerName");
+  const hasVotes = hantei.akaFlags + hantei.aoFlags > 0;
+
+  if (hantei.status === "confirmed") {
+    const side = hantei.winner.toUpperCase();
+    const winner = hantei.winner === "aka" ? aka : ao;
+    status.textContent = side + " TH\u1eaeNG HANTEI";
+    winnerName.textContent = winner.name;
+    winnerName.hidden = false;
+    notice.textContent = side + " TH\u1eaeNG B\u1eb0NG HANTEI";
+  } else {
+    winnerName.textContent = "";
+    winnerName.hidden = true;
+    if (hasVotes) {
+      status.textContent = "\u0110ANG CH\u1edc X\u00c1C NH\u1eacN K\u1ebeT QU\u1ea2";
+      notice.textContent = "HANTEI \u2013 \u0110ANG CH\u1edc X\u00c1C NH\u1eacN";
+    } else {
+      status.textContent = "\u0110ANG CH\u1edc NH\u1eacP C\u1edc";
+      notice.textContent = "HANTEI \u2013 \u0110ANG CH\u1edc NH\u1eacP C\u1edc";
+    }
+  }
+
+}
 // Update penalty buttons
 function updatePenaltyButtons(competitor, penalties) {
   const errorNames = state.errorNames;

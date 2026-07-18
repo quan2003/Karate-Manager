@@ -181,7 +181,8 @@ export default function BracketPage() {
           result.matchId,
           result.score1 || 0,
           result.score2 || 0,
-          result.winnerId
+          result.winnerId,
+          result
         );
 
         dispatch({

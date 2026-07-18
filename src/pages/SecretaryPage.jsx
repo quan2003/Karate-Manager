@@ -48,6 +48,7 @@ function SecretaryPage() {
   const [adminIp, setAdminIp] = useState(localStorage.getItem("adminIp") || "");
   const [autoMedalStatus, setAutoMedalStatus] = useState({ synced: 0, complete: 0 });
   const medalSyncQueueRef = useRef(Promise.resolve());
+  const liveExtraRef = useRef({});
   const { activeHint, clearHint } = useOnboarding();
 
   // Sidebar search/filter
@@ -155,14 +156,37 @@ function SecretaryPage() {
   };
   const publishCategoryLive = (category, extra = {}) => {
     if (!category || !matchData?.tournamentId) return;
-    publishLiveStatus(matchData, category, extra).then((result) => {
+    liveExtraRef.current = extra;
+    publishLiveStatus(adminIp, matchData, category, extra).then((result) => {
       if (!result.success) console.warn("Không thể đồng bộ trạng thái TV:", result.message);
     });
   };
   const handleSelectCategory = (category) => {
     setSelectedCategory(category);
+    liveExtraRef.current = {};
     publishCategoryLive(category);
   };
+
+  // Keep this secretary machine visible on the Admin TV dashboard and recover
+  // automatically when either machine or the LAN connection restarts.
+  useEffect(() => {
+    if (!adminIp || !selectedCategory || !matchData?.tournamentId) return undefined;
+    let active = true;
+    const heartbeat = () => {
+      publishLiveStatus(adminIp, matchData, selectedCategory, liveExtraRef.current)
+        .then((result) => {
+          if (active && !result.success) {
+            console.warn("Không thể duy trì đồng bộ trạng thái TV:", result.message);
+          }
+        });
+    };
+    heartbeat();
+    const intervalId = window.setInterval(heartbeat, 4000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [adminIp, matchData, selectedCategory]);
 
   // Khi đủ HCV, HCB và hai HCĐ, tự động gửi đúng một phiên bản kết quả
   // qua LAN. Nếu Thư ký sửa kết quả, fingerprint đổi và bản mới sẽ được gửi lại.

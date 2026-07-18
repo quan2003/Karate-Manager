@@ -180,9 +180,6 @@
             </button>
           </div>
           <div class="btn-row score-action-grid">
-            <button class="btn btn-aka-outline" onclick="redWins()">
-              Red Wins
-            </button>
             <button
               class="btn btn-aka-outline"
               onclick="removePoint('aka', 'ippon')"
@@ -219,8 +216,21 @@
             >
               -Ippon
             </button>
+          </div>
+
+          <div class="btn-row result-action-grid" aria-label="Xac dinh nguoi thang">
+            <button class="btn btn-aka-outline" onclick="redWins()">
+              Red Wins
+            </button>
+            <button class="btn btn-hantei" onclick="openHantei()">
+              HANTEI
+              <span>Quy&#7871;t &#273;&#7883;nh tr&#7885;ng t&agrave;i</span>
+            </button>
             <button class="btn btn-ao-outline" onclick="blueWins()">
               Blue Wins
+            </button>
+            <button class="btn hantei-undo-btn" id="undoHanteiBtn" type="button" onclick="undoHantei()" hidden>
+              Ho&agrave;n t&aacute;c HANTEI
             </button>
           </div>
 
@@ -536,6 +546,53 @@
           >
             <div style="color: #555; text-align: center; padding: 20px 0;">— Chưa có sự kiện —</div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hantei-modal" id="hanteiModal" role="dialog" aria-modal="true" aria-labelledby="hanteiTitle">
+      <div class="hantei-dialog">
+        <div class="hantei-dialog-header">
+          <div>
+            <h2 id="hanteiTitle">HANTEI &ndash; QUY&#7870;T &#272;&#7882;NH TR&#7884;NG T&Agrave;I</h2>
+            <p>Ch&#7885;n m&#7897;t ph&iacute;a cho t&#7915;ng tr&#7885;ng t&agrave;i. K&#7871;t qu&#7843; c&#7901; kh&ocirc;ng thay &#273;&#7893;i t&#7927; s&#7889; &#273;i&#7875;m.</p>
+          </div>
+          <button class="hantei-close" type="button" onclick="cancelHantei()" aria-label="Huy HANTEI">&times;</button>
+        </div>
+        <div class="hantei-competitors">
+          <section class="hantei-competitor hantei-aka">
+            <span class="hantei-side-label">AKA</span>
+            <strong id="hanteiAkaName">AKA</strong>
+            <small id="hanteiAkaUnit"></small>
+            <span class="hantei-current-score">&#272;i&#7875;m: <b id="hanteiAkaScore">0</b></span>
+          </section>
+          <div class="hantei-score-summary">
+            <span>T&#7926; S&#7888; &#272;I&#7874;M</span>
+            <strong><b id="hanteiScoreAka">0</b> &ndash; <b id="hanteiScoreAo">0</b></strong>
+          </div>
+          <section class="hantei-competitor hantei-ao">
+            <span class="hantei-side-label">AO</span>
+            <strong id="hanteiAoName">AO</strong>
+            <small id="hanteiAoUnit"></small>
+            <span class="hantei-current-score">&#272;i&#7875;m: <b id="hanteiAoScore">0</b></span>
+          </section>
+        </div>
+        <div class="hantei-toolbar">
+          <label for="hanteiJudgeCount">S&#7889; tr&#7885;ng t&agrave;i</label>
+          <select id="hanteiJudgeCount" onchange="setHanteiJudgeCount(this.value)">
+            <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option>
+          </select>
+          <span>M&#7895;i l&#7921;a ch&#7885;n &#273;&#432;&#7907;c &#273;&#7891;ng b&#7897; ngay v&#7899;i m&agrave;n h&igrave;nh kh&aacute;n gi&#7843;.</span>
+        </div>
+        <div class="hantei-vote-list" id="hanteiVoteList"></div>
+        <div class="hantei-totals" aria-live="polite">
+          <div class="hantei-total aka-total">AKA: <strong id="hanteiAkaFlags">0</strong> c&#7901;</div>
+          <div class="hantei-total ao-total">AO: <strong id="hanteiAoFlags">0</strong> c&#7901;</div>
+        </div>
+        <div class="hantei-dialog-actions">
+          <button class="btn hantei-cancel-btn" type="button" onclick="cancelHantei()">H&#7911;y HANTEI</button>
+          <button class="btn hantei-clear-btn" type="button" onclick="clearHanteiVotes()">X&oacute;a l&#7921;a ch&#7885;n c&#7901;</button>
+          <button class="btn hantei-confirm-btn" type="button" onclick="confirmHanteiResult()">X&aacute;c nh&#7853;n k&#7871;t qu&#7843; HANTEI</button>
         </div>
       </div>
     </div>

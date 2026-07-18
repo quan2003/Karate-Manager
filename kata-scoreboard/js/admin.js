@@ -1929,7 +1929,7 @@ function loadPendingMatch() {
   }
 
   // Load sponsor logos (ALWAYS update to reflect bracket settings, even if null/empty)
-  state.sponsorLogos = pendingMatchData.sponsorLogos || null;
+  state.sponsorLogos = pendingMatchData.sponsorLogos || { sponsors: [] };
 
   // ALWAYS reset match-specific state for a clean start
   state.swapPositions = false;

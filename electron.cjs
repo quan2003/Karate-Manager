@@ -14,6 +14,25 @@ app.commandLine.appendSwitch('lang', 'vi-VN');
 // Biến giữ window chính
 let mainWindow = null;
 let lanServer = null;
+const lanLiveStatuses = new Map();
+const tvDisplayWindows = new Map();
+const lanLiveStatusClients = new Set();
+
+function sendLanLiveStatusEvent(res, eventName, payload) {
+  res.write(`event: ${eventName}\n`);
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function broadcastLanLiveStatuses() {
+  const payload = Array.from(lanLiveStatuses.values());
+  for (const client of lanLiveStatusClients) {
+    try {
+      sendLanLiveStatusEvent(client, "live-status", payload);
+    } catch {
+      lanLiveStatusClients.delete(client);
+    }
+  }
+}
 
 // =============================================
 // Smart File Association - Nhận diện file khi khởi động
@@ -515,18 +534,57 @@ ipcMain.handle("lan:getServerStatus", () => {
     running: lanServer !== null,
     ip: getLocalIp(),
     port: 3000,
+    liveStatuses: Array.from(lanLiveStatuses.values()),
   };
 });
 
+ipcMain.handle("lan:openTvDisplay", async () => {
+  if (!lanServer) return { success: false, error: "Hãy bật máy chủ nhận điểm trước" };
+  const displayId = "all";
+
+  const existingWindow = tvDisplayWindows.get(displayId);
+  if (existingWindow && !existingWindow.isDestroyed()) {
+    existingWindow.show();
+    existingWindow.focus();
+    existingWindow.webContents.reloadIgnoringCache();
+    return { success: true, reused: true };
+  }
+
+  const { screen } = require("electron");
+  const displays = screen.getAllDisplays();
+  const externalDisplay = displays.find((display) => display.bounds.x !== 0 || display.bounds.y !== 0);
+  const bounds = externalDisplay?.bounds;
+  const tvWindow = new BrowserWindow({
+    width: bounds?.width || 1400,
+    height: bounds?.height || 900,
+    x: bounds?.x,
+    y: bounds?.y,
+    fullscreen: Boolean(externalDisplay),
+    autoHideMenuBar: true,
+    backgroundColor: "#0d192b",
+    title: "K-SPORT TV - Tất cả thảm",
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  tvDisplayWindows.set(displayId, tvWindow);
+  tvWindow.on("closed", () => tvDisplayWindows.delete(displayId));
+  await tvWindow.loadURL("http://127.0.0.1:3000/tv/all");
+  return { success: true };
+});
 ipcMain.handle("lan:startServer", (event) => {
   if (lanServer) return { success: true, message: "Máy chủ đang chạy" };
 
   try {
     lanServer = http.createServer((req, res) => {
-      // Set CORS headers
+      const requestUrl = new URL(req.url, "http://127.0.0.1:3000");
+      const pathname = requestUrl.pathname;
       res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      res.setHeader("Cache-Control", "no-store");
 
       if (req.method === "OPTIONS") {
         res.writeHead(204);
@@ -534,28 +592,91 @@ ipcMain.handle("lan:startServer", (event) => {
         return;
       }
 
-      if (req.method === "POST" && ["/api/match-result", "/api/category-medals"].includes(req.url)) {
+      if (req.method === "GET" && pathname === "/api/live-status") {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ success: true, data: Array.from(lanLiveStatuses.values()) }));
+        return;
+      }
+
+      if (req.method === "GET" && /^\/tv\/[A-Za-z0-9_-]+$/.test(pathname)) {
+        // The TV route is a single dashboard showing every active mat.
+        try {
+          const html = fs.readFileSync(path.join(__dirname, "public", "lan-tv.html"), "utf8");
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(html);
+        } catch (error) {
+          res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+          res.end(`Không thể mở màn hình TV: ${error.message}`);
+        }
+        return;
+      }
+
+      if (req.method === "GET" && pathname === "/api/live-status/events") {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Connection": "keep-alive",
+          "X-Accel-Buffering": "no",
+        });
+        res.write("retry: 1500\n\n");
+        lanLiveStatusClients.add(res);
+        sendLanLiveStatusEvent(res, "live-status", Array.from(lanLiveStatuses.values()));
+        const heartbeatId = setInterval(() => res.write(": heartbeat\n\n"), 10000);
+        req.on("close", () => {
+          clearInterval(heartbeatId);
+          lanLiveStatusClients.delete(res);
+        });
+        return;
+      }
+
+      const jsonPostRoutes = ["/api/match-result", "/api/category-medals", "/api/live-status"];
+      if (req.method === "POST" && jsonPostRoutes.includes(pathname)) {
         let body = "";
-        req.on("data", (chunk) => { body += chunk.toString(); });
+        req.on("data", (chunk) => {
+          body += chunk.toString();
+          if (body.length > 1024 * 1024) req.destroy();
+        });
         req.on("end", () => {
           try {
             const data = JSON.parse(body);
-            if (mainWindow) {
-              mainWindow.webContents.send("lan:receive-result", data);
+            if (pathname === "/api/live-status") {
+              const matId = String(data.matId || "1");
+              if (!/^[A-Za-z0-9_-]{1,32}$/.test(matId) || !data.current?.name) {
+                throw new Error("Thiếu mã thảm hoặc nội dung đang thi đấu");
+              }
+              const liveRow = {
+                tournament_id: String(data.tournamentId || ""),
+                tournament_name: String(data.tournamentName || ""),
+                mat_id: matId,
+                data: {
+                  current: data.current,
+                  next: data.next || null,
+                  matchCode: data.matchCode || null,
+                  roundName: data.roundName || null,
+                },
+                updated_at: new Date().toISOString(),
+              };
+              lanLiveStatuses.set(matId, liveRow);
+              broadcastLanLiveStatuses();
+              if (mainWindow) mainWindow.webContents.send("lan:live-status", liveRow);
+              res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+              res.end(JSON.stringify({ success: true, data: liveRow }));
+              return;
             }
-            res.writeHead(200, { "Content-Type": "application/json" });
+
+            if (mainWindow) mainWindow.webContents.send("lan:receive-result", data);
+            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
             res.end(JSON.stringify({ success: true }));
-          } catch (err) {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ success: false, error: "Dữ liệu không hợp lệ" }));
+          } catch (error) {
+            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: false, error: error.message || "Dữ liệu không hợp lệ" }));
           }
         });
-      } else {
-        res.writeHead(404);
-        res.end();
+        return;
       }
-    });
 
+      res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ success: false, error: "Không tìm thấy đường dẫn" }));
+    });
     lanServer.listen(3000, "0.0.0.0", () => {
       console.log("LAN Score Server running on port 3000");
     });
@@ -573,6 +694,13 @@ ipcMain.handle("lan:startServer", (event) => {
 
 ipcMain.handle("lan:stopServer", () => {
   if (lanServer) {
+    for (const window of tvDisplayWindows.values()) {
+      if (!window.isDestroyed()) window.close();
+    }
+    tvDisplayWindows.clear();
+    for (const client of lanLiveStatusClients) client.end();
+    lanLiveStatusClients.clear();
+    lanLiveStatuses.clear();
     lanServer.close();
     lanServer = null;
     return { success: true };

@@ -9,6 +9,7 @@ import Modal from "../components/common/Modal";
 import { useToast } from "../components/common/Toast";
 import * as XLSX from "xlsx";
 import { updateMatchResult as applyMatchResult } from "../utils/drawEngine";
+import { getTeamSizeForCategory } from "../utils/teamDraw";
 import { getAppBaseUrl, getTournamentLogos, getTournamentSignatures } from "../services/pdfService";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
@@ -421,12 +422,10 @@ export default function StatisticsPage() {
 
   const getEstimatedMedals = () => {
     let gold = 0, silver = 0, bronze = 0;
-    const teamKataSize = tournament.teamMedalsSettings?.kata || 3;
-    const teamKumiteSize = tournament.teamMedalsSettings?.kumite || 3;
     const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
 
     tournament.categories.forEach((cat) => {
-      const { isTeamCategory, type } = getCategoryMedalMeta(cat);
+      const { isTeamCategory } = getCategoryMedalMeta(cat);
       
       // Calculate how many sets of medals are awarded (accounts for Sigma splits)
       let setsCount = 1;
@@ -443,7 +442,7 @@ export default function StatisticsPage() {
 
       if (isTeamCategory) {
         // Team: medals per participant depending on type
-        const teamSize = type === 'kata' ? teamKataSize : teamKumiteSize;
+        const teamSize = getTeamSizeForCategory(cat, tournament);
         gold += teamSize * setsCount;
         silver += teamSize * setsCount;
         bronze += (teamSize * 2) * setsCount;
@@ -3550,7 +3549,7 @@ export default function StatisticsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
                 <h3 style={{ margin: 0 }}>🏅 Dự tính huy chương</h3>
                 {(teamCategoryAvailability.kata || teamCategoryAvailability.kumite) && (
-                  <div style={{ display: 'flex', gap: '15px', fontSize: '13px', color: '#475569', background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', fontSize: '13px', color: '#475569', background: '#f1f5f9', padding: '6px 12px', borderRadius: '8px' }}>
                     {teamCategoryAvailability.kata && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                         Số VĐV Kata ĐĐ/đội:
@@ -3575,12 +3574,13 @@ export default function StatisticsPage() {
                       </label>
                     )}
                     {teamCategoryAvailability.kumite && (
+                    <>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        Số VĐV Kumite ĐĐ/đội:
+                        Số VĐV Kumite Nam/đội:
                         <input
                           type="number"
                           min="1"
-                          value={tournament.teamMedalsSettings?.kumite || 3}
+                          value={tournament.teamMedalsSettings?.kumiteMale ?? tournament.teamMedalsSettings?.kumite ?? 3}
                           onChange={(e) => {
                             dispatch({
                               type: ACTIONS.UPDATE_TOURNAMENT,
@@ -3588,7 +3588,7 @@ export default function StatisticsPage() {
                                 id: tournament.id,
                                 teamMedalsSettings: {
                                   ...(tournament.teamMedalsSettings || {}),
-                                  kumite: parseInt(e.target.value) || 3
+                                  kumiteMale: parseInt(e.target.value) || 3
                                 }
                               }
                             });
@@ -3596,7 +3596,29 @@ export default function StatisticsPage() {
                           style={{ width: '45px', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center' }}
                         />
                       </label>
-                    )}
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        Số VĐV Kumite Nữ/đội:
+                        <input
+                          type="number"
+                          min="1"
+                          value={tournament.teamMedalsSettings?.kumiteFemale ?? tournament.teamMedalsSettings?.kumite ?? 3}
+                          onChange={(e) => {
+                            dispatch({
+                              type: ACTIONS.UPDATE_TOURNAMENT,
+                              payload: {
+                                id: tournament.id,
+                                teamMedalsSettings: {
+                                  ...(tournament.teamMedalsSettings || {}),
+                                  kumiteFemale: parseInt(e.target.value) || 3
+                                }
+                              }
+                            });
+                          }}
+                          style={{ width: '45px', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center' }}
+                        />
+                      </label>
+                    </>
+                  )}
                   </div>
                 )}
               </div>

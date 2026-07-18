@@ -15,52 +15,27 @@ export function getTeamSizeForCategory(category = {}, tournament = {}) {
   const name = normalizeText(category.name);
   const type = normalizeText(category.type);
   const isKata = type === "kata" || name.includes("kata");
+  const gender = normalizeText(category.gender);
+  const isFemale = gender === "female" || /\bnu\b/.test(name);
+  const settings = tournament.teamMedalsSettings || {};
   const configuredSize = isKata
-    ? tournament.teamMedalsSettings?.kata
-    : tournament.teamMedalsSettings?.kumite;
+    ? settings.kata
+    : isFemale
+      ? settings.kumiteFemale ?? settings.kumite
+      : settings.kumiteMale ?? settings.kumite;
 
   const fallbackSize = 3;
   const teamSize = Number(configuredSize) || fallbackSize;
   return Math.max(1, Math.floor(teamSize));
 }
 
-function getSmartTeamSize(athletes, category, tournament) {
-  const configuredSize = getTeamSizeForCategory(category, tournament);
-  const clubSizes = new Map();
-
-  athletes.forEach((athlete) => {
-    const clubKey = (athlete.club || "Khong CLB").trim();
-    clubSizes.set(clubKey, (clubSizes.get(clubKey) || 0) + 1);
-  });
-
-  const sizeFrequency = new Map();
-  Array.from(clubSizes.values())
-    .filter((size) => size >= 2 && size <= configuredSize)
-    .forEach((size) => {
-      sizeFrequency.set(size, (sizeFrequency.get(size) || 0) + 1);
-    });
-
-  let inferredSize = null;
-  sizeFrequency.forEach((frequency, size) => {
-    if (
-      frequency >= 2 &&
-      (!inferredSize ||
-        frequency > sizeFrequency.get(inferredSize) ||
-        (frequency === sizeFrequency.get(inferredSize) && size > inferredSize))
-    ) {
-      inferredSize = size;
-    }
-  });
-
-  return inferredSize || configuredSize;
-}
-
-function splitMembersIntoTeams(members, targetSize) {
-  if (members.length <= targetSize) return [members];
-
+function splitMembersIntoFullTeams(members, targetSize) {
   const teams = [];
-  for (let index = 0; index < members.length; index += targetSize) {
-    teams.push(members.slice(index, index + targetSize));
+  const fullTeamCount = Math.floor(members.length / targetSize);
+
+  for (let index = 0; index < fullTeamCount; index += 1) {
+    const start = index * targetSize;
+    teams.push(members.slice(start, start + targetSize));
   }
 
   return teams;
@@ -78,7 +53,7 @@ export function isTeamCategory(category = {}) {
 }
 
 export function getTeamsFromAthletes(athletes = [], category = {}, tournament = {}) {
-  const targetSize = getSmartTeamSize(athletes, category, tournament);
+  const targetSize = getTeamSizeForCategory(category, tournament);
   const clubMap = new Map();
 
   athletes.forEach((athlete) => {
@@ -89,14 +64,14 @@ export function getTeamsFromAthletes(athletes = [], category = {}, tournament = 
 
   const teams = [];
   clubMap.forEach((members, clubKey) => {
-    const memberGroups = splitMembersIntoTeams(members, targetSize);
+    const memberGroups = splitMembersIntoFullTeams(members, targetSize);
     memberGroups.forEach((teamMembers, index) => {
       const teamNumber = index + 1;
       const idMembers = teamMembers.map((member) => member.id || member.name).join("_");
 
       teams.push({
         id: `team_${sanitizeIdPart(clubKey)}_${teamNumber}_${sanitizeIdPart(idMembers)}`,
-        name: clubKey,
+        name: memberGroups.length > 1 ? `${clubKey} - Đội ${teamNumber}` : clubKey,
         club: clubKey,
         country: teamMembers[0]?.country || "VN",
         gender: teamMembers[0]?.gender,
@@ -153,11 +128,12 @@ export function syncTeamBracketMembers(bracket, athletes = [], category = {}, to
     const clubTeams = teamsByClub.get(clubKey) || [];
     const replacement =
       clubTeams.find((team) => team.teamNumber === participant.teamNumber) ||
-      (clubTeams.length === 1 ? clubTeams[0] : null);
+      (!participant.teamNumber && clubTeams.length > 0 ? clubTeams[0] : null);
 
     if (!replacement) {
-      syncedParticipants.set(participantKey, participant);
-      return participant;
+      changed = true;
+      syncedParticipants.set(participantKey, null);
+      return null;
     }
 
     if (membersMatch(participant.members || [], replacement.members || [])) {
