@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRole, ROLES } from "../context/RoleContext";
 import {
@@ -16,7 +16,13 @@ import {
   disqualifyAthlete,
 } from "../utils/drawEngine";
 import { sendMatchResult, sendCategoryMedals, checkAdminAvailability } from "../services/lanService";
-import { publishLiveStatus } from "../services/liveEventService";
+import {
+  publishLiveStatus,
+  getCategoryLiveQueue,
+  getConfiguredMats,
+  getCategoryMatId,
+  isCategoryCompleted,
+} from "../services/liveEventService";
 import Modal from "../components/common/Modal";
 import Bracket from "../components/Bracket/Bracket";
 import appIcon from "../assets/icon.png";
@@ -40,6 +46,7 @@ function SecretaryPage() {
     resetRole,
   } = useRole();
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [activeMatchId, setActiveMatchId] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState("");
@@ -54,6 +61,36 @@ function SecretaryPage() {
   // Sidebar search/filter
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [sidebarFilter, setSidebarFilter] = useState("all"); // all | kata | kumite
+  const [selectedMat, setSelectedMat] = useState(
+    () => localStorage.getItem("secretary_selected_mat") || "all"
+  );
+
+  const matOptions = useMemo(() => getConfiguredMats(matchData), [matchData]);
+  const activeSelectedMat = selectedMat === "all" || matOptions.some((mat) => mat.id === selectedMat)
+    ? selectedMat
+    : "all";
+  const filteredCategories = useMemo(() => {
+    if (!matchData?.categories) return [];
+    const search = sidebarSearch.toLowerCase().trim();
+    return matchData.categories
+      .filter((category) => {
+        const matchesMat = activeSelectedMat === "all" ||
+          getCategoryMatId(matchData, category) === activeSelectedMat;
+        const matchesSearch = !search || category.name.toLowerCase().includes(search);
+        const matchesType = sidebarFilter === "all" || category.type === sidebarFilter;
+        return matchesMat && matchesSearch && matchesType;
+      })
+      .sort((left, right) => {
+        const completionOrder = Number(isCategoryCompleted(left, matchResults)) -
+          Number(isCategoryCompleted(right, matchResults));
+        if (completionOrder !== 0) return completionOrder;
+        const a = matchData.schedule?.[left.id] || {};
+        const b = matchData.schedule?.[right.id] || {};
+        return String(a.date || "").localeCompare(String(b.date || "")) ||
+          String(a.time || "").localeCompare(String(b.time || "")) ||
+          Number(a.order || 0) - Number(b.order || 0);
+      });
+  }, [activeSelectedMat, matchData, matchResults, sidebarFilter, sidebarSearch]);
 
   // Custom dialog (replaces window.prompt / window.confirm for Electron compatibility)
   const [dialog, setDialog] = useState(null);
@@ -75,14 +112,14 @@ function SecretaryPage() {
   }, [role, navigate]);
 
   // Helper to find match by ID (for winner determination)
-  const getMatchById = (matchId) => {
+  const getMatchById = useCallback((matchId) => {
     if (!matchData?.categories) return null;
     for (const cat of matchData.categories) {
       const match = cat.matches?.find((m) => m.id === matchId);
       if (match) return match;
     }
     return null;
-  };
+  }, [matchData]);
 
   // Listen for match results from scoreboard
   useEffect(() => {
@@ -135,7 +172,13 @@ function SecretaryPage() {
     return () => {
       cleanup();
     };
-  }, [updateMatchResult]);
+  }, [
+    getMatchById,
+    matchData?.tournamentId,
+    matchData?.tournamentName,
+    selectedCategory?.name,
+    updateMatchResult,
+  ]);
 
   // Open .kmatch file
   const handleOpenFile = async () => {
@@ -145,6 +188,8 @@ function SecretaryPage() {
     try {
       const result = await openKmatchFile();
       if (result.success) {
+        setSelectedCategory(null);
+        setActiveMatchId(null);
         loadMatchData(result.data);
       } else {
         setError(result.error || "Không thể đọc file");
@@ -157,14 +202,32 @@ function SecretaryPage() {
   const publishCategoryLive = (category, extra = {}) => {
     if (!category || !matchData?.tournamentId) return;
     liveExtraRef.current = extra;
-    publishLiveStatus(adminIp, matchData, category, extra).then((result) => {
+    publishLiveStatus(adminIp, matchData, category, {
+      selectedMatId: activeSelectedMat,
+      matchResults,
+      ...extra,
+    }).then((result) => {
       if (!result.success) console.warn("Không thể đồng bộ trạng thái TV:", result.message);
     });
   };
   const handleSelectCategory = (category) => {
     setSelectedCategory(category);
+    setActiveMatchId(null);
     liveExtraRef.current = {};
     publishCategoryLive(category);
+  };
+  const handleMatChange = (matId) => {
+    setSelectedMat(matId);
+    localStorage.setItem("secretary_selected_mat", matId);
+    const categoriesOnMat = (matchData?.categories || []).filter(
+      (category) => matId === "all" || getCategoryMatId(matchData, category) === matId
+    );
+    const nextCategory = categoriesOnMat.find(
+      (category) => !isCategoryCompleted(category, matchResults)
+    ) || categoriesOnMat[0] || null;
+    setSelectedCategory(nextCategory);
+    setActiveMatchId(null);
+    liveExtraRef.current = {};
   };
 
   // Keep this secretary machine visible on the Admin TV dashboard and recover
@@ -173,7 +236,11 @@ function SecretaryPage() {
     if (!adminIp || !selectedCategory || !matchData?.tournamentId) return undefined;
     let active = true;
     const heartbeat = () => {
-      publishLiveStatus(adminIp, matchData, selectedCategory, liveExtraRef.current)
+      publishLiveStatus(adminIp, matchData, selectedCategory, {
+        selectedMatId: activeSelectedMat,
+        matchResults,
+        ...liveExtraRef.current,
+      })
         .then((result) => {
           if (active && !result.success) {
             console.warn("Không thể duy trì đồng bộ trạng thái TV:", result.message);
@@ -186,7 +253,7 @@ function SecretaryPage() {
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [adminIp, matchData, selectedCategory]);
+  }, [activeSelectedMat, adminIp, matchData, matchResults, selectedCategory]);
 
   // Khi đủ HCV, HCB và hai HCĐ, tự động gửi đúng một phiên bản kết quả
   // qua LAN. Nếu Thư ký sửa kết quả, fingerprint đổi và bản mới sẽ được gửi lại.
@@ -275,6 +342,14 @@ function SecretaryPage() {
 
     return clonedBracket;
   }, [selectedCategory, matchResults]);
+  const matQueuePreview = useMemo(() => {
+    if (!matchData || !selectedCategory) return null;
+    return getCategoryLiveQueue(matchData, selectedCategory, {
+      selectedMatId: activeSelectedMat,
+      currentMatchId: activeMatchId,
+      matchResults,
+    });
+  }, [activeMatchId, activeSelectedMat, matchData, matchResults, selectedCategory]);
   // Handle right-click context menu actions from Bracket component
   const handleContextAction = (action, match, athleteSlot) => {
     if (!selectedCategory?.bracket) return;
@@ -395,6 +470,7 @@ function SecretaryPage() {
       `Round ${match.round}`;
 
     try {
+      setActiveMatchId(match.id);
       openScoreboard(
         match,
         selectedCategory.type || "kumite",
@@ -405,6 +481,8 @@ function SecretaryPage() {
         matchData.sponsorLogos || null
       );
       publishCategoryLive(selectedCategory, {
+        currentMatch: match,
+        currentMatchId: match.id,
         matchCode: match.matchCode || null,
         roundName,
       });
@@ -696,6 +774,23 @@ function SecretaryPage() {
               <div className="categories-sidebar">
                 <h3>Hạng mục thi đấu</h3>
 
+                <label className="mat-filter-label" htmlFor="secretary-mat-filter">
+                  Thảm thi đấu
+                </label>
+                <select
+                  id="secretary-mat-filter"
+                  className="mat-filter-select"
+                  value={activeSelectedMat}
+                  onChange={(event) => handleMatChange(event.target.value)}
+                >
+                  <option value="all">Tất cả thảm</option>
+                  {matOptions.map((mat) => (
+                    <option key={mat.id} value={mat.id}>
+                      {mat.name}
+                    </option>
+                  ))}
+                </select>
+
                 {/* Search */}
                 <div className="sidebar-search-wrap">
                   <span className="sidebar-search-icon">🔍</span>
@@ -736,40 +831,32 @@ function SecretaryPage() {
                 </div>
 
                 <div className="categories-list">
-                  {(() => {
-                    const cats =
-                      matchData.categories?.filter((cat) => {
-                        const matchesSearch =
-                          sidebarSearch.trim() === "" ||
-                          cat.name
-                            .toLowerCase()
-                            .includes(sidebarSearch.toLowerCase().trim());
-                        const matchesFilter =
-                          sidebarFilter === "all" || cat.type === sidebarFilter;
-                        return matchesSearch && matchesFilter;
-                      }) || [];
-                    if (cats.length === 0) {
+                  {filteredCategories.length === 0 ? (
+                    <div className="sidebar-no-result">
+                      Không có hạng mục phù hợp ở thảm này
+                    </div>
+                  ) : (
+                    filteredCategories.map((cat) => {
+                      const completed = isCategoryCompleted(cat, matchResults);
                       return (
-                        <div className="sidebar-no-result">
-                          Không tìm thấy hạng mục
-                        </div>
-                      );
-                    }
-                    return cats.map((cat) => (
                       <button
                         key={cat.id}
                         className={`category-btn ${
                           selectedCategory?.id === cat.id ? "active" : ""
-                        }`}
+                        } ${completed ? "completed" : ""}`}
                         onClick={() => handleSelectCategory(cat)}
                       >
-                        <span className="category-btn-name">{cat.name}</span>
+                        <span className="category-btn-row">
+                          <span className="category-btn-name">{cat.name}</span>
+                          {completed && <span className="completed-badge">Đã xong</span>}
+                        </span>
                         <span className="match-count">
-                          {cat.matches?.length || 0} trận
+                          {cat.matches?.length || 0} trận • Thảm {getCategoryMatId(matchData, cat)}
                         </span>
                       </button>
-                    ));
-                  })()}
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
@@ -777,9 +864,14 @@ function SecretaryPage() {
               <div className="bracket-view-area">
                 {selectedCategory ? (
                   <>
-                    <div className="bracket-header-info">
+                    <div className={`bracket-header-info ${
+                      isCategoryCompleted(selectedCategory, matchResults) ? "completed" : ""
+                    }`}>
                       <h2>{selectedCategory.name}</h2>
                       <div className="bracket-stats">
+                        {isCategoryCompleted(selectedCategory, matchResults) && (
+                          <span className="completed-badge">Đã hoàn thành</span>
+                        )}
                         <span>
                           {selectedCategory.bracket?.matches?.filter(
                             (m) => !m.isBye
@@ -788,6 +880,34 @@ function SecretaryPage() {
                         </span>
                       </div>
                     </div>
+
+                    {matQueuePreview && (
+                      <div className="mat-queue-preview">
+                        <div className="queue-preview-card current">
+                          <span className="queue-preview-label">
+                            {matQueuePreview.current?.status === "completed"
+                              ? "Trạng thái"
+                              : "Đang thi đấu"} • Thảm {matQueuePreview.matId}
+                          </span>
+                          <strong>{matQueuePreview.current?.name || "Chưa có trận đang thi đấu"}</strong>
+                          <span>
+                            {matQueuePreview.current?.participantText || "Chưa xác định VĐV"}
+                          </span>
+                        </div>
+                        <div className={`queue-preview-card next ${
+                          matQueuePreview.next ? "" : "empty"
+                        }`}>
+                          <span className="queue-preview-label">Trận tiếp theo</span>
+                          <strong>
+                            {matQueuePreview.next?.name || "Không còn trận tiếp theo"}
+                          </strong>
+                          <span>
+                            {matQueuePreview.next?.participantText ||
+                              "Đã hoàn tất lịch thi đấu của thảm này"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Bracket + Medal Table */}
                     <div className="secretary-bracket-medal-wrapper">
@@ -800,6 +920,7 @@ function SecretaryPage() {
                           onMatchClick={handleSelectMatch}
                           onContextAction={handleContextAction}
                           dragEnabled={false}
+                          dimCompleted
                         />
                       </div>
 

@@ -598,6 +598,18 @@ ipcMain.handle("lan:startServer", (event) => {
         return;
       }
 
+      if (req.method === "GET" && pathname === "/assets/ksport-logo.png") {
+        try {
+          const logo = fs.readFileSync(path.join(__dirname, "public", "icon.png"));
+          res.writeHead(200, { "Content-Type": "image/png", "Content-Length": logo.length });
+          res.end(logo);
+        } catch (error) {
+          res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+          res.end(`Không thể tải logo K-SPORT: ${error.message}`);
+        }
+        return;
+      }
+
       if (req.method === "GET" && /^\/tv\/[A-Za-z0-9_-]+$/.test(pathname)) {
         // The TV route is a single dashboard showing every active mat.
         try {

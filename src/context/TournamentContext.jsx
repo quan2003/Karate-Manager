@@ -254,6 +254,7 @@ const ACTIONS = {
   ADD_ATHLETE: "ADD_ATHLETE",
   UPDATE_ATHLETE: "UPDATE_ATHLETE",
   DELETE_ATHLETE: "DELETE_ATHLETE",
+  REMOVE_WITHDRAWN_ATHLETES: "REMOVE_WITHDRAWN_ATHLETES",
   SET_BRACKET: "SET_BRACKET",
   UPDATE_MATCH: "UPDATE_MATCH",
   IMPORT_ATHLETES: "IMPORT_ATHLETES",
@@ -574,6 +575,55 @@ function tournamentReducer(state, action) {
         );
       }
       break;
+
+    case ACTIONS.REMOVE_WITHDRAWN_ATHLETES: {
+      const { tournamentId, athleteIds } = action.payload;
+      const removedIds = new Set(athleteIds || []);
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) => {
+          if (t.id !== tournamentId) return t;
+
+          const categories = t.categories.map((c) => {
+            const removedAthleteIds = c.athletes
+              .filter((a) => removedIds.has(a.id))
+              .map((a) => a.id);
+            if (removedAthleteIds.length === 0) return c;
+
+            const athletes = c.athletes.filter(
+              (a) => !removedIds.has(a.id)
+            );
+            const bracket = removedAthleteIds.reduce(
+              (currentBracket, athleteId) =>
+                removeAthleteFromBracket(currentBracket, athleteId),
+              c.bracket
+            );
+
+            return {
+              ...c,
+              athletes,
+              bracket:
+                athletes.length === 0 && !bracketHasParticipants(bracket)
+                  ? null
+                  : bracket,
+            };
+          });
+
+          return { ...t, categories };
+        }),
+      };
+      if (state.currentTournament?.id === tournamentId) {
+        newState.currentTournament = newState.tournaments.find(
+          (t) => t.id === tournamentId
+        );
+        if (state.currentCategory) {
+          newState.currentCategory = newState.currentTournament?.categories.find(
+            (c) => c.id === state.currentCategory.id
+          );
+        }
+      }
+      break;
+    }
 
     case ACTIONS.MOVE_ATHLETE: {
       const { athleteId, newCategoryId } = action.payload;
@@ -947,6 +997,7 @@ async function saveToStorage(state, actionType) {
         ACTIONS.IMPORT_CATEGORIES,
         ACTIONS.UPDATE_MATCH,
         ACTIONS.SYNC_MATCH_RESULT,
+        ACTIONS.REMOVE_WITHDRAWN_ATHLETES,
       ];
       
       if (importantActions.includes(actionType)) {

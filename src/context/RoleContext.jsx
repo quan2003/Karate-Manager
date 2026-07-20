@@ -10,6 +10,7 @@ import {
   dbGetSessionData,
   dbSetSessionData,
 } from "../services/dbService";
+import { isTeamCategory } from "../utils/teamDraw";
 
 const RoleContext = createContext(null);
 
@@ -183,8 +184,12 @@ export function RoleProvider({ children }) {
         };
       }
 
+      const event = tournamentData?.events?.find((item) => item.id === athlete.eventId) || {
+        name: athlete.eventName,
+      };
       const newAthlete = {
         ...athlete,
+        isTeam: isTeamCategory(event) ? Boolean(athlete.isTeam) : false,
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
       };
@@ -213,11 +218,19 @@ export function RoleProvider({ children }) {
       }
 
       setCoachAthletes((prev) => {
-        const updated = prev.map((a) =>
-          a.id === id
-            ? { ...a, ...updates, updatedAt: new Date().toISOString() }
-            : a
-        );
+        const updated = prev.map((a) => {
+          if (a.id !== id) return a;
+          const eventId = updates.eventId || a.eventId;
+          const event = tournamentData?.events?.find((item) => item.id === eventId) || {
+            name: updates.eventName || a.eventName,
+          };
+          return {
+            ...a,
+            ...updates,
+            isTeam: isTeamCategory(event) ? Boolean(updates.isTeam ?? a.isTeam) : false,
+            updatedAt: new Date().toISOString(),
+          };
+        });
         dbSetSessionData(tournamentData.tournamentId, 'coach_athletes', JSON.stringify(updated));
         return updated;
       });
@@ -335,7 +348,14 @@ export function RoleProvider({ children }) {
       teamLeaderName,
       additionalCoaches,
       exportTime: new Date().toISOString(),
-      athletes: coachAthletes,
+      athletes: coachAthletes.map((athlete) => {
+        const event = tournamentData?.events?.find((item) => item.id === athlete.eventId) || {
+          name: athlete.eventName,
+        };
+        return isTeamCategory(event)
+          ? athlete
+          : { ...athlete, isTeam: false };
+      }),
       // Khi HLV xuất file gửi Admin - app phải mở giao diện Admin
       targetRole: 'admin',
     };

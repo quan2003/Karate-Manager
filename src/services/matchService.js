@@ -19,6 +19,22 @@ export function createKmatchData(tournament, categories, settings = {}, targetRo
     globalThis.crypto?.randomUUID?.() ||
     `kmatch_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
+  const schedule = tournament.schedule || {};
+  const scheduledMatNumbers = Object.values(schedule)
+    .map((item) => Number(item?.mat))
+    .filter((mat) => Number.isInteger(mat) && mat > 0);
+  const configuredMatCount = Number(tournament.scheduleConfig?.matCount);
+  const matCount = Math.max(
+    1,
+    Number.isInteger(configuredMatCount) ? configuredMatCount : 0,
+    ...scheduledMatNumbers
+  );
+  const mats = Array.from({ length: matCount }, (_, index) => ({
+    id: String(index + 1),
+    number: index + 1,
+    name: `Thảm ${index + 1}`,
+  }));
+
   const data = {
     version: KMATCH_VERSION,
     exportId,
@@ -31,7 +47,9 @@ export function createKmatchData(tournament, categories, settings = {}, targetRo
     // từng hạng mục khi mở bảng điểm. Trước đây trường này bị bỏ sót,
     // khiến SecretaryPage không tìm thấy scheduleInfo và scoreboard
     // luôn rơi về giá trị mặc định "Thảm 1".
-    schedule: tournament.schedule || {},
+    schedule,
+    scheduleConfig: tournament.scheduleConfig || null,
+    mats,
     sponsorLogos: tournament.sponsorLogos || null,
     // Thời gian cho phép bấm điểm
     startTime: settings.startTime || null,

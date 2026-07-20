@@ -10,6 +10,7 @@ import ConfirmDialog from "../components/common/ConfirmDialog";
 import DateInput from "../components/common/DateInput";
 import SearchableSelect from "../components/common/SearchableSelect";
 import { useToast } from "../components/common/Toast";
+import { isTeamCategory } from "../utils/teamDraw";
 import appIcon from "../assets/icon.png";
 import "./CoachPage.css";
 
@@ -404,6 +405,9 @@ function CoachPage() {
     isTeam: false,
     seed: "",
   });
+  const getTournamentEvent = (eventId) =>
+    tournamentData?.events?.find((event) => event.id === eventId) || null;
+  const selectedEventIsTeam = isTeamCategory(getTournamentEvent(formData.eventId));
   const [lastSubmitted, setLastSubmitted] = useState(null);
   const [formErrors, setFormErrors] = useState([]);
   const [ageWarning, setAgeWarning] = useState("");
@@ -526,7 +530,9 @@ function CoachPage() {
       gender: athlete.gender || "male",
       eventId: athlete.eventId,
       weight: athlete.weight || "",
-      isTeam: athlete.isTeam || false,
+      isTeam: isTeamCategory(getTournamentEvent(athlete.eventId))
+        ? athlete.isTeam || false
+        : false,
       seed: athlete.seed || "",
     });
     setEditingAthlete(athlete);
@@ -837,7 +843,7 @@ function CoachPage() {
       eventId: formData.eventId,
       eventName: event?.name || "",
       weight: formData.weight ? parseFloat(formData.weight) : undefined,
-      isTeam: formData.isTeam || false,
+      isTeam: selectedEventIsTeam ? formData.isTeam || false : false,
       seed: formData.seed ? parseInt(formData.seed) : null,
     };
 
@@ -1417,7 +1423,12 @@ function CoachPage() {
                       }))}
                       value={formData.eventId}
                       onChange={(val) => {
-                        setFormData({ ...formData, eventId: val });
+                        const isTeamEvent = isTeamCategory(getTournamentEvent(val));
+                        setFormData({
+                          ...formData,
+                          eventId: val,
+                          isTeam: isTeamEvent ? formData.isTeam : false,
+                        });
                         checkAgeWarning(formData.birthDate, val);
                       }}
                       placeholder="-- Chọn nội dung --"
@@ -1439,10 +1450,11 @@ function CoachPage() {
                     >
                       <input
                         type="checkbox"
-                        checked={formData.isTeam}
+                        checked={selectedEventIsTeam ? formData.isTeam : false}
                         onChange={(e) =>
                           setFormData({ ...formData, isTeam: e.target.checked })
                         }
+                        disabled={!selectedEventIsTeam}
                       />
                       Thi đấu đồng đội
                     </label>
@@ -1514,7 +1526,7 @@ function CoachPage() {
                       <td>{athlete.eventName}</td>
                       <td>{athlete.weight || "-"}</td>
                       <td>{athlete.seed || "-"}</td>
-                      <td>{athlete.isTeam ? "✅" : "-"}</td>
+                      <td>{isTeamCategory(getTournamentEvent(athlete.eventId)) && athlete.isTeam ? "✅" : "-"}</td>
                       {canEdit && (
                         <td className="actions-cell">
                           <button

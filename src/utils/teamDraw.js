@@ -2,7 +2,50 @@ function normalizeText(value) {
   return String(value || "")
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const TEAM_CLASSIFICATION_FIELDS = [
+  "isTeamEvent",
+  "isTeam",
+  "teamEvent",
+  "competitionType",
+  "categoryType",
+  "eventType",
+  "participationType",
+  "eventFormat",
+];
+
+function classifyCompetitionValue(value, booleanField = false) {
+  if (typeof value === "boolean") return value ? "team" : "individual";
+  if (booleanField && (value === 1 || value === 0)) {
+    return value === 1 ? "team" : "individual";
+  }
+
+  const normalized = normalizeText(value);
+  if (!normalized) return null;
+  if (/\b(ca nhan|individual|single|solo)\b/.test(normalized)) return "individual";
+  if (/\b(dong doi|doi|team|teams|group)\b/.test(normalized)) return "team";
+  if (booleanField && ["true", "yes", "co"].includes(normalized)) return "team";
+  if (booleanField && ["false", "no", "khong"].includes(normalized)) return "individual";
+  return null;
+}
+
+export function getCategoryCompetitionType(category = {}) {
+  for (const field of TEAM_CLASSIFICATION_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(category, field)) continue;
+    const classified = classifyCompetitionValue(
+      category[field],
+      field === "isTeamEvent" || field === "isTeam" || field === "teamEvent"
+    );
+    if (classified) return classified;
+  }
+
+  // Legacy data may not have a classification field. Only then use the name.
+  return classifyCompetitionValue(category.name) || "individual";
 }
 
 function sanitizeIdPart(value) {
@@ -42,14 +85,7 @@ function splitMembersIntoFullTeams(members, targetSize) {
 }
 
 export function isTeamCategory(category = {}) {
-  const name = normalizeText(category.name);
-  return (
-    category.isTeam ||
-    name.includes("dong doi") ||
-    name.includes("hon hop") ||
-    name.includes("team") ||
-    (category.athletes || []).some((athlete) => athlete.isTeam)
-  );
+  return getCategoryCompetitionType(category) === "team";
 }
 
 export function getTeamsFromAthletes(athletes = [], category = {}, tournament = {}) {

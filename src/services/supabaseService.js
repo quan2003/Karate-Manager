@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config/supabaseConfig';
+import { isTeamCategory } from '../utils/teamDraw';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -117,6 +118,92 @@ export async function deleteSubmissions(tournamentId) {
 }
 
 /**
+ * Remove selected athletes from one club submission while preserving the club
+ * registration and every athlete that was not selected.
+ */
+export async function removeAthletesFromClubSubmission(tournamentId, clubName, athleteRefs) {
+  if (SUPABASE_URL === "YOUR_SUPABASE_URL" || SUPABASE_ANON_KEY === "YOUR_SUPABASE_ANON_KEY") {
+    return {
+      success: false,
+      message: "Chưa cấu hình Supabase"
+    };
+  }
+
+  const normalizedClubName = String(clubName || "").trim();
+  if (!tournamentId || !normalizedClubName || !athleteRefs?.length) {
+    return { success: false, message: "Thiếu mã giải đấu, tên CLB hoặc danh sách VĐV" };
+  }
+
+  try {
+    const { data: submission, error: fetchError } = await supabase
+      .from('athlete_submissions')
+      .select('id, data')
+      .eq('tournament_id', tournamentId)
+      .eq('club_name', normalizedClubName)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    const submissionData = typeof submission.data === 'string'
+      ? JSON.parse(submission.data)
+      : submission.data;
+    const cloudAthletes = Array.isArray(submissionData?.athletes)
+      ? submissionData.athletes
+      : [];
+    const normalize = (value) => String(value || '').trim().normalize('NFC').toLowerCase();
+    const isSelectedAthlete = (cloudAthlete) => athleteRefs.some((ref) => {
+      if (normalize(cloudAthlete.name) !== normalize(ref.name)) return false;
+
+      const cloudBirth = normalize(cloudAthlete.birthDate || cloudAthlete.birthYear);
+      const refBirth = normalize(ref.birthDate || ref.birthYear);
+      if (cloudBirth && refBirth && cloudBirth !== refBirth) return false;
+
+      const sameEventId = cloudAthlete.eventId && ref.categoryId
+        && String(cloudAthlete.eventId) === String(ref.categoryId);
+      const sameEventName = cloudAthlete.eventName && ref.categoryName
+        && normalize(cloudAthlete.eventName) === normalize(ref.categoryName);
+      return Boolean(sameEventId || sameEventName);
+    });
+
+    const remainingAthletes = cloudAthletes.filter(
+      (cloudAthlete) => !isSelectedAthlete(cloudAthlete)
+    );
+    const removedCount = cloudAthletes.length - remainingAthletes.length;
+    if (removedCount !== athleteRefs.length) {
+      return {
+        success: false,
+        message: `Chỉ đối chiếu được ${removedCount}/${athleteRefs.length} VĐV trên Cloud. Chưa xóa dữ liệu nào.`
+      };
+    }
+
+    const { data: updatedSubmission, error: updateError } = await supabase
+      .from('athlete_submissions')
+      .update({
+        data: {
+          ...submissionData,
+          athletes: remainingAthletes,
+          admin_updated_at: new Date().toISOString()
+        }
+      })
+      .eq('id', submission.id)
+      .select('id')
+      .single();
+
+    if (updateError) throw updateError;
+    if (!updatedSubmission) {
+      return {
+        success: false,
+        message: "Cloud không xác nhận đã cập nhật danh sách VĐV"
+      };
+    }
+    return { success: true, removedCount, remainingCount: remainingAthletes.length };
+  } catch (error) {
+    console.error('Supabase selected athletes removal error:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+/**
  * Publish tournament configuration to Supabase
  * @param {Object} tournament - The full tournament object
  * @param {string} startTime - Optional ISO string for registration start
@@ -153,6 +240,7 @@ export async function publishTournament(tournament, startTime = null, endTime = 
         name: cat.name,
         gender: cat.gender || "any",
         type: cat.type || "kumite",
+        isTeamEvent: isTeamCategory(cat),
         weightMin: cat.weightMin,
         weightMax: cat.weightMax
       })),
@@ -251,6 +339,7 @@ export default {
   submitAthletes,
   fetchSubmissions,
   deleteSubmissions,
+  removeAthletesFromClubSubmission,
   publishTournament,
   unpublishTournament,
   fetchTournamentBySlug,

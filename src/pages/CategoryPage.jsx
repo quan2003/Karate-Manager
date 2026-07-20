@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   useTournament,
   useTournamentDispatch,
@@ -14,11 +14,20 @@ import ConfirmDialog from "../components/common/ConfirmDialog";
 import { useToast } from "../components/common/Toast";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
+import {
+  createSmartListEntryState,
+  getSmartBackContext,
+  getStableCategoryIds,
+  readSmartListState,
+  writeSmartListState,
+} from "../utils/smartBackNavigation";
 import "./CategoryPage.css";
 
 export default function CategoryPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const smartBack = getSmartBackContext(location);
   const { tournaments, currentTournament, currentCategory } = useTournament();
   const dispatch = useTournamentDispatch();
   const [showAddModal, setShowAddModal] = useState(false);
@@ -32,8 +41,11 @@ export default function CategoryPage() {
   const [drawError, setDrawError] = useState(null);
   const [drawCountdown, setDrawCountdown] = useState(null);
   const [shuffledName, setShuffledName] = useState("");
+  const [isSwitchingCategory, setIsSwitchingCategory] = useState(false);
   const countdownTimerRef = useRef(null);
   const shuffleTimerRef = useRef(null);
+  const switchTimerRef = useRef(null);
+  const isSwitchingCategoryRef = useRef(false);
   const { toast } = useToast();
   const { activeHint, clearHint } = useOnboarding();
 
@@ -60,23 +72,121 @@ export default function CategoryPage() {
     if (foundCategory) {
       dispatch({ type: ACTIONS.SET_CURRENT_CATEGORY, payload: id });
     }
-  }, [id, tournaments, dispatch]);
+  }, [id, tournaments, currentTournament?.id, dispatch]);
 
   const category =
-    currentCategory ||
+    (currentCategory?.id === id ? currentCategory : null) ||
     tournaments.flatMap((t) => t.categories).find((c) => c.id === id);
 
   const tournament =
-    currentTournament ||
+    (currentTournament?.categories?.some((c) => c.id === id) ? currentTournament : null) ||
     tournaments.find((t) => t.categories.some((c) => c.id === id));
+  const isTeamCategory = isTeamCategoryMeta(category);
+
+  const savedListState = useMemo(
+    () => smartBack?.listKey ? readSmartListState(smartBack.listKey) : null,
+    [smartBack?.listKey]
+  );
+  const snapshotIds = smartBack?.categoryIds?.length
+    ? smartBack.categoryIds
+    : savedListState?.categoryIds;
+  const effectiveNavigationIds = useMemo(() => {
+    const tournamentCategoryIds = new Set((tournament?.categories || []).map((item) => item.id));
+    const navigationIds = Array.isArray(snapshotIds) && snapshotIds.length > 0
+      ? snapshotIds.filter((categoryId) => tournamentCategoryIds.has(categoryId))
+      : getStableCategoryIds(tournament?.categories || []);
+    return navigationIds.includes(id) ? navigationIds : category ? [id] : [];
+  }, [category, id, snapshotIds, tournament?.categories]);
+  const effectiveNavigationIndex = effectiveNavigationIds.indexOf(id);
+  const previousCategoryId = effectiveNavigationIndex > 0
+    ? effectiveNavigationIds[effectiveNavigationIndex - 1]
+    : null;
+  const nextCategoryId = effectiveNavigationIndex >= 0 && effectiveNavigationIndex < effectiveNavigationIds.length - 1
+    ? effectiveNavigationIds[effectiveNavigationIndex + 1]
+    : null;
+
+  const navigateToCategory = useCallback((targetId) => {
+    if (!targetId || isSwitchingCategoryRef.current) return;
+    isSwitchingCategoryRef.current = true;
+    setIsSwitchingCategory(true);
+
+    if (smartBack?.listKey) {
+      const saved = readSmartListState(smartBack.listKey) || {};
+      writeSmartListState(smartBack.listKey, {
+        ...saved,
+        categoryIds: effectiveNavigationIds,
+        openedItemId: targetId,
+        pendingRestore: true,
+      });
+    }
+
+    const nextState = smartBack
+      ? {
+          ...(location.state || {}),
+          smartBack: { ...smartBack, categoryIds: effectiveNavigationIds },
+        }
+      : location.state;
+
+    switchTimerRef.current = window.setTimeout(() => {
+      navigate(`/category/${targetId}`, { replace: true, state: nextState });
+    }, 120);
+  }, [effectiveNavigationIds, location.state, navigate, smartBack]);
+
+  useEffect(() => {
+    isSwitchingCategoryRef.current = false;
+    setIsSwitchingCategory(false);
+  }, [id]);
+
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      const target = event.target;
+      const tagName = target?.tagName?.toLowerCase();
+      if (
+        !event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        target?.isContentEditable ||
+        ["input", "textarea", "select"].includes(tagName)
+      ) {
+        return;
+      }
+
+      if (event.key === "ArrowLeft" && previousCategoryId) {
+        event.preventDefault();
+        navigateToCategory(previousCategoryId);
+      } else if (event.key === "ArrowRight" && nextCategoryId) {
+        event.preventDefault();
+        navigateToCategory(nextCategoryId);
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [navigateToCategory, nextCategoryId, previousCategoryId]);
+
+  // Adjacent category data is already prefetched in TournamentContext. Only
+  // navigation is deferred briefly to prevent rapid repeated clicks.
+  useEffect(() => {
+    return () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      if (shuffleTimerRef.current) clearInterval(shuffleTimerRef.current);
+      if (switchTimerRef.current) clearTimeout(switchTimerRef.current);
+    };
+  }, []);
+
+  const categoryListTarget = smartBack?.returnTo || (tournament ? `/tournament/${tournament.id}` : "/admin");
+  const categoryListState = smartBack
+    ? createSmartListEntryState(null, smartBack.listKey)
+    : undefined;
+
   if (!category || !tournament) {
     return (
       <div className="page">
         <div className="container">
           <div className="not-found">
             <h2>Không tìm thấy hạng mục</h2>
-            <Link to="/admin" className="btn btn-primary">
-              Về quản lý giải đấu
+            <Link to={categoryListTarget} state={categoryListState} className="btn btn-primary">
+              Quay lại danh sách nội dung
             </Link>
           </div>
         </div>
@@ -87,7 +197,7 @@ export default function CategoryPage() {
   const handleAddAthlete = (data) => {
     dispatch({
       type: ACTIONS.ADD_ATHLETE,
-      payload: { categoryId: id, ...data },
+      payload: { categoryId: id, ...data, isTeam: isTeamCategory ? Boolean(data.isTeam) : false },
     });
     setShowAddModal(false);
   };
@@ -95,7 +205,7 @@ export default function CategoryPage() {
   const handleEditAthlete = (data) => {
     dispatch({
       type: ACTIONS.UPDATE_ATHLETE,
-      payload: { id: editingAthlete.id, ...data },
+      payload: { id: editingAthlete.id, ...data, isTeam: isTeamCategory ? Boolean(data.isTeam) : false },
     });
     setEditingAthlete(null);
   };
@@ -113,7 +223,13 @@ export default function CategoryPage() {
   const handleImportAthletes = (athletes) => {
     dispatch({
       type: ACTIONS.IMPORT_ATHLETES,
-      payload: { categoryId: id, athletes },
+      payload: {
+        categoryId: id,
+        athletes: athletes.map((athlete) => ({
+          ...athlete,
+          isTeam: isTeamCategory ? Boolean(athlete.isTeam) : false,
+        })),
+      },
     });
   };
   const handleRestoreAthletesFromBracket = () => {
@@ -135,17 +251,6 @@ export default function CategoryPage() {
       },
     });
   };
-
-  // Cleanup timers on unmount
-  useEffect(() => {
-    return () => {
-      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-      if (shuffleTimerRef.current) clearInterval(shuffleTimerRef.current);
-    };
-  }, []);
-
-  // Detect if this is a team category
-  const isTeamCategory = isTeamCategoryMeta(category);
 
   // Check for unticked isTeam athletes in team categories
   const untickedTeamAthletes = isTeamCategory
@@ -206,7 +311,7 @@ export default function CategoryPage() {
           // Navigate to bracket view after countdown
           setTimeout(() => {
             setDrawCountdown(null);
-            navigate(`/bracket/${id}`);
+            navigate(`/bracket/${id}`, { state: location.state });
           }, 500);
         }
       }, 1000);
@@ -234,13 +339,36 @@ export default function CategoryPage() {
     <div className="page category-page">
       <div className="container">
         <nav className="breadcrumb">
-          <Link to={`/tournament/${tournament.id}`} className="back-link">
+          <Link to={categoryListTarget} state={categoryListState} className="back-link">
             ← Quay lại
           </Link>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => navigateToCategory(previousCategoryId)}
+            disabled={!previousCategoryId || isSwitchingCategory}
+            title="Phím tắt: Ctrl + ←"
+          >
+            ← Nội dung trước
+          </button>
+          <span>
+            {isSwitchingCategory
+              ? "Đang chuyển..."
+              : `Nội dung ${effectiveNavigationIndex + 1}/${effectiveNavigationIds.length}`}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => navigateToCategory(nextCategoryId)}
+            disabled={!nextCategoryId || isSwitchingCategory}
+            title="Phím tắt: Ctrl + →"
+          >
+            Nội dung tiếp theo →
+          </button>
           <span className="breadcrumb-separator">|</span>
           <Link to="/admin">Quản lý giải đấu</Link>
           <span>/</span>
-          <Link to={`/tournament/${tournament.id}`}>{tournament.name}</Link>
+          <Link to={categoryListTarget} state={categoryListState}>{tournament.name}</Link>
           <span>/</span>
           <span>{category.name}</span>
         </nav>
@@ -277,7 +405,7 @@ export default function CategoryPage() {
             </button>
 
             {hasBracket ? (
-              <Link to={`/bracket/${id}`} className="btn btn-primary btn-lg">
+              <Link to={`/bracket/${id}`} state={location.state} className="btn btn-primary btn-lg">
                 📊 Xem sơ đồ thi đấu
               </Link>
             ) : (

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { isTeamCategory } from "../../utils/teamDraw";
 import "./AthleteList.css";
 
 export default function AthleteList({
@@ -9,6 +10,7 @@ export default function AthleteList({
   category,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
+  const isTeamEvent = isTeamCategory(category);
 
   const filteredAthletes = athletes.filter(
     (athlete) =>
@@ -126,7 +128,7 @@ export default function AthleteList({
                       </span>
                       {athlete.country}
                     </td>
-                    <td className="col-team">{athlete.isTeam ? "✅" : "-"}</td>
+                    <td className="col-team">{isTeamEvent && athlete.isTeam ? "✅" : "-"}</td>
                     <td className="col-seed">
                       {athlete.seed ? (
                         <span className="seed-badge">#{athlete.seed}</span>

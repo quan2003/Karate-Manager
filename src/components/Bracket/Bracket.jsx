@@ -18,6 +18,7 @@ export default function Bracket({
   onSwapAthletes,  // callback: (fromMatchId, fromSlot, toMatchId, toSlot) => void để hoán đổi VĐV
   printMode = false,
   dragEnabled = true, // Bật/tắt tính năng drag & drop
+  dimCompleted = false,
 }) {
   const isTeamBracket = bracket?.isTeamBracket || false;
   const [contextMenu, setContextMenu] = useState(null); // { x, y, match, athleteSlot }
@@ -226,7 +227,9 @@ export default function Bracket({
                 {matches.map((match, matchIndex) => (
                   <div
                     key={match.id}
-                    className="match-box"
+                    className={`match-box ${
+                      dimCompleted && match.winner ? "completed-match" : ""
+                    }`}
                     style={{
                       marginTop: matchIndex === 0 ? topOffset : 0,
                       marginBottom: matchGap,

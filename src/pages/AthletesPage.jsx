@@ -10,7 +10,11 @@ import ConfirmDialog from "../components/common/ConfirmDialog";
 import AthleteForm from "../components/AthleteForm/AthleteForm";
 import SearchableSelect from "../components/common/SearchableSelect";
 import { useToast } from "../components/common/Toast";
-import { fetchSubmissions, deleteSubmissions } from "../services/supabaseService";
+import {
+  fetchSubmissions,
+  deleteSubmissions,
+  removeAthletesFromClubSubmission,
+} from "../services/supabaseService";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import * as XLSX from "xlsx";
@@ -44,6 +48,10 @@ export default function AthletesPage() {
   const [showCleanupMenu, setShowCleanupMenu] = useState(false);
   const [showCloudIdModal, setShowCloudIdModal] = useState(false);
   const [customCloudId, setCustomCloudId] = useState("");
+  const [showWithdrawAthletesModal, setShowWithdrawAthletesModal] = useState(false);
+  const [withdrawClubName, setWithdrawClubName] = useState("");
+  const [selectedWithdrawAthleteIds, setSelectedWithdrawAthleteIds] = useState([]);
+  const [withdrawingAthletes, setWithdrawingAthletes] = useState(false);
 
   if (!tournament) {
     return (
@@ -152,6 +160,94 @@ export default function AthletesPage() {
         }
         setConfirmDialog(p => ({ ...p, open: false }));
       }
+    });
+  };
+
+  const normalizeClubName = (value) =>
+    String(value || "").trim().normalize("NFC").toLowerCase();
+
+  const athletesInWithdrawClub = withdrawClubName
+    ? allAthletes.filter(
+        (athlete) =>
+          normalizeClubName(athlete.club) === normalizeClubName(withdrawClubName)
+      )
+    : [];
+
+  const handleWithdrawAthletes = () => {
+    const clubName = withdrawClubName.trim();
+    if (!clubName) {
+      toast.error("Vui lòng chọn CLB.");
+      return;
+    }
+
+    const selectedAthletes = allAthletes.filter((athlete) =>
+      selectedWithdrawAthleteIds.includes(athlete.id)
+    );
+    if (selectedAthletes.length === 0) {
+      toast.error("Vui lòng tích chọn ít nhất một VĐV rút lui.");
+      return;
+    }
+
+    setShowWithdrawAthletesModal(false);
+    setConfirmDialog({
+      open: true,
+      title: "Xác nhận VĐV rút lui",
+      message: `Bạn đã chọn ${selectedAthletes.length} VĐV của CLB “${clubName}”. Hệ thống chỉ loại những VĐV này khỏi Cloud, máy hiện tại và bảng đấu liên quan; các thành viên còn lại vẫn được giữ nguyên. Tiếp tục?`,
+      type: "danger",
+      onConfirm: async () => {
+        setConfirmDialog((current) => ({ ...current, open: false }));
+        setWithdrawingAthletes(true);
+        try {
+          const submissionsResult = await fetchSubmissions(tournament.id);
+          if (!submissionsResult.success) {
+            toast.error("Không thể kiểm tra dữ liệu Cloud: " + submissionsResult.message);
+            return;
+          }
+
+          const cloudSubmission = submissionsResult.data.find((submission) => {
+            const submittedData =
+              typeof submission.data === "string"
+                ? JSON.parse(submission.data)
+                : submission.data;
+            return [submission.club_name, submittedData?.clubName]
+              .filter(Boolean)
+              .some((name) => normalizeClubName(name) === normalizeClubName(clubName));
+          });
+
+          if (cloudSubmission) {
+            const updateResult = await removeAthletesFromClubSubmission(
+              tournament.id,
+              cloudSubmission.club_name,
+              selectedAthletes
+            );
+            if (!updateResult.success) {
+              toast.error("Không thể cập nhật danh sách CLB trên Cloud: " + updateResult.message);
+              return;
+            }
+          }
+
+          dispatch({
+            type: ACTIONS.REMOVE_WITHDRAWN_ATHLETES,
+            payload: {
+              tournamentId: tournament.id,
+              athleteIds: selectedAthletes.map((athlete) => athlete.id),
+            },
+          });
+          setWithdrawClubName("");
+          setSelectedWithdrawAthleteIds([]);
+          toast.success(
+            cloudSubmission
+              ? `Đã ghi nhận ${selectedAthletes.length} VĐV của CLB “${clubName}” rút lui.`
+              : `Không tìm thấy submission Cloud; đã xóa ${selectedAthletes.length} VĐV tại máy.`
+          );
+        } catch (error) {
+          console.error("Withdraw athletes error:", error);
+          toast.error("Không thể xử lý VĐV rút lui: " + (error.message || "Lỗi không xác định"));
+        } finally {
+          setWithdrawingAthletes(false);
+          setConfirmDialog((current) => ({ ...current, open: false }));
+        }
+      },
     });
   };
 
@@ -475,6 +571,7 @@ export default function AthletesPage() {
               <button 
                 className="btn btn-secondary"
                 onClick={() => setShowCleanupMenu(!showCleanupMenu)}
+                disabled={withdrawingAthletes}
                 style={{ 
                   borderRadius: '8px', 
                   borderColor: showCleanupMenu ? '#ef4444' : '#e2e8f0',
@@ -495,9 +592,26 @@ export default function AthletesPage() {
                   boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
                   padding: '8px',
                   zIndex: 100,
-                  width: '220px',
+                  width: '260px',
                   border: '1px solid #e2e8f0'
                 }}>
+                  <button
+                    className="menu-item"
+                    onClick={() => {
+                      setWithdrawClubName(filterClub === "all" ? "" : filterClub);
+                      setSelectedWithdrawAthleteIds([]);
+                      setShowWithdrawAthletesModal(true);
+                      setShowCleanupMenu(false);
+                    }}
+                    style={{
+                      width: '100%', textAlign: 'left', padding: '10px', borderRadius: '6px',
+                      background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
+                      color: '#b45309'
+                    }}
+                  >
+                    <span>🚪</span> <strong>Chọn VĐV rút lui</strong>
+                  </button>
+                  <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 0' }} />
                   <button 
                     className="menu-item"
                     onClick={() => { handleClearAllLocal(); setShowCleanupMenu(false); }}
@@ -631,6 +745,116 @@ export default function AthletesPage() {
              Hiển thị <strong>{filteredAthletes.length}</strong> / {allAthletes.length} VĐV
           </div>
         </div>
+
+        <Modal
+          isOpen={showWithdrawAthletesModal}
+          onClose={() => {
+            setShowWithdrawAthletesModal(false);
+            setWithdrawClubName("");
+            setSelectedWithdrawAthleteIds([]);
+          }}
+          title="Chọn VĐV rút lui"
+        >
+          <div style={{ padding: "10px" }}>
+            <p style={{ margin: "0 0 16px", color: "#64748b", lineHeight: 1.6 }}>
+              Chọn CLB, sau đó tích đúng những VĐV rút lui. Các thành viên không
+              được tích vẫn được giữ nguyên trên Cloud và trong giải đấu.
+            </p>
+            <div className="form-group">
+              <label>CLB</label>
+              <select
+                className="form-control"
+                value={withdrawClubName}
+                onChange={(event) => {
+                  setWithdrawClubName(event.target.value);
+                  setSelectedWithdrawAthleteIds([]);
+                }}
+              >
+                <option value="">-- Chọn CLB --</option>
+                {uniqueClubs.map((club) => (
+                  <option key={club} value={club}>
+                    {club} ({allAthletes.filter((athlete) => normalizeClubName(athlete.club) === normalizeClubName(club)).length} VĐV)
+                  </option>
+                ))}
+              </select>
+            </div>
+            {withdrawClubName && (
+              <div style={{ marginTop: "16px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "8px" }}>
+                  <strong>Danh sách VĐV ({athletesInWithdrawClub.length})</strong>
+                  <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "13px" }}>
+                    <input
+                      type="checkbox"
+                      checked={
+                        athletesInWithdrawClub.length > 0 &&
+                        selectedWithdrawAthleteIds.length === athletesInWithdrawClub.length
+                      }
+                      onChange={(event) =>
+                        setSelectedWithdrawAthleteIds(
+                          event.target.checked
+                            ? athletesInWithdrawClub.map((athlete) => athlete.id)
+                            : []
+                        )
+                      }
+                    />
+                    Chọn tất cả
+                  </label>
+                </div>
+                <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
+                  {athletesInWithdrawClub.map((athlete) => (
+                    <label
+                      key={athlete.id}
+                      style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: "8px", alignItems: "start", padding: "10px 12px", borderBottom: "1px solid #f1f5f9", cursor: "pointer" }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedWithdrawAthleteIds.includes(athlete.id)}
+                        onChange={(event) =>
+                          setSelectedWithdrawAthleteIds((current) =>
+                            event.target.checked
+                              ? [...current, athlete.id]
+                              : current.filter((id) => id !== athlete.id)
+                          )
+                        }
+                      />
+                      <span>
+                        <strong>{athlete.name}</strong>
+                        <span style={{ display: "block", color: "#64748b", fontSize: "12px", marginTop: "2px" }}>
+                          {athlete.categoryName}
+                          {athlete.birthDate || athlete.birthYear
+                            ? ` · ${athlete.birthDate || athlete.birthYear}`
+                            : ""}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <div style={{ marginTop: "8px", color: "#b45309", fontSize: "13px" }}>
+                  Đã chọn: <strong>{selectedWithdrawAthleteIds.length}</strong> VĐV
+                </div>
+              </div>
+            )}
+            <div className="modal-actions" style={{ marginTop: "20px" }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowWithdrawAthletesModal(false);
+                  setWithdrawClubName("");
+                  setSelectedWithdrawAthleteIds([]);
+                }}
+              >
+                Hủy
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={handleWithdrawAthletes}
+                disabled={!withdrawClubName || selectedWithdrawAthleteIds.length === 0}
+              >
+                Xác nhận {selectedWithdrawAthleteIds.length} VĐV rút lui
+              </button>
+            </div>
+          </div>
+        </Modal>
 
         {/* Modal chỉnh sửa */}
         <Modal

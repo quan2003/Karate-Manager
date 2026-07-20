@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   useTournament,
   useTournamentDispatch,
@@ -33,6 +33,13 @@ import { useOnboarding } from "../context/OnboardingContext";
 import { publishTournament, unpublishTournament, fetchTournamentById } from "../services/supabaseService";
 import { downloadAthleteImportTemplate } from "../services/athleteTemplateService";
 import appIcon from "../assets/icon.png";
+import {
+  createSmartChildState,
+  createSmartListEntryState,
+  getCategoryListKey,
+  readSmartListState,
+  writeSmartListState,
+} from "../utils/smartBackNavigation";
 import "./TournamentPage.css";
 
 const categoryNameCollator = new Intl.Collator("vi", {
@@ -137,6 +144,16 @@ const compareCategoriesForPDF = (a, b) => {
 
 export default function TournamentPage() {
   const { id } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const listKey = getCategoryListKey(id);
+  const initialSavedListStateRef = useRef(readSmartListState(listKey));
+  const shouldRestoreListRef = useRef(
+    location.state?.smartListKey === listKey &&
+      initialSavedListStateRef.current?.pendingRestore === true
+  );
+  const hasRestoredListRef = useRef(false);
   const { tournaments, currentTournament } = useTournament();
   const dispatch = useTournamentDispatch();
   const { toast } = useToast();
@@ -170,7 +187,7 @@ export default function TournamentPage() {
 
   // Tự động cuộn tới phần được highlight khi có gợi ý (Re-enactment)
   useEffect(() => {
-    if (activeHint) {
+    if (activeHint && !shouldRestoreListRef.current) {
       setTimeout(() => {
         const highlighted = document.querySelector(".hint-pulse");
         if (highlighted) {
@@ -215,10 +232,54 @@ export default function TournamentPage() {
   });
 
   // Filters
-  const [filterType, setFilterType] = useState("all");
-  const [filterGender, setFilterGender] = useState("all");
-  const [filterSession, setFilterSession] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState(() => searchParams.get("type") || "all");
+  const [filterGender, setFilterGender] = useState(() => searchParams.get("gender") || "all");
+  const [filterSession, setFilterSession] = useState(() => searchParams.get("session") || "all");
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") || "");
+
+  // Keep shareable list state in the URL. Marking this history entry lets us
+  // distinguish a child-page return from a fresh visit through the main menu.
+  useEffect(() => {
+    const nextParams = new URLSearchParams(location.search);
+    const setOrDelete = (key, value, defaultValue = "") => {
+      if (!value || value === defaultValue) nextParams.delete(key);
+      else nextParams.set(key, value);
+    };
+
+    setOrDelete("q", searchQuery);
+    setOrDelete("type", filterType, "all");
+    setOrDelete("gender", filterGender, "all");
+    setOrDelete("session", filterSession, "all");
+
+    const nextSearch = nextParams.toString();
+    const currentSearch = location.search.replace(/^\?/, "");
+    const hasListMarker = location.state?.smartListKey === listKey;
+    if (nextSearch !== currentSearch || !hasListMarker) {
+      navigate(
+        { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
+        {
+          replace: true,
+          state: createSmartListEntryState(location.state, listKey),
+        }
+      );
+    }
+  }, [filterGender, filterSession, filterType, listKey, location.pathname, location.search, location.state, navigate, searchQuery]);
+
+  // Keep session state current when filters are changed or explicitly cleared.
+  useEffect(() => {
+    const saved = readSmartListState(listKey) || {};
+    writeSmartListState(listKey, {
+      ...saved,
+      listKey,
+      route: `${location.pathname}${location.search}`,
+      filters: { searchQuery, filterType, filterGender, filterSession },
+      sort: saved.sort || "default",
+      page: saved.page || 1,
+      pendingRestore: shouldRestoreListRef.current
+        ? saved.pendingRestore === true
+        : false,
+    });
+  }, [filterGender, filterSession, filterType, listKey, location.pathname, location.search, searchQuery]);
 
   useEffect(() => {
     dispatch({ type: ACTIONS.SET_CURRENT_TOURNAMENT, payload: id });
@@ -361,6 +422,64 @@ export default function TournamentPage() {
     return map[session] || session;
   };
 
+  const restorableCategories = getFilteredCategories();
+
+  const handleOpenCategory = (categoryId) => {
+    const item = document.getElementById(`category-card-${categoryId}`);
+    const saved = readSmartListState(listKey) || {};
+    writeSmartListState(listKey, {
+      ...saved,
+      listKey,
+      route: `${location.pathname}${location.search}`,
+      filters: { searchQuery, filterType, filterGender, filterSession },
+      sort: saved.sort || "default",
+      page: saved.page || 1,
+      loadedCount: restorableCategories.length,
+      categoryIds: restorableCategories.map((item) => item.id),
+      scrollY: window.scrollY,
+      openedItemId: categoryId,
+      itemViewportTop: item?.getBoundingClientRect().top ?? null,
+      pendingRestore: true,
+    });
+  };
+
+  // Restore only when this exact history entry is revisited from a child page.
+  // Waiting for two animation frames ensures the filtered cards are rendered first.
+  useEffect(() => {
+    if (!shouldRestoreListRef.current || hasRestoredListRef.current || !tournament) return;
+
+    const saved = readSmartListState(listKey);
+    if (!saved) return;
+
+    let secondFrame = null;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        const item = saved.openedItemId
+          ? document.getElementById(`category-card-${saved.openedItemId}`)
+          : null;
+        let targetY = Number(saved.scrollY) || 0;
+
+        if (item && Number.isFinite(saved.itemViewportTop)) {
+          targetY = window.scrollY + item.getBoundingClientRect().top - saved.itemViewportTop;
+        }
+
+        const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        window.scrollTo({ top: Math.max(0, Math.min(targetY, maxScroll)), behavior: "auto" });
+        hasRestoredListRef.current = true;
+        writeSmartListState(listKey, {
+          ...saved,
+          pendingRestore: false,
+          restoredAt: new Date().toISOString(),
+        });
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [listKey, restorableCategories.length, tournament]);
+
   if (!tournament) {
     return (
       <div className="page">
@@ -376,7 +495,7 @@ export default function TournamentPage() {
     );
   }
 
-  const filteredCategories = getFilteredCategories();
+  const filteredCategories = restorableCategories;
   const sessions = getSessions();
 
   const handleSubmit = (e) => {
@@ -1972,7 +2091,7 @@ export default function TournamentPage() {
             ) : (
               <div className="categories-grid">
                 {filteredCategories.map((category) => (
-              <div key={category.id} className="category-card card">
+              <div key={category.id} id={`category-card-${category.id}`} className="category-card card">
                 <div className="category-header">
                   <span className={`category-type ${category.type}`}>
                     {category.type === "kumite" ? "⚔️ Kumite" : "🥋 Kata"}
@@ -2081,6 +2200,13 @@ export default function TournamentPage() {
 
                 <Link
                   to={`/category/${category.id}`}
+                  state={createSmartChildState(
+                    location.state,
+                    listKey,
+                    `${location.pathname}${location.search}`,
+                    filteredCategories.map((item) => item.id)
+                  )}
+                  onClick={() => handleOpenCategory(category.id)}
                   className="manage-btn"
                 >
                   Quản lý →

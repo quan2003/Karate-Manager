@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   useTournament,
   useTournamentDispatch,
@@ -127,6 +127,7 @@ export default function BracketPage() {
   const [swapHistory, setSwapHistory] = useState([]); // Lưu lịch sử swap để undo
   const { activeHint, clearHint } = useOnboarding();
   const navigate = useNavigate();
+  const location = useLocation();
   // Custom dialog — replaces window.prompt / window.confirm (Electron blocks those)
   const [dialog, setDialog] = useState(null);
   const dialogInputRef = useRef(null);
@@ -234,7 +235,7 @@ export default function BracketPage() {
           <div className="not-found">
             <h2>Chưa bốc thăm</h2>
             <p>Hãy bốc thăm trước khi xem sơ đồ thi đấu.</p>
-            <Link to={`/category/${id}`} className="btn btn-primary">
+            <Link to={`/category/${id}`} state={location.state} className="btn btn-primary">
               Quay lại hạng mục
             </Link>
           </div>
@@ -589,7 +590,7 @@ export default function BracketPage() {
     <div className="page bracket-page">
       <div className="container-fluid">
         <nav className="breadcrumb">
-          <Link to={`/category/${category.id}`} className="back-link">
+          <Link to={`/category/${category.id}`} state={location.state} className="back-link">
             ← Quay lại
           </Link>
           <span className="breadcrumb-separator">|</span>
@@ -597,7 +598,7 @@ export default function BracketPage() {
           <span>/</span>
           <Link to={`/tournament/${tournament.id}`}>{tournament.name}</Link>
           <span>/</span>
-          <Link to={`/category/${category.id}`}>{category.name}</Link>
+          <Link to={`/category/${category.id}`} state={location.state}>{category.name}</Link>
           <span>/</span>
           <span>Sơ đồ thi đấu</span>
         </nav>
@@ -623,7 +624,7 @@ export default function BracketPage() {
             <button className="btn btn-secondary" onClick={() => navigate(-1)} title="Quay về trang trước">
               ← Quay lại
             </button>
-            <Link to={`/category/${category.id}`} className="btn btn-secondary">
+            <Link to={`/category/${category.id}`} state={location.state} className="btn btn-secondary">
               📄 Chi tiết nội dung
             </Link>
             {/* Nút toggle Drag & Drop */}

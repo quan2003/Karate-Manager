@@ -62,6 +62,17 @@
   flex-direction: column;
 }
 
+.match-box.completed-match {
+  opacity: 0.56;
+  filter: saturate(0.58);
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.match-box.completed-match:hover {
+  opacity: 0.78;
+  filter: saturate(0.8);
+}
+
 /* Ô VĐV */
 .athlete-slot {
   position: relative;

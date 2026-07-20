@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import DateInput from "../common/DateInput";
+import { isTeamCategory } from "../../utils/teamDraw";
 import "./AthleteForm.css";
 
 function parseAgeGroup(ageGroup) {
@@ -36,6 +37,7 @@ export default function AthleteForm({
   category = null,
 }) {
   const isKumite = category?.type === "kumite";
+  const isTeamEvent = isTeamCategory(category);
 
   const getInitGender = () => {
     const val = initialData?.gender || category?.gender || "male";
@@ -49,7 +51,7 @@ export default function AthleteForm({
     club: initialData?.club || "",
     country: initialData?.country || "VN",
     weight: initialData?.weight || "",
-    isTeam: initialData?.isTeam || false,
+    isTeam: isTeamEvent ? initialData?.isTeam || false : false,
     seed: initialData?.seed || "",
   });
 
@@ -103,6 +105,7 @@ export default function AthleteForm({
     if (validate()) {
       onSubmit({
         ...formData,
+        isTeam: isTeamEvent ? Boolean(formData.isTeam) : false,
         weight: formData.weight ? parseFloat(formData.weight) : null,
         seed: formData.seed ? parseInt(formData.seed) : null,
       });
@@ -271,8 +274,9 @@ export default function AthleteForm({
             <input
               type="checkbox"
               name="isTeam"
-              checked={formData.isTeam}
+              checked={isTeamEvent ? formData.isTeam : false}
               onChange={handleChange}
+              disabled={!isTeamEvent}
             />
             <span>Đồng đội</span>
           </label>
