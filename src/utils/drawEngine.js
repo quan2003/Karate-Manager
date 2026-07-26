@@ -322,9 +322,131 @@ export function generateBracket(athletes, options = {}) {
     numRounds,
     format,
     matches,
+    seedAssignments: Object.fromEntries(
+      slots.map((athlete, index) => [index + 1, athlete?.id || null]),
+    ),
     roundNames: getRoundNames(numRounds),
     createdAt: new Date().toISOString(),
   };
+}
+
+export function getSeedAssignments(bracket) {
+  const assignments = bracket?.seedAssignments
+    ? { ...bracket.seedAssignments }
+    : {};
+
+  if (!bracket?.seedAssignments) {
+    bracket?.matches
+      ?.filter((match) => match.round === 1)
+      .sort((a, b) => a.position - b.position)
+      .forEach((match) => {
+        assignments[match.position * 2 + 1] = match.athlete1?.id || null;
+        assignments[match.position * 2 + 2] = match.athlete2?.id || null;
+      });
+  }
+
+  if (validateSeedAssignments(assignments)) return assignments;
+
+  // Recover brackets corrupted by the legacy match-level swap. In that bug,
+  // one Round 1 athlete was duplicated while the displaced athlete still
+  // existed in a derived round (typically through an old BYE propagation).
+  const participantIds = [];
+  const knownIds = new Set();
+  bracket?.matches?.forEach((match) => {
+    [match.athlete1, match.athlete2, match.winner].forEach((athlete) => {
+      if (athlete?.id && !knownIds.has(athlete.id)) {
+        knownIds.add(athlete.id);
+        participantIds.push(athlete.id);
+      }
+    });
+  });
+
+  const usedIds = new Set();
+  const duplicateSeeds = [];
+  Object.keys(assignments)
+    .sort((a, b) => Number(a) - Number(b))
+    .forEach((seed) => {
+      const athleteId = assignments[seed];
+      if (!athleteId) return;
+      if (usedIds.has(athleteId)) duplicateSeeds.push(seed);
+      else usedIds.add(athleteId);
+    });
+
+  const missingIds = participantIds.filter((id) => !usedIds.has(id));
+  if (duplicateSeeds.length === missingIds.length) {
+    duplicateSeeds.forEach((seed, index) => {
+      assignments[seed] = missingIds[index];
+    });
+  }
+
+  if (!validateSeedAssignments(assignments)) {
+    console.error("DUPLICATE ATHLETE IN BRACKET");
+  } else if (duplicateSeeds.length > 0) {
+    console.warn("Recovered legacy duplicate seed assignments", {
+      duplicateSeeds,
+      restoredAthleteIds: missingIds,
+    });
+  }
+
+  return assignments;
+}
+export function validateSeedAssignments(seedAssignments) {
+  const ids = Object.values(seedAssignments).filter(Boolean);
+  return ids.length === new Set(ids).size;
+}
+
+export function rebuildBracketFromSeeds(bracket, seedAssignments) {
+  if (!validateSeedAssignments(seedAssignments)) {
+    console.error("DUPLICATE ATHLETE IN BRACKET");
+    throw new Error("Một VĐV không thể xuất hiện ở nhiều seed");
+  }
+  const participantsById = new Map();
+  bracket.matches.forEach((match) => {
+    [match.athlete1, match.athlete2, match.winner].forEach((athlete) => {
+      if (athlete?.id) participantsById.set(athlete.id, athlete);
+    });
+  });
+  const matches = bracket.matches.map((match) => ({ ...match })).sort((a, b) => a.round - b.round || a.position - b.position);
+  const sameParticipants = (match, athlete1, athlete2) =>
+    (match.athlete1?.id || null) === (athlete1?.id || null) &&
+    (match.athlete2?.id || null) === (athlete2?.id || null);
+
+  matches.forEach((match) => {
+    let athlete1;
+    let athlete2;
+    if (match.round === 1) {
+      athlete1 = participantsById.get(seedAssignments[match.position * 2 + 1]) || null;
+      athlete2 = participantsById.get(seedAssignments[match.position * 2 + 2]) || null;
+    } else {
+      const feeders = matches.filter((candidate) => candidate.nextMatchId === match.id).sort((a, b) => a.position - b.position);
+      athlete1 = feeders[0]?.winner || null;
+      athlete2 = feeders[1]?.winner || null;
+    }
+    const keepResult = sameParticipants(match, athlete1, athlete2);
+    match.athlete1 = athlete1;
+    match.athlete2 = athlete2;
+    match.isBye =
+      match.round === 1 &&
+      ((!!athlete1 && !athlete2) || (!athlete1 && !!athlete2));
+    if (!keepResult) {
+      match.score1 = null;
+      match.score2 = null;
+      match.winner = null;
+      match.winMethod = null;
+      match.hantei = null;
+      match.disqualification = null;
+    }
+    if (match.isBye) match.winner = athlete1 || athlete2;
+    else if (!athlete1 || !athlete2) match.winner = null;
+    else if (match.winner?.id !== athlete1.id && match.winner?.id !== athlete2.id) match.winner = null;
+  });
+  return { ...bracket, seedAssignments: { ...seedAssignments }, matches };
+}
+
+export function swapBracketSeeds(bracket, sourceSeed, targetSeed) {
+  const seedAssignments = getSeedAssignments(bracket);
+  [seedAssignments[sourceSeed], seedAssignments[targetSeed]] = [seedAssignments[targetSeed], seedAssignments[sourceSeed]];
+  return rebuildBracketFromSeeds(bracket, seedAssignments);
 }
 
 function getRoundNames(n) {

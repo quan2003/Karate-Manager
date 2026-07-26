@@ -68,9 +68,9 @@ export default function Bracket({
 
   const handleDragStart = useCallback((e, match, slot) => {
     if (!dragEnabled) return;
+    if (match.round !== 1) return;
     const athlete = slot === 1 ? match.athlete1 : match.athlete2;
     if (!athlete) return;
-    if (match.isBye) return;
 
     setDragSource({ matchId: match.id, slot, athlete });
     setIsDragging(true);
@@ -81,7 +81,7 @@ export default function Bracket({
   }, [dragEnabled]);
 
   const handleDragOver = useCallback((e, match, slot) => {
-    if (!dragEnabled || !dragSource) return;
+    if (!dragEnabled || !dragSource || match.round !== 1) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
 
@@ -99,7 +99,7 @@ export default function Bracket({
   }, []);
 
   const handleDrop = useCallback((e, match, slot) => {
-    if (!dragEnabled || !dragSource) return;
+    if (!dragEnabled || !dragSource || match.round !== 1) return;
     e.preventDefault();
 
     const targetMatchId = match.id;
@@ -242,12 +242,12 @@ export default function Bracket({
                       } ${match.athlete1?.disqualified ? "disqualified" : ""} ${
                         isDragSource(match.id, 1) ? "drag-source" : ""
                       } ${isDragTarget(match.id, 1) ? "drag-target" : ""} ${
-                        dragEnabled && match.athlete1 && !match.isBye ? "draggable" : ""
+                        dragEnabled && match.round === 1 && match.athlete1 ? "draggable" : ""
                       }`}
                       onClick={() => onMatchClick && onMatchClick(match)}
                       onContextMenu={(e) => handleContextMenu(e, match, 1)}
                       // Drag & Drop
-                      draggable={dragEnabled && !!match.athlete1 && !match.isBye && !printMode}
+                      draggable={dragEnabled && match.round === 1 && !!match.athlete1 && !printMode}
                       onDragStart={(e) => handleDragStart(e, match, 1)}
                       onDragOver={(e) => handleDragOver(e, match, 1)}
                       onDragLeave={handleDragLeave}
@@ -332,7 +332,7 @@ export default function Bracket({
                         </span>
                       )}
                       {/* Drag indicator */}
-                      {dragEnabled && match.athlete1 && !match.isBye && !printMode && (
+                      {dragEnabled && match.round === 1 && match.athlete1 && !printMode && (
                         <span className="drag-indicator" title="Kéo để di chuyển VĐV">⠿</span>
                       )}
                     </div>{" "}
@@ -343,13 +343,13 @@ export default function Bracket({
                       } ${match.athlete2?.disqualified ? "disqualified" : ""} ${
                         isDragSource(match.id, 2) ? "drag-source" : ""
                       } ${isDragTarget(match.id, 2) ? "drag-target" : ""} ${
-                        dragEnabled && match.athlete2 && !match.isBye ? "draggable" : ""
+                        dragEnabled && match.round === 1 && match.athlete2 ? "draggable" : ""
                       }`}
                       style={{ marginTop: athleteGap }}
                       onClick={() => onMatchClick && onMatchClick(match)}
                       onContextMenu={(e) => handleContextMenu(e, match, 2)}
                       // Drag & Drop
-                      draggable={dragEnabled && !!match.athlete2 && !match.isBye && !printMode}
+                      draggable={dragEnabled && match.round === 1 && !!match.athlete2 && !printMode}
                       onDragStart={(e) => handleDragStart(e, match, 2)}
                       onDragOver={(e) => handleDragOver(e, match, 2)}
                       onDragLeave={handleDragLeave}
@@ -434,7 +434,7 @@ export default function Bracket({
                         </span>
                       )}
                       {/* Drag indicator */}
-                      {dragEnabled && match.athlete2 && !match.isBye && !printMode && (
+                      {dragEnabled && match.round === 1 && match.athlete2 && !printMode && (
                         <span className="drag-indicator" title="Kéo để di chuyển VĐV">⠿</span>
                       )}
                     </div>

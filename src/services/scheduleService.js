@@ -144,9 +144,15 @@ function normalizeAgeText(value) {
 }
 
 function getCategoryAgeOrder(category) {
-  const text = normalizeAgeText(category.ageGroup || category.name);
-  const number = text.match(/\d+/);
-  if (number) return Number(number[0]);
+  const explicitAge = normalizeAgeText(category.ageGroup);
+  const text = explicitAge || normalizeAgeText(category.name);
+  const labeledAge = text.match(/lua\s*tuoi\s*(\d+)/);
+  if (labeledAge) return Number(labeledAge[1]);
+  if (text.includes('vo dich tuyet doi')) return 18;
+  if (explicitAge) {
+    const number = explicitAge.match(/\d+/);
+    if (number) return Number(number[0]);
+  }
   const groups = [
     ["nhi dong", 6],
     ["thieu nhi", 9],
@@ -198,6 +204,10 @@ export function parseKarateCategory(category) {
   } else if (explicitAgeText) {
     ageMin = getCategoryAgeOrder(category);
     ageMax = ageMin;
+  }
+  if (name.includes('vo dich tuyet doi') || explicitAgeText.includes('vo dich tuyet doi')) {
+    ageMin = 18;
+    ageMax = Number.POSITIVE_INFINITY;
   }
   const weightText = normalizeAgeText(category.weightClass || category.name);
   const above = weightText.match(/tren\s*(\d+(?:[.,]\d+)?)\s*kg?/);
@@ -261,6 +271,17 @@ function getKarateSchedulingGroupKey(category) {
   const key = parseKarateCategory(category);
   return `${key.priority}:${key.ageMin}:${key.ageMax}`;
 }
+
+function getKataAgeGroupKey(category) {
+  const key = parseKarateCategory(category);
+  if (key.discipline === 'kata') return `kata:${key.ageMin}:${key.ageMax}`;
+  const name = normalizeAgeText(category.name);
+  if (!name.includes('vo dich tuyet doi')) return null;
+  const level = name.includes('nang cao')
+    ? 'nang_cao'
+    : (name.includes('phong trao') ? 'phong_trao' : 'chung');
+  return `tuyet_doi:${getCategoryGender(category)}:${level}`;
+}
 function compareCategoriesByPriority(
   a,
   b,
@@ -268,6 +289,35 @@ function compareCategoriesByPriority(
   originalOrder,
   customPriorityOrder = []
 ) {
+  if (priorityMode === 'custom_order') {
+    const customOrder = new Map(customPriorityOrder.map((id, index) => [id, index]));
+    const rankA = customOrder.has(a.id) ? customOrder.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const rankB = customOrder.has(b.id) ? customOrder.get(b.id) : Number.MAX_SAFE_INTEGER;
+    return rankA - rankB || originalOrder.get(a.id) - originalOrder.get(b.id);
+  }
+
+  // Chế độ tuổi chỉ đổi chiều lứa tuổi. Trong mỗi lứa tuổi luôn giữ:
+  // Kata cá nhân Nam, cá nhân Nữ, đồng đội Nam, đồng đội Nữ, hỗn hợp,
+  // sau đó mới tới Kumite.
+  const canonicalA = parseKarateCategory(a);
+  const canonicalB = parseKarateCategory(b);
+  let canonicalAgeDifference = priorityMode === 'age_old_first'
+    ? canonicalB.ageMin - canonicalA.ageMin
+    : canonicalA.ageMin - canonicalB.ageMin;
+  if (canonicalAgeDifference === 0 && canonicalA.ageMax !== canonicalB.ageMax) {
+    canonicalAgeDifference = priorityMode === 'age_old_first'
+      ? (canonicalB.ageMax < canonicalA.ageMax ? -1 : 1)
+      : (canonicalA.ageMax < canonicalB.ageMax ? -1 : 1);
+  }
+  if (canonicalAgeDifference !== 0) return canonicalAgeDifference;
+  if (canonicalA.priority !== canonicalB.priority) return canonicalA.priority - canonicalB.priority;
+  const canonicalWeightTypeA = canonicalA.weightType === 'plus' ? 1 : 0;
+  const canonicalWeightTypeB = canonicalB.weightType === 'plus' ? 1 : 0;
+  if (canonicalWeightTypeA !== canonicalWeightTypeB) return canonicalWeightTypeA - canonicalWeightTypeB;
+  const canonicalWeightDifference = (canonicalA.weightValue ?? Number.POSITIVE_INFINITY) -
+    (canonicalB.weightValue ?? Number.POSITIVE_INFINITY);
+  return canonicalWeightDifference || originalOrder.get(a.id) - originalOrder.get(b.id);
+
   if (priorityMode === "karate_standard") {
     const difference = compareKarateCategories(a, b, originalOrder);
     if (difference !== 0) return difference;
@@ -296,7 +346,7 @@ function compareCategoriesByPriority(
   return originalOrder.get(a.id) - originalOrder.get(b.id);
 }
 
-function getCategoryAgeKey(category) {
+export function getCategoryAgeKey(category) {
   const age = getCategoryAgeOrder(category);
   return Number.isFinite(age) ? String(age) : "unknown";
 }
@@ -342,7 +392,7 @@ export function smartAutoAssign(
     customEvents = [],
     priorityMode = "standard_gender_order",
     customPriorityOrder = [],
-    athleteRestMinutes = 15,
+    ageGroupsByDay = {},
   } = options;
   const originalOrder = new Map(categories.map((category, index) => [category.id, index]));
   const prioritySortedCategories = [...categories].sort((a, b) =>
@@ -364,12 +414,8 @@ export function smartAutoAssign(
     })));
     console.groupEnd();
   }
-  const ageGroupDays = assignAgeGroupsToDays(
-    prioritySortedCategories,
-    tournamentDays,
-    durations,
-    priorityMode
-  );
+  const isAgePriority =
+    priorityMode === 'age_young_first' || priorityMode === 'age_old_first';
 
 
   const sessions = [
@@ -435,26 +481,12 @@ export function smartAutoAssign(
       item.mat === mat && overlaps(startMins, endMins, item.startMins, item.endMins)
     );
 
-  const hasAthleteConflict = (category, day, startMins, endMins) =>
-    scheduleLog[day].some((item) => {
-      if (!item.category || findAthleteConflicts(category, item.category).length === 0) return false;
-      return overlaps(
-        startMins - athleteRestMinutes,
-        endMins + athleteRestMinutes,
-        item.startMins,
-        item.endMins
-      );
-    });
-
-  const findEarliestFreeSlot = (category, day, mat, duration, minimumStart = 0) => {
+  const findEarliestFreeSlot = (day, mat, duration, minimumStart = 0) => {
     for (const session of sessions) {
       const firstStart = Math.max(session.start, Math.ceil(minimumStart / 5) * 5);
       for (let start = firstStart; start + duration <= session.end; start += 5) {
         const end = start + duration;
-        if (
-          !hasMatConflict(day, mat, start, end) &&
-          !hasAthleteConflict(category, day, start, end)
-        ) {
+        if (!hasMatConflict(day, mat, start, end)) {
           return start;
         }
       }
@@ -469,25 +501,38 @@ export function smartAutoAssign(
 
   const groupStarts = new Map();
   const lastGroupByDay = new Map();
+  // Kata cùng lứa tuổi và các nhánh của cùng nhóm Vô địch tuyệt đối
+  // phải xếp nối tiếp trên cùng ngày, cùng thảm.
+  const kataAgeGroupLanes = new Map();
 
   for (const category of sortedCategories) {
     if (newSchedule[category.id]) continue;
     const duration = estimateCategoryDuration(category, durations);
     const candidates = [];
+    const kataAgeGroup = getKataAgeGroupKey(category);
+    const fixedKataLane = kataAgeGroup ? kataAgeGroupLanes.get(kataAgeGroup) : null;
     const isKarateStandard = priorityMode === "karate_standard";
     const schedulingGroup = isKarateStandard
       ? getKarateSchedulingGroupKey(category)
       : getCategoryAgeKey(category);
-    const assignedAgeDay = ageGroupDays.get(getCategoryAgeKey(category));
-    const eligibleDays = isKarateStandard
-      ? tournamentDays
-      : (assignedAgeDay ? [assignedAgeDay] : tournamentDays);
+    const configuredAgeDays = isAgePriority
+      ? tournamentDays.filter((day) => (ageGroupsByDay[day] || []).includes(getCategoryAgeKey(category)))
+      : [];
+    const configuredGroups = Object.values(ageGroupsByDay);
+    const hasAgeDayConfig = configuredGroups.some((groups) => groups?.length > 0);
+    const groupHasConfiguredDay = configuredGroups.some((groups) => groups?.includes(getCategoryAgeKey(category)));
+    const eligibleDays = isAgePriority && hasAgeDayConfig
+      ? (configuredAgeDays.length > 0
+        ? configuredAgeDays
+        : (groupHasConfiguredDay ? [] : [tournamentDays[tournamentDays.length - 1]]))
+      : tournamentDays;
 
     for (const day of eligibleDays) {
+      if (fixedKataLane && fixedKataLane.day !== day) continue;
       const lastGroup = lastGroupByDay.get(day);
       const groupStartKey = `${day}::${schedulingGroup}`;
       if (!groupStarts.has(groupStartKey)) {
-        const minimumStart = !isKarateStandard && lastGroup && lastGroup !== schedulingGroup
+        const minimumStart = !isKarateStandard && !isAgePriority && lastGroup && lastGroup !== schedulingGroup
           ? Math.max(
             0,
             ...scheduleLog[day]
@@ -497,20 +542,38 @@ export function smartAutoAssign(
           : 0;
         groupStarts.set(groupStartKey, minimumStart);
       }
+      const categoryPhase = parseKarateCategory(category);
+      const kataPhaseEnd = categoryPhase.discipline === 'kumite'
+        ? Math.max(
+          0,
+          ...scheduleLog[day]
+            .filter((item) => {
+              if (!item.category) return false;
+              const itemPhase = parseKarateCategory(item.category);
+              return itemPhase.discipline === 'kata' &&
+                itemPhase.ageMin === categoryPhase.ageMin &&
+                itemPhase.ageMax === categoryPhase.ageMax;
+            })
+            .map((item) => item.endMins)
+        )
+        : 0;
       for (let mat = 1; mat <= matCount; mat += 1) {
+        if (fixedKataLane && fixedKataLane.mat !== mat) continue;
+        const lane = tournamentDays.indexOf(day) * matCount + (mat - 1);
         const earliestSlot = findEarliestFreeSlot(
-          category,
           day,
           mat,
           duration,
-          groupStarts.get(groupStartKey)
+          Math.max(groupStarts.get(groupStartKey), kataPhaseEnd)
         );
         if (earliestSlot === null) continue;
         candidates.push({
           day,
           dayIndex: tournamentDays.indexOf(day),
           mat,
+          lane,
           earliestSlot,
+          overtime: sessions.length > 0 && earliestSlot >= sessions[sessions.length - 1].end,
           dayLoad: getLoad(day),
           matLoad: getLoad(day, mat),
         });
@@ -522,14 +585,22 @@ export function smartAutoAssign(
         a.earliestSlot - b.earliestSlot ||
         a.matLoad - b.matLoad ||
         a.mat - b.mat
+      : isAgePriority
+        ? a.dayLoad - b.dayLoad ||
+          a.earliestSlot - b.earliestSlot ||
+          a.matLoad - b.matLoad ||
+          a.mat - b.mat
       : a.dayLoad - b.dayLoad ||
-        a.matLoad - b.matLoad ||
         a.earliestSlot - b.earliestSlot ||
+        a.matLoad - b.matLoad ||
         a.mat - b.mat
     );
 
     const chosen = candidates[0];
     if (!chosen) continue;
+    if (kataAgeGroup && !fixedKataLane) {
+      kataAgeGroupLanes.set(kataAgeGroup, { day: chosen.day, mat: chosen.mat });
+    }
     if (!isKarateStandard) lastGroupByDay.set(chosen.day, schedulingGroup);
     const itemsOnMat = scheduleLog[chosen.day].filter(
       (item) => !item.isEvent && item.mat === chosen.mat

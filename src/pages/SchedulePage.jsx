@@ -23,6 +23,7 @@ import {
   detectScheduleConflicts,
   addMinutesToTime,
   estimateCategoryDuration,
+  getCategoryAgeKey,
 } from "../services/scheduleService";
 import {
   exportScheduleToPDF,
@@ -92,6 +93,7 @@ export default function SchedulePage() {
     priorityMode: "standard_gender_order",
     customPriorityOrder: [],
     athleteRestMinutes: 15,
+    ageGroupsByDay: [],
   });
 
   useEffect(() => {
@@ -177,6 +179,18 @@ export default function SchedulePage() {
     });
     return items;
   }, [tournament]);
+
+  const availableAgeGroups = useMemo(() => {
+    const groups = new Map();
+    categories.forEach((category) => {
+      const key = getCategoryAgeKey(category);
+      if (!groups.has(key)) {
+        const rawLabel = String(category.ageGroup || '').trim();
+        groups.set(key, key === '18' ? '18 tuổi trở lên (gồm Vô địch tuyệt đối)' : key === 'unknown' ? 'Không xác định lứa tuổi' : rawLabel || key + ' tuổi');
+      }
+    });
+    return [...groups.entries()].map(([key, label]) => ({ key, label })).sort((a, b) => (Number(b.key) || -1) - (Number(a.key) || -1));
+  }, [categories]);
 
   const setupEstimations = useMemo(() => {
     if (!showSetupModal || !categories) return null;
@@ -456,6 +470,7 @@ export default function SchedulePage() {
         customEvents,
         priorityMode: tournament.scheduleConfig?.priorityMode || "standard_gender_order",
         customPriorityOrder: tournament.scheduleConfig?.customPriorityOrder || categories.map((category) => category.id),
+        ageGroupsByDay: tournament.scheduleConfig?.ageGroupsByDay || {},
         athleteRestMinutes: tournament.scheduleConfig?.athleteRestMinutes ?? 15,
       }
     );
@@ -498,6 +513,7 @@ export default function SchedulePage() {
         customEvents,
         priorityMode: tournament.scheduleConfig?.priorityMode || "standard_gender_order",
         customPriorityOrder: tournament.scheduleConfig?.customPriorityOrder || categories.map((category) => category.id),
+        ageGroupsByDay: tournament.scheduleConfig?.ageGroupsByDay || {},
         athleteRestMinutes: tournament.scheduleConfig?.athleteRestMinutes ?? 15,
       }
     );
@@ -523,6 +539,7 @@ export default function SchedulePage() {
       startDate: tournamentDays[0] || tournament.startDate || tournament.date,
       durations: matchDurations,
       priorityMode: tournament.scheduleConfig?.priorityMode || "standard_gender_order",
+      ageGroupsByDay: tournament.scheduleConfig?.ageGroupsByDay || {},
         customPriorityOrder: tournament.scheduleConfig?.customPriorityOrder || categories.map((category) => category.id),
       athleteRestMinutes: tournament.scheduleConfig?.athleteRestMinutes ?? 15,
     };
@@ -551,6 +568,7 @@ export default function SchedulePage() {
       priorityMode: cfg.priorityMode || "standard_gender_order",
       customPriorityOrder: cfg.customPriorityOrder || categories.map((category) => category.id),
       athleteRestMinutes: cfg.athleteRestMinutes ?? 15,
+      ageGroupsByDay: (cfg.dates || []).map((date) => cfg.ageGroupsByDay?.[date] || []),
     });
     setShowSetupModal(true);
   };
@@ -568,6 +586,9 @@ export default function SchedulePage() {
       d.setDate(d.getDate() + i);
       dates.push(d.toISOString().split('T')[0]);
     }
+    const ageGroupsByDay = Object.fromEntries(
+      dates.map((date, index) => [date, setupForm.ageGroupsByDay?.[index] || []])
+    );
     const config = {
       competitionDays: setupForm.competitionDays,
       startDate: setupForm.startDate,
@@ -581,6 +602,7 @@ export default function SchedulePage() {
       priorityMode: setupForm.priorityMode || "standard_gender_order",
       customPriorityOrder: setupForm.customPriorityOrder || categories.map((category) => category.id),
       athleteRestMinutes: setupForm.athleteRestMinutes ?? 15,
+      ageGroupsByDay,
     };
     dispatch({
       type: ACTIONS.UPDATE_TOURNAMENT,
@@ -1629,6 +1651,38 @@ export default function SchedulePage() {
                   onChange={(e) => setSetupForm(prev => ({...prev, athleteRestMinutes: Math.max(0, parseInt(e.target.value) || 0)}))} />
               </div>
             </div>
+
+            {setupForm.competitionDays > 1 &&
+              (setupForm.priorityMode === 'age_old_first' || setupForm.priorityMode === 'age_young_first') && (
+              <div style={{marginTop: '14px'}}>
+                <div className='input-label'>📅 Chọn lứa tuổi thi đấu theo từng ngày</div>
+                <div style={{display: 'grid', gap: '8px', marginTop: '8px'}}>
+                  {Array.from({length: setupForm.competitionDays}).map((_, dayIndex) => (
+                    <div key={dayIndex} style={{padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc'}}>
+                      <div style={{fontWeight: 700, fontSize: '13px', marginBottom: '7px'}}>Ngày {dayIndex + 1}</div>
+                      <div style={{display: 'flex', flexWrap: 'wrap', gap: '8px 14px'}}>
+                        {availableAgeGroups.map((group) => {
+                          const checked = (setupForm.ageGroupsByDay?.[dayIndex] || []).includes(group.key);
+                          return (
+                            <label key={group.key} style={{display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', cursor: 'pointer'}}>
+                              <input type='checkbox' checked={checked} onChange={() => setSetupForm((prev) => {
+                                const byDay = [...(prev.ageGroupsByDay || [])];
+                                const selected = new Set(byDay[dayIndex] || []);
+                                if (selected.has(group.key)) selected.delete(group.key); else selected.add(group.key);
+                                byDay[dayIndex] = [...selected];
+                                return {...prev, ageGroupsByDay: byDay};
+                              })} />
+                              {group.label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{fontSize: '11px', color: '#64748b', marginTop: '5px'}}>Nhóm chưa chọn ngày sẽ tự đưa vào ngày cuối để không bỏ sót nội dung.</div>
+              </div>
+            )}
 
             {setupForm.priorityMode === "custom_order" && (
               <div style={{marginTop:'12px'}}>

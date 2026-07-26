@@ -9,6 +9,9 @@ import {
   updateMatchResult,
   disqualifyAthlete,
   resetMatch,
+  getSeedAssignments,
+  swapBracketSeeds,
+  rebuildBracketFromSeeds,
 } from "../utils/drawEngine";
 import {
   exportBracketToPDF,
@@ -20,6 +23,7 @@ import {
 } from "../services/scoreboardService";
 import { syncTeamBracketMembers } from "../utils/teamDraw";
 import Bracket from "../components/Bracket/Bracket";
+import CompetitionMatchReport from "../components/MatchReport/CompetitionMatchReport";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import "./BracketPage.css";
@@ -123,6 +127,7 @@ export default function BracketPage() {
   const { tournaments, currentTournament, currentCategory } = useTournament();
   const dispatch = useTournamentDispatch();
   const [exporting, setExporting] = useState(false);
+  const [showMatchReport, setShowMatchReport] = useState(false);
   const [dragEnabled, setDragEnabled] = useState(true); // Bật drag & drop mặc định
   const [swapHistory, setSwapHistory] = useState([]); // Lưu lịch sử swap để undo
   const { activeHint, clearHint } = useOnboarding();
@@ -146,6 +151,31 @@ export default function BracketPage() {
     currentTournament ||
     tournaments.find((t) => t.categories.some((c) => c.id === id));
 
+  // Recover and persist seed assignments from brackets corrupted by the old
+  // match-level drag/drop implementation before another swap is attempted.
+  useEffect(() => {
+    if (!category?.bracket?.matches) return;
+
+    const recoveredSeeds = getSeedAssignments(category.bracket);
+    const persistedSeeds = category.bracket.seedAssignments;
+    if (
+      persistedSeeds &&
+      JSON.stringify(persistedSeeds) === JSON.stringify(recoveredSeeds)
+    ) return;
+
+    try {
+      const recoveredBracket = rebuildBracketFromSeeds(
+        category.bracket,
+        recoveredSeeds,
+      );
+      dispatch({
+        type: ACTIONS.UPDATE_CATEGORY,
+        payload: { id: category.id, bracket: recoveredBracket },
+      });
+    } catch (error) {
+      console.error("Unable to recover legacy bracket seeds", error);
+    }
+  }, [category, dispatch]);
   // Find the category
   useEffect(() => {
     let foundTournament = null;
@@ -434,83 +464,41 @@ export default function BracketPage() {
    */
   const handleSwapAthletes = (fromMatchId, fromSlot, toMatchId, toSlot) => {
     if (!category?.bracket) return;
-    
-    const matches = [...category.bracket.matches];
-    const fromMatch = matches.find(m => m.id === fromMatchId);
-    const toMatch = matches.find(m => m.id === toMatchId);
-    
-    if (!fromMatch || !toMatch) return;
-    
-    // Lưu trạng thái trước khi swap vào history (có thể undo)
-    setSwapHistory(prev => [...prev.slice(-9), {
-      fromMatchId, fromSlot, toMatchId, toSlot,
-      fromAthlete1: fromMatch.athlete1,
-      fromAthlete2: fromMatch.athlete2,
-      toAthlete1: toMatch.athlete1,
-      toAthlete2: toMatch.athlete2,
-    }]);
-    
-    // Lấy VĐV từ cả hai vị trí
-    const fromAthlete = fromSlot === 1 ? fromMatch.athlete1 : fromMatch.athlete2;
-    const toAthlete = toSlot === 1 ? toMatch.athlete1 : toMatch.athlete2;
-    
-    // Deep clone matches để update
-    const updatedMatches = matches.map(m => {
-      if (m.id === fromMatchId && m.id === toMatchId) {
-        // Swap trong cùng trận
-        const updated = { ...m };
-        if (fromSlot === 1) updated.athlete1 = toAthlete;
-        else updated.athlete2 = toAthlete;
-        if (toSlot === 1) updated.athlete1 = fromAthlete;
-        else updated.athlete2 = fromAthlete;
-        return updated;
-      } else if (m.id === fromMatchId) {
-        const updated = { ...m };
-        if (fromSlot === 1) updated.athlete1 = toAthlete;
-        else updated.athlete2 = toAthlete;
-        // Reset winner nếu có thay đổi VĐV
-        if (m.winner) updated.winner = null;
-        return updated;
-      } else if (m.id === toMatchId) {
-        const updated = { ...m };
-        if (toSlot === 1) updated.athlete1 = fromAthlete;
-        else updated.athlete2 = fromAthlete;
-        // Reset winner nếu có thay đổi VĐV
-        if (m.winner) updated.winner = null;
-        return updated;
-      }
-      return m;
-    });
-    
-    const updatedBracket = { ...category.bracket, matches: updatedMatches };
-    dispatch({
-      type: ACTIONS.UPDATE_CATEGORY,
-      payload: { id: category.id, bracket: updatedBracket },
-    });
+    const fromMatch = category.bracket.matches.find((m) => m.id === fromMatchId);
+    const toMatch = category.bracket.matches.find((m) => m.id === toMatchId);
+    if (!fromMatch || !toMatch || fromMatch.round !== 1 || toMatch.round !== 1) return;
+
+    const sourceSeed = fromMatch.position * 2 + fromSlot;
+    const targetSeed = toMatch.position * 2 + toSlot;
+    const previousSeedAssignments = getSeedAssignments(category.bracket);
+    try {
+      const updatedBracket = swapBracketSeeds(category.bracket, sourceSeed, targetSeed);
+      setSwapHistory((prev) => [
+        ...prev.slice(-9),
+        { seedAssignments: previousSeedAssignments },
+      ]);
+      dispatch({
+        type: ACTIONS.UPDATE_CATEGORY,
+        payload: { id: category.id, bracket: updatedBracket },
+      });
+    } catch (error) {
+      console.error(error);
+      setDialog({
+        type: "alert",
+        title: "Không thể đổi vị trí VĐV",
+        message: error.message,
+        onOk: () => setDialog(null),
+        onCancel: () => setDialog(null),
+      });
+    }
   };
 
-  /**
-   * Undo thao tác swap cuối cùng
-   */
   const handleUndoSwap = () => {
     if (swapHistory.length === 0 || !category?.bracket) return;
-    
     const last = swapHistory[swapHistory.length - 1];
-    const matches = category.bracket.matches.map(m => {
-      if (m.id === last.fromMatchId) {
-        return { ...m, athlete1: last.fromAthlete1, athlete2: last.fromAthlete2, winner: null };
-      }
-      if (m.id === last.toMatchId) {
-        return { ...m, athlete1: last.toAthlete1, athlete2: last.toAthlete2, winner: null };
-      }
-      return m;
-    });
-    
-    dispatch({
-      type: ACTIONS.UPDATE_CATEGORY,
-      payload: { id: category.id, bracket: { ...category.bracket, matches } },
-    });
-    setSwapHistory(prev => prev.slice(0, -1));
+    const updatedBracket = rebuildBracketFromSeeds(category.bracket, last.seedAssignments);
+    dispatch({ type: ACTIONS.UPDATE_CATEGORY, payload: { id: category.id, bracket: updatedBracket } });
+    setSwapHistory((prev) => prev.slice(0, -1));
   };
   // Calculate progress
   const completedMatches = category.bracket.matches.filter(
@@ -652,6 +640,11 @@ export default function BracketPage() {
               </button>
             )}
             <button
+              className="btn btn-secondary"
+              onClick={() => setShowMatchReport(true)}
+            >
+              📄 Biên bản thi đấu
+            </button>            <button
               className="btn btn-secondary"
               onClick={handleExportScoreSheet}
             >
@@ -812,6 +805,14 @@ export default function BracketPage() {
         </div>
       </div>
 
+      {showMatchReport && (
+        <CompetitionMatchReport
+          tournament={tournament}
+          tournaments={[tournament]}
+          initialCategory={category}
+          onClose={() => setShowMatchReport(false)}
+        />
+      )}
       {/* ===== CUSTOM DIALOG (replaces window.prompt / window.confirm) ===== */}
       {dialog && (
         <div
