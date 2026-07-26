@@ -141,6 +141,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
     openTvDisplay: (matId) => ipcRenderer.invoke('lan:openTvDisplay', matId),
   },
 
+  kataReceive: {
+    start: (matId, pin) => ipcRenderer.invoke('kata-receive:start', { matId, pin }),
+    stop: () => ipcRenderer.invoke('kata-receive:stop'),
+    getStatus: () => ipcRenderer.invoke('kata-receive:getStatus'),
+    updateMatches: (matches) => ipcRenderer.invoke('kata-receive:updateMatches', matches),
+    lockMatch: (matchId) => ipcRenderer.invoke('kata-receive:lockMatch', matchId),
+    unlockMatch: (matchId) => ipcRenderer.invoke('kata-receive:unlockMatch', matchId),
+    onKataRegistered: (callback) => {
+      const handler = (event, data) => callback(data);
+      ipcRenderer.on('kata-receive:kata-registered', handler);
+      return () => ipcRenderer.removeListener('kata-receive:kata-registered', handler);
+    },
+  },
+
+
   // =============================================
   // Vector PDF Export (printToPDF) Operations
   // =============================================

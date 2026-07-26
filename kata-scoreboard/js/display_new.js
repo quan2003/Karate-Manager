@@ -182,8 +182,10 @@ function updateTimerDisplay() {
   if (!el || !overlay) return;
   const mins = Math.floor(state.timer.seconds / 60);
   const secs = state.timer.seconds % 60;
-  el.textContent = `${mins}:${secs.toString().padStart(2, "0")}`;
-  overlay.style.display = (state.timer.isRunning && state.timer.seconds > 0) ? "flex" : "none";
+  const deciseconds = state.timer.deciseconds || 0;
+  el.innerHTML = `<span>${mins}:${secs.toString().padStart(2, "0")}</span><span class="timer-deciseconds">.${deciseconds}</span>`;
+  overlay.style.display =
+    state.timer.isRunning && (state.timer.seconds > 0 || deciseconds > 0) ? "flex" : "none";
 }
 
 window.addEventListener("DOMContentLoaded", () => {

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config/supabaseConfig';
 import { isTeamCategory } from '../utils/teamDraw';
+import { findAthleteRemovalIndexes } from '../utils/athleteCloudMatching';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -150,31 +151,16 @@ export async function removeAthletesFromClubSubmission(tournamentId, clubName, a
     const cloudAthletes = Array.isArray(submissionData?.athletes)
       ? submissionData.athletes
       : [];
-    const normalize = (value) => String(value || '').trim().normalize('NFC').toLowerCase();
-    const isSelectedAthlete = (cloudAthlete) => athleteRefs.some((ref) => {
-      if (normalize(cloudAthlete.name) !== normalize(ref.name)) return false;
-
-      const cloudBirth = normalize(cloudAthlete.birthDate || cloudAthlete.birthYear);
-      const refBirth = normalize(ref.birthDate || ref.birthYear);
-      if (cloudBirth && refBirth && cloudBirth !== refBirth) return false;
-
-      const sameEventId = cloudAthlete.eventId && ref.categoryId
-        && String(cloudAthlete.eventId) === String(ref.categoryId);
-      const sameEventName = cloudAthlete.eventName && ref.categoryName
-        && normalize(cloudAthlete.eventName) === normalize(ref.categoryName);
-      return Boolean(sameEventId || sameEventName);
-    });
-
-    const remainingAthletes = cloudAthletes.filter(
-      (cloudAthlete) => !isSelectedAthlete(cloudAthlete)
-    );
-    const removedCount = cloudAthletes.length - remainingAthletes.length;
+    const removalIndexes = findAthleteRemovalIndexes(cloudAthletes, athleteRefs);
+    const removedCount = removalIndexes.length;
     if (removedCount !== athleteRefs.length) {
       return {
         success: false,
         message: `Chỉ đối chiếu được ${removedCount}/${athleteRefs.length} VĐV trên Cloud. Chưa xóa dữ liệu nào.`
       };
     }
+    const removalIndexSet = new Set(removalIndexes);
+    const remainingAthletes = cloudAthletes.filter((_, index) => !removalIndexSet.has(index));
 
     const { data: updatedSubmission, error: updateError } = await supabase
       .from('athlete_submissions')

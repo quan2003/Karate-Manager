@@ -1,3 +1,5 @@
+import { getTeamCountFromAthletes, isTeamCategory } from "../utils/teamDraw.js";
+
 /**
  * Schedule Service - Quản lý lịch thi đấu, chia thảm
  * 
@@ -23,15 +25,13 @@ export const DEFAULT_MATCH_DURATIONS = {
  * Xác định loại chi tiết của hạng mục (để tính thời lượng)
  */
 export function getCategoryDetailType(category) {
-  const isKata = category.type === 'kata';
-  const isTeam = category.isTeam || category.name?.toLowerCase().includes('đồng đội') || 
-                 category.name?.toLowerCase().includes('doi') ||
-                 category.name?.toLowerCase().includes('team');
-  
-  if (isKata && isTeam) return 'kata_team';
-  if (isKata && !isTeam) return 'kata_individual';
-  if (!isKata && isTeam) return 'kumite_team';
-  return 'kumite_individual';
+  const isKata = category.type === "kata";
+  const isTeam = isTeamCategory(category);
+
+  if (isKata && isTeam) return "kata_team";
+  if (isKata) return "kata_individual";
+  if (isTeam) return "kumite_team";
+  return "kumite_individual";
 }
 
 /**
@@ -50,20 +50,29 @@ export function estimateMatchCount(athleteCount) {
  * @param {Object} durations - cài đặt thời lượng trận { kata_individual, kata_team, kumite_individual, kumite_team }
  * @returns {number} thời lượng tính bằng phút
  */
+export function getEstimatedParticipantCount(category) {
+  if (isTeamCategory(category)) {
+    return getTeamCountFromAthletes(category.athletes || [], category);
+  }
+  return category.athletes?.length || 0;
+}
+
+export function getEstimatedMatchCount(category) {
+  const bracketMatches = category.bracket?.matches;
+  if (!category.isSplit && Array.isArray(bracketMatches) && bracketMatches.length > 0) {
+    return bracketMatches.filter((match) => !match.isBye).length;
+  }
+  return estimateMatchCount(getEstimatedParticipantCount(category));
+}
+
 export function estimateCategoryDuration(category, durations = DEFAULT_MATCH_DURATIONS) {
   const detailType = getCategoryDetailType(category);
-  const athleteCount = category.athletes?.length || 0;
-  
-  if (athleteCount === 0) return 5; // Mặc định 5 phút nếu chưa có VĐV
+  const participantCount = getEstimatedParticipantCount(category);
+  if (participantCount === 0) return 5;
 
-  const matchCount = estimateMatchCount(athleteCount);
-  
-  let matchDuration = durations[detailType] || 5;
-
-
-  // Phương pháp chuẩn: Cứ mỗi trận tính đúng matchDuration (hiện tại mặc định 5 phút)
-  // Xóa bỏ các công thức chia cho log2 gây sai lệch và nhân dồn làm phình thời gian
-  return Math.ceil(matchCount * matchDuration);
+  const matchCount = getEstimatedMatchCount(category);
+  const matchDuration = Number(durations[detailType]) || 5;
+  return Math.max(5, Math.ceil(matchCount * matchDuration));
 }
 
 /**
@@ -126,148 +135,420 @@ export function convertMinsToTime(mins) {
   return `${String(h).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
 }
 
+function normalizeAgeText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+}
+
+function getCategoryAgeOrder(category) {
+  const text = normalizeAgeText(category.ageGroup || category.name);
+  const number = text.match(/\d+/);
+  if (number) return Number(number[0]);
+  const groups = [
+    ["nhi dong", 6],
+    ["thieu nhi", 9],
+    ["thieu nien", 12],
+    ["tre", 15],
+    ["thanh nien", 18],
+    ["senior", 18],
+  ];
+  return groups.find(([label]) => text.includes(label))?.[1] ?? Number.POSITIVE_INFINITY;
+}
+
+function getCategoryGender(category) {
+  const gender = String(category.gender || "").toLowerCase();
+  const name = ` ${normalizeAgeText(category.name)} `;
+  if (gender === "female" || /\bnu\b/.test(name)) return "female";
+  if (gender === "mixed" || name.includes("hon hop") || name.includes("mixed")) return "mixed";
+  return "male";
+}
+
+function getStandardGenderOrder(category) {
+  const gender = getCategoryGender(category);
+  if (gender === "mixed") return 4;
+  const team = isTeamCategory(category);
+  if (!team && gender === "male") return 0;
+  if (!team && gender === "female") return 1;
+  if (team && gender === "male") return 2;
+  if (team && gender === "female") return 3;
+  return 4;
+}
+
+export function parseKarateCategory(category) {
+  const name = normalizeAgeText(category.name);
+  const discipline = String(category.type || "").toLowerCase() === "kata" || name.includes("kata") ? "kata" : "kumite";
+  const gender = getCategoryGender(category);
+  const team = isTeamCategory(category);
+  const eventType = gender === "mixed" ? "mixed" : (team ? "team" : "individual");
+  const explicitAgeText = normalizeAgeText(category.ageGroup);
+  const ageText = explicitAgeText || name;
+  const ageRange = ageText.match(/(\d+)\s*[-–]\s*(\d+)(?:\s*tuoi)?/);
+  const ageSingle = ageText.match(/(\d+)\s*tuoi/);
+  let ageMin = Number.POSITIVE_INFINITY;
+  let ageMax = Number.POSITIVE_INFINITY;
+  if (ageRange && (explicitAgeText || ageText.includes("tuoi"))) {
+    ageMin = Number(ageRange[1]);
+    ageMax = Number(ageRange[2]);
+  } else if (ageSingle) {
+    ageMin = Number(ageSingle[1]);
+    ageMax = /tro len|\+|senior/.test(ageText) ? Number.POSITIVE_INFINITY : ageMin;
+  } else if (explicitAgeText) {
+    ageMin = getCategoryAgeOrder(category);
+    ageMax = ageMin;
+  }
+  const weightText = normalizeAgeText(category.weightClass || category.name);
+  const above = weightText.match(/tren\s*(\d+(?:[.,]\d+)?)\s*kg?/);
+  const below = weightText.match(/duoi\s*(\d+(?:[.,]\d+)?)\s*kg?/);
+  const signed = weightText.match(/([+-])\s*(\d+(?:[.,]\d+)?)\s*kg/);
+  const range = weightText.match(/(\d+(?:[.,]\d+)?)\s*[-–]\s*(\d+(?:[.,]\d+)?)\s*kg/);
+  const plain = weightText.match(/(\d+(?:[.,]\d+)?)\s*kg/);
+  let weightValue = null;
+  let weightType = null;
+  if (above && below) {
+    weightValue = Number(below[1].replace(",", "."));
+    weightType = "minus";
+  } else if (above) {
+    weightValue = Number(above[1].replace(",", "."));
+    weightType = "plus";
+  } else if (below) {
+    weightValue = Number(below[1].replace(",", "."));
+    weightType = "minus";
+  } else if (signed) {
+    weightValue = Number(signed[2].replace(",", "."));
+    weightType = signed[1] === "+" ? "plus" : "minus";
+  } else if (range) {
+    weightValue = Number(range[2].replace(",", "."));
+    weightType = "minus";
+  } else if (plain) {
+    weightValue = Number(plain[1].replace(",", "."));
+    weightType = "minus";
+  }  let priority = 99;
+  if (discipline === "kata") {
+    if (gender === "mixed") priority = 5;
+    else if (!team && gender === "male") priority = 1;
+    else if (!team && gender === "female") priority = 2;
+    else if (team && gender === "male") priority = 3;
+    else if (team && gender === "female") priority = 4;
+  } else if (!team && gender === "male") priority = 6;
+  else if (!team && gender === "female") priority = 7;
+  else if (team && gender === "male") priority = 8;
+  else if (team && gender === "female") priority = 9;
+  return { discipline, eventType, gender, ageMin, ageMax, weightValue, weightType, priority };
+}
+
+function compareKarateCategories(a, b, originalOrder) {
+  const keyA = parseKarateCategory(a);
+  const keyB = parseKarateCategory(b);
+  const weightTypeA = keyA.weightType === "plus" ? 1 : 0;
+  const weightTypeB = keyB.weightType === "plus" ? 1 : 0;
+  return keyA.priority - keyB.priority ||
+    keyA.ageMin - keyB.ageMin ||
+    keyA.ageMax - keyB.ageMax ||
+    weightTypeA - weightTypeB ||
+    (keyA.weightValue ?? Number.POSITIVE_INFINITY) - (keyB.weightValue ?? Number.POSITIVE_INFINITY) ||
+    originalOrder.get(a.id) - originalOrder.get(b.id);
+}
+
+export function sortCategoriesByKarateStandard(categories) {
+  const originalOrder = new Map(categories.map((category, index) => [category.id, index]));
+  return [...categories].sort((a, b) => compareKarateCategories(a, b, originalOrder));
+}
+
+function getKarateSchedulingGroupKey(category) {
+  const key = parseKarateCategory(category);
+  return `${key.priority}:${key.ageMin}:${key.ageMax}`;
+}
+function compareCategoriesByPriority(
+  a,
+  b,
+  priorityMode,
+  originalOrder,
+  customPriorityOrder = []
+) {
+  if (priorityMode === "karate_standard") {
+    const difference = compareKarateCategories(a, b, originalOrder);
+    if (difference !== 0) return difference;
+  }  if (priorityMode === "kata_first" || priorityMode === "kumite_first") {
+    const preferredType = priorityMode === "kata_first" ? "kata" : "kumite";
+    const typeDiff = Number(b.type === preferredType) - Number(a.type === preferredType);
+    if (typeDiff !== 0) return typeDiff;
+  }
+  if (priorityMode === "age_young_first" || priorityMode === "age_old_first") {
+    const ageA = getCategoryAgeOrder(a);
+    const ageB = getCategoryAgeOrder(b);
+    if (ageA !== ageB) {
+      return priorityMode === "age_young_first" ? ageA - ageB : ageB - ageA;
+    }
+  }
+  if (priorityMode === "standard_gender_order") {
+    const rankDifference = getStandardGenderOrder(a) - getStandardGenderOrder(b);
+    if (rankDifference !== 0) return rankDifference;
+  }
+  if (priorityMode === "custom_order") {
+    const customOrder = new Map(customPriorityOrder.map((id, index) => [id, index]));
+    const rankA = customOrder.has(a.id) ? customOrder.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const rankB = customOrder.has(b.id) ? customOrder.get(b.id) : Number.MAX_SAFE_INTEGER;
+    if (rankA !== rankB) return rankA - rankB;
+  }
+  return originalOrder.get(a.id) - originalOrder.get(b.id);
+}
+
+function getCategoryAgeKey(category) {
+  const age = getCategoryAgeOrder(category);
+  return Number.isFinite(age) ? String(age) : "unknown";
+}
+
+function assignAgeGroupsToDays(categories, tournamentDays, durations, priorityMode) {
+  if (
+    tournamentDays.length <= 1 ||
+    (priorityMode !== "age_young_first" && priorityMode !== "age_old_first")
+  ) {
+    return new Map();
+  }
+
+  const groupDurations = new Map();
+  categories.forEach((category) => {
+    const key = getCategoryAgeKey(category);
+    groupDurations.set(
+      key,
+      (groupDurations.get(key) || 0) + estimateCategoryDuration(category, durations)
+    );
+  });
+
+  const dayLoads = new Map(tournamentDays.map((day) => [day, 0]));
+  const groupDays = new Map();
+  groupDurations.forEach((duration, key) => {
+    const day = [...tournamentDays].sort(
+      (a, b) => dayLoads.get(a) - dayLoads.get(b)
+    )[0];
+    groupDays.set(key, day);
+    dayLoads.set(day, dayLoads.get(day) + duration);
+  });
+  return groupDays;
+}
 export function smartAutoAssign(
   categories,
   tournamentDays,
   matCount,
   sessionConfig,
   durations = DEFAULT_MATCH_DURATIONS,
-  existingSchedule = {}
+  existingSchedule = {},
+  options = {}
 ) {
-  // Ưu tiên xếp hạng mục Kata trước để tránh chấn thương
-  // Các nội dung còn lại giữ nguyên thứ tự khai báo (thường là theo độ tuổi/hạng cân) thay vì xếp số lượng VĐV đông lên trước.
-  const sortedCategories = [...categories].sort((a, b) => {
-    const aIsKata = getCategoryDetailType(a).startsWith('kata') ? 1 : 0;
-    const bIsKata = getCategoryDetailType(b).startsWith('kata') ? 1 : 0;
-    
-    if (aIsKata !== bIsKata) return bIsKata - aIsKata; // Kata lên trên
-    
-    // Sort logically by name if both are Kata or both are Kumite
-    return a.name.localeCompare(b.name);
-  });
+  const {
+    customEvents = [],
+    priorityMode = "standard_gender_order",
+    customPriorityOrder = [],
+    athleteRestMinutes = 15,
+  } = options;
+  const originalOrder = new Map(categories.map((category, index) => [category.id, index]));
+  const prioritySortedCategories = [...categories].sort((a, b) =>
+    compareCategoriesByPriority(
+      a,
+      b,
+      priorityMode,
+      originalOrder,
+      customPriorityOrder
+    )
+  );
+  const sortedCategories = prioritySortedCategories;
+  if (priorityMode === "karate_standard") {
+    console.groupCollapsed(`[AUTO SCHEDULE] Thứ tự chuẩn Karate (${sortedCategories.length} nội dung)`);
+    console.table(sortedCategories.map((category, index) => ({
+      STT: index + 1,
+      "Nội dung": category.name,
+      ...parseKarateCategory(category),
+    })));
+    console.groupEnd();
+  }
+  const ageGroupDays = assignAgeGroupsToDays(
+    prioritySortedCategories,
+    tournamentDays,
+    durations,
+    priorityMode
+  );
 
-  const morningStartMins = convertTimeToMins(sessionConfig.morningStart || "07:15");
-  const morningEndMins = convertTimeToMins(sessionConfig.morningEnd || "11:30");
-  const afternoonStartMins = convertTimeToMins(sessionConfig.afternoonStart || "13:00");
+
+  const sessions = [
+    {
+      start: convertTimeToMins(sessionConfig.morningStart || "07:00"),
+      end: convertTimeToMins(sessionConfig.morningEnd || "11:30"),
+    },
+    {
+      start: convertTimeToMins(sessionConfig.afternoonStart || "13:00"),
+      end: convertTimeToMins(sessionConfig.afternoonEnd || "17:30"),
+    },
+  ].filter((session) => session.end > session.start);
 
   const newSchedule = { ...existingSchedule };
+  const scheduleLog = {};
+  tournamentDays.forEach((day) => { scheduleLog[day] = []; });
 
-  // Track the exact occupation per day
-  const scheduleLog = {}; // log[day] = list of { catId, mat, startMins, endMins, athletes }
-  tournamentDays.forEach(day => { scheduleLog[day] = []; });
+  const addLogItem = (day, item) => {
+    if (!scheduleLog[day]) scheduleLog[day] = [];
+    scheduleLog[day].push(item);
+  };
 
-  // Init log from existing schedule
-  for (const [catId, s] of Object.entries(existingSchedule)) {
-    const startMins = convertTimeToMins(s.time);
-    const cat = categories.find(c => c.id === catId);
-    const dur = estimateCategoryDuration(cat || {}, durations);
-    
-    if (!scheduleLog[s.date]) scheduleLog[s.date] = [];
-    scheduleLog[s.date].push({
-      catId, mat: s.mat,
-      startMins: startMins, 
-      endMins: startMins + dur,
-      athletes: cat?.athletes || []
+  for (const [catId, assignment] of Object.entries(existingSchedule)) {
+    const category = categories.find((item) => item.id === catId);
+    if (!category || !assignment.date) continue;
+    const startMins = convertTimeToMins(assignment.time);
+    const duration = assignment.endTime
+      ? convertTimeToMins(assignment.endTime) - startMins
+      : estimateCategoryDuration(category, durations);
+    addLogItem(assignment.date, {
+      catId,
+      mat: assignment.mat,
+      startMins,
+      endMins: startMins + Math.max(5, duration),
+      category,
     });
   }
 
-  function getMatCount(day, mat) {
-    return scheduleLog[day].filter(x => x.mat === mat).length;
-  }
-  function getDayCount(day) {
-    return scheduleLog[day].length;
-  }
-  
-  // Check if a category overlaps with another on the SAME MAT
-  function isMatOccupied(day, mat, startMins, endMins) {
-    const matItems = scheduleLog[day].filter(x => x.mat === mat);
-    for (const item of matItems) {
-      if (!(endMins <= item.startMins || startMins >= item.endMins)) return true;
-    }
-    return false;
-  }
+  customEvents.forEach((event) => {
+    const eventDays = event.date ? [event.date] : tournamentDays;
+    const eventMats = Number(event.mat) === 0
+      ? Array.from({ length: matCount }, (_, index) => index + 1)
+      : [Number(event.mat)];
+    const startMins = convertTimeToMins(event.time);
+    const duration = Math.max(5, Number(event.duration) || 15);
+    eventDays.forEach((day) => {
+      eventMats.forEach((mat) => addLogItem(day, {
+        catId: `event_${event.id || event.name}`,
+        mat,
+        startMins,
+        endMins: startMins + duration,
+        category: null,
+        isEvent: true,
+      }));
+    });
+  });
 
-  // Check if athlete conflicts across ANY MAT
-  function hasAthleteConflict(cat, day, startMins, endMins) {
-    for (const item of scheduleLog[day]) {
-      if (!(endMins <= item.startMins || startMins >= item.endMins)) {
-        const assignedCat = categories.find(c => c.id === item.catId);
-        if (assignedCat && findAthleteConflicts(cat, assignedCat).length > 0) return true;
+  const overlaps = (startA, endA, startB, endB) =>
+    Math.max(startA, startB) < Math.min(endA, endB);
+
+  const hasMatConflict = (day, mat, startMins, endMins) =>
+    scheduleLog[day].some((item) =>
+      item.mat === mat && overlaps(startMins, endMins, item.startMins, item.endMins)
+    );
+
+  const hasAthleteConflict = (category, day, startMins, endMins) =>
+    scheduleLog[day].some((item) => {
+      if (!item.category || findAthleteConflicts(category, item.category).length === 0) return false;
+      return overlaps(
+        startMins - athleteRestMinutes,
+        endMins + athleteRestMinutes,
+        item.startMins,
+        item.endMins
+      );
+    });
+
+  const findEarliestFreeSlot = (category, day, mat, duration, minimumStart = 0) => {
+    for (const session of sessions) {
+      const firstStart = Math.max(session.start, Math.ceil(minimumStart / 5) * 5);
+      for (let start = firstStart; start + duration <= session.end; start += 5) {
+        const end = start + duration;
+        if (
+          !hasMatConflict(day, mat, start, end) &&
+          !hasAthleteConflict(category, day, start, end)
+        ) {
+          return start;
+        }
       }
     }
-    return false;
-  }
+    return null;
+  };
 
-  function findEarliestFreeSlot(cat, day, mat, dur) {
-    let s = morningStartMins;
-    while (s < 1440) { // max 24 hours
-      // Nếu khe thời gian hiện tại rơi vào giờ nghỉ trưa, nhảy thẳng sang đầu giờ chiều
-      if (s >= morningEndMins && s < afternoonStartMins) {
-        s = afternoonStartMins;
-        continue;
-      }
-      
-      const end = s + dur;
-      if (!isMatOccupied(day, mat, s, end) && !hasAthleteConflict(cat, day, s, end)) {
-        return s;
-      }
-      s += 5; // step 5 phút
-    }
-    return 1440;
-  }
+  const getLoad = (day, mat = null) =>
+    scheduleLog[day]
+      .filter((item) => !item.isEvent && (mat === null || item.mat === mat))
+      .reduce((sum, item) => sum + (item.endMins - item.startMins), 0);
 
-  for (const cat of sortedCategories) {
-    if (newSchedule[cat.id]) continue; // already assigned
-    const dur = estimateCategoryDuration(cat, durations);
+  const groupStarts = new Map();
+  const lastGroupByDay = new Map();
 
-    // Candidates: all combination of Day and Mat
+  for (const category of sortedCategories) {
+    if (newSchedule[category.id]) continue;
+    const duration = estimateCategoryDuration(category, durations);
     const candidates = [];
-    for (const day of tournamentDays) {
-      for (let mat = 1; mat <= matCount; mat++) {
-        const earliestSlot = findEarliestFreeSlot(cat, day, mat, dur);
+    const isKarateStandard = priorityMode === "karate_standard";
+    const schedulingGroup = isKarateStandard
+      ? getKarateSchedulingGroupKey(category)
+      : getCategoryAgeKey(category);
+    const assignedAgeDay = ageGroupDays.get(getCategoryAgeKey(category));
+    const eligibleDays = isKarateStandard
+      ? tournamentDays
+      : (assignedAgeDay ? [assignedAgeDay] : tournamentDays);
+
+    for (const day of eligibleDays) {
+      const lastGroup = lastGroupByDay.get(day);
+      const groupStartKey = `${day}::${schedulingGroup}`;
+      if (!groupStarts.has(groupStartKey)) {
+        const minimumStart = !isKarateStandard && lastGroup && lastGroup !== schedulingGroup
+          ? Math.max(
+            0,
+            ...scheduleLog[day]
+              .filter((item) => !item.isEvent)
+              .map((item) => item.endMins)
+          )
+          : 0;
+        groupStarts.set(groupStartKey, minimumStart);
+      }
+      for (let mat = 1; mat <= matCount; mat += 1) {
+        const earliestSlot = findEarliestFreeSlot(
+          category,
+          day,
+          mat,
+          duration,
+          groupStarts.get(groupStartKey)
+        );
+        if (earliestSlot === null) continue;
         candidates.push({
-          day, mat, earliestSlot,
-          dayItems: getDayCount(day),
-          matItems: getMatCount(day, mat)
+          day,
+          dayIndex: tournamentDays.indexOf(day),
+          mat,
+          earliestSlot,
+          dayLoad: getLoad(day),
+          matLoad: getLoad(day, mat),
         });
       }
     }
 
-    // ⭐ Rule to balance:
-    // 1. Day with least items
-    // 2. Mat with least items
-    // 3. Earliest possible slot
-    candidates.sort((a, b) => {
-      if (a.dayItems !== b.dayItems) return a.dayItems - b.dayItems; // balance days
-      if (a.matItems !== b.matItems) return a.matItems - b.matItems; // balance mats
-      return a.earliestSlot - b.earliestSlot; // keep it early
-    });
+    candidates.sort((a, b) => isKarateStandard
+      ? a.dayIndex - b.dayIndex ||
+        a.earliestSlot - b.earliestSlot ||
+        a.matLoad - b.matLoad ||
+        a.mat - b.mat
+      : a.dayLoad - b.dayLoad ||
+        a.matLoad - b.matLoad ||
+        a.earliestSlot - b.earliestSlot ||
+        a.mat - b.mat
+    );
 
     const chosen = candidates[0];
-    const startMins = chosen.earliestSlot;
-    
-    newSchedule[cat.id] = {
+    if (!chosen) continue;
+    if (!isKarateStandard) lastGroupByDay.set(chosen.day, schedulingGroup);
+    const itemsOnMat = scheduleLog[chosen.day].filter(
+      (item) => !item.isEvent && item.mat === chosen.mat
+    ).length;
+    newSchedule[category.id] = {
       mat: chosen.mat,
-      time: convertMinsToTime(startMins),
-      order: chosen.matItems + 1,
-      date: chosen.day
+      time: convertMinsToTime(chosen.earliestSlot),
+      endTime: convertMinsToTime(chosen.earliestSlot + duration),
+      order: itemsOnMat + 1,
+      date: chosen.day,
     };
-    
-    scheduleLog[chosen.day].push({
-      catId: cat.id,
+    addLogItem(chosen.day, {
+      catId: category.id,
       mat: chosen.mat,
-      startMins: startMins,
-      endMins: startMins + dur,
-      athletes: cat.athletes
+      startMins: chosen.earliestSlot,
+      endMins: chosen.earliestSlot + duration,
+      category,
     });
   }
-
-  // Sort them sequentially by time so order numbers are nice
-  Object.values(newSchedule).forEach(s => {
-    const timeVal = s.time.replace(':', '');
-    s._sortVal = parseInt(timeVal);
-  });
-  
   return newSchedule;
 }
 
@@ -286,14 +567,14 @@ export function addMinutesToTime(timeStr, mins) {
  * VĐV bị xếp thi đấu cùng thời điểm ở 2 thảm khác nhau trong cùng ngày.
  * @returns {Array} Danh sách conflict { date, time, catA, catB, matA, matB, athletes }
  */
-export function detectScheduleConflicts(schedule, categories) {
+export function detectScheduleConflicts(schedule, categories, durations = DEFAULT_MATCH_DURATIONS) {
   const conflicts = [];
   const entries = Object.entries(schedule)
     .map(([catId, s]) => {
       const category = categories.find(c => c.id === catId);
       if (!category) return null;
       const startMins = convertTimeToMins(s.time);
-      const dur = estimateCategoryDuration(category);
+      const dur = estimateCategoryDuration(category, durations);
       return { 
         catId, ...s, 
         category, 

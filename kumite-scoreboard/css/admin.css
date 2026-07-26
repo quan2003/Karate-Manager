@@ -444,13 +444,15 @@ body {
 .mini-timer-main {
   font-size: 36px;
   font-weight: bold;
-  color: white;
 }
 
 .mini-timer-decimal {
   font-size: 20px;
-  color: #ffd700;
 }
+
+.mini-timer.timer-white .mini-timer-main, .mini-timer.timer-white .mini-timer-decimal { color: #ffffff; }
+.mini-timer.timer-yellow .mini-timer-main, .mini-timer.timer-yellow .mini-timer-decimal { color: #ffd700; }
+.mini-timer.timer-red .mini-timer-main, .mini-timer.timer-red .mini-timer-decimal { color: #ff0000; }
 
 /* Custom Names Section */
 .custom-names {

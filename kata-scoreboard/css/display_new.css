@@ -222,7 +222,8 @@ body {
 /* ==================== UTILS ==================== */
 .kata-dropdown { display: none !important; }
 .timer-overlay { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2000; }
-.timer-display { font-size: 15vw; font-weight: 900; color: #ffd700; background: rgba(0,0,0,0.95); padding: 30px 60px; border: 8px solid #ffd700; border-radius: 20px; }
+.timer-display { font-size: 15vw; font-weight: 900; color: #ffd700; background: rgba(0,0,0,0.95); padding: 30px 60px; border: none; border-radius: 20px; }
+.timer-deciseconds { font-size: 0.32em; margin-left: 0.08em; vertical-align: baseline; }
 
 @media (max-width: 1024px) {
   .athlete-name { font-size: 7vw; }

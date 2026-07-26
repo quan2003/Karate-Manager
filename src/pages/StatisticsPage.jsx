@@ -9,7 +9,7 @@ import Modal from "../components/common/Modal";
 import { useToast } from "../components/common/Toast";
 import * as XLSX from "xlsx";
 import { updateMatchResult as applyMatchResult } from "../utils/drawEngine";
-import { getTeamSizeForCategory } from "../utils/teamDraw";
+import { getTeamSizeForCategory, getTeamsFromAthletes } from "../utils/teamDraw";
 import { getAppBaseUrl, getTournamentLogos, getTournamentSignatures } from "../services/pdfService";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
@@ -704,20 +704,48 @@ export default function StatisticsPage() {
   };
 
   // ===== EXPORT SINGLE CATEGORY RESULT =====
-  // Helper: get team member full names for a club in a category
-  const getTeamMemberNames = (cat, clubName) => {
-    if (!clubName) return "";
+  // Resolve the actual team first. A club may have multiple teams, whose result
+  // names are "<club> - Đội 1/2", while the raw athletes only store <club>.
+  const getTeamMembers = (cat, teamName, clubName = "") => {
+    if (!teamName && !clubName) return [];
     const isTeamCat =
       cat.name?.toLowerCase().includes("đồng đội") ||
       cat.isTeam ||
       (cat.athletes || []).some((a) => a.isTeam);
-    if (!isTeamCat) return "";
-    const members = (cat.athletes || []).filter(
-      (a) =>
-        (a.club || "").trim().toLowerCase() === clubName.trim().toLowerCase()
+    if (!isTeamCat) return [];
+
+    const normalize = (value) => String(value || "").trim().toLowerCase();
+    const teamKey = normalize(teamName);
+    const bracketTeams = [];
+    (cat.bracket?.matches || []).forEach((match) => {
+      [match.athlete1, match.athlete2, match.winner].forEach((participant) => {
+        if (participant?.isTeam && participant.members?.length) {
+          bracketTeams.push(participant);
+        }
+      });
+    });
+
+    const generatedTeams = getTeamsFromAthletes(
+      cat.athletes || [],
+      cat,
+      tournament
     );
-    if (members.length === 0) return "";
-    return members.map((m) => m.name).join(", ");
+    const exactTeam = [...bracketTeams, ...generatedTeams].find(
+      (team) => normalize(team.name) === teamKey
+    );
+    if (exactTeam) return exactTeam.members || [];
+
+    const clubKey = normalize(clubName || teamName);
+    return (cat.athletes || []).filter(
+      (athlete) => normalize(athlete.club) === clubKey
+    );
+  };
+
+  const getTeamMemberNames = (cat, teamName, clubName = "") => {
+    return getTeamMembers(cat, teamName, clubName)
+      .map((member) => member.name)
+      .filter(Boolean)
+      .join(", ");
   };
   const formatAthleteBirthYear = (athlete) => {
     if (!athlete) return "";
@@ -4927,14 +4955,9 @@ export default function StatisticsPage() {
                                 cat.isTeam ||
                                 (cat.athletes || []).some((a) => a.isTeam);
 
-                              let members = [];
-                              if (isTeamCat) {
-                                const searchName = athleteName || clubName;
-                                members = (cat.athletes || []).filter(
-                                  (a) =>
-                                    (a.club || "").trim().toLowerCase() === (searchName || "").trim().toLowerCase()
-                                );
-                              }
+                              const members = isTeamCat
+                                ? getTeamMembers(cat, athleteName, clubName)
+                                : [];
 
                               if (isTeamCat && members.length > 0) {
                                 members.forEach((m) => {

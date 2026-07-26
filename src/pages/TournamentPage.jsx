@@ -205,6 +205,7 @@ export default function TournamentPage() {
       gender: "male",
       ageGroup: "",
       weightClass: "",
+      isTeam: false,
       format: "single_elimination",
     });
     setShowModal(true);
@@ -218,6 +219,7 @@ export default function TournamentPage() {
       gender: category.gender || "male",
       ageGroup: category.ageGroup || "",
       weightClass: category.weightClass || "",
+      isTeam: Boolean(category.isTeam),
       format: category.format || "single_elimination",
     });
     setShowModal(true);
@@ -228,6 +230,7 @@ export default function TournamentPage() {
     gender: "male",
     ageGroup: "",
     weightClass: "",
+    isTeam: false,
     format: "single_elimination",
   });
 
@@ -528,6 +531,7 @@ export default function TournamentPage() {
       gender: "male",
       ageGroup: "",
       weightClass: "",
+      isTeam: false,
       format: "single_elimination",
     });
     setEditingId(null);
@@ -2301,6 +2305,23 @@ export default function TournamentPage() {
                   placeholder="VD: U18, Senior"
                 />
               </div>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Hình thức thi đấu</label>
+              <select
+                className="input"
+                value={formData.isTeam ? "team" : "individual"}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    isTeam: e.target.value === "team",
+                  }))
+                }
+              >
+                <option value="individual">👤 Cá nhân</option>
+                <option value="team">👥 Đồng đội</option>
+              </select>
             </div>
 
             <div className="input-group">

@@ -1,10 +1,11 @@
-import * as XLSX from "xlsx";
+import XLSX from "xlsx-js-style";
 
 export const REFEREE_TEMPLATE_HEADERS = [
   "Họ và tên",
   "Đơn vị",
   "Cấp bậc",
   "Nội dung phụ trách",
+  "Trọng tài chính/phụ",
   "Số điện thoại",
   "Ghi chú",
 ];
@@ -18,12 +19,18 @@ const normalizeText = (value = "") =>
     .replace(/Đ/g, "D")
     .toLowerCase();
 
+const formatRefereeRole = (value) => {
+  const role = String(value || "").trim().toLocaleLowerCase("vi");
+  return role === "ttc" || role.includes("chính") ? "TTC" : "TTP";
+};
+
 const HEADER_ALIASES = {
   code: ["ma trong tai", "ma", "referee code", "code"],
   name: ["ho va ten", "ho ten", "ten trong tai", "name"],
   unit: ["don vi", "clb", "quoc gia", "tinh thanh", "unit", "country"],
   grade: ["cap bac", "cap", "rank", "grade"],
   specialty: ["noi dung phu trach", "noi dung", "chuyen mon", "specialty"],
+  refereeRole: ["trong tai chinh/phu", "trong tai chinh phu", "vai tro trong tai", "vai tro", "referee role", "role"],
   phone: ["so dien thoai", "dien thoai", "sdt", "phone"],
   note: ["ghi chu", "note"],
 };
@@ -42,23 +49,24 @@ function getCell(row, field) {
 export function downloadRefereeTemplate() {
   const rows = [
     REFEREE_TEMPLATE_HEADERS,
-    ["Nguyễn Văn An", "Hà Nội", "Quốc gia", "Kata", "0900000001", ""],
-    ["Trần Thị Bình", "Hà Nội", "Quốc gia", "Kumite", "0900000002", ""],
+    ["Nguyễn Văn An", "Hà Nội", "Quốc gia", "Kata", "TTC", "0900000001", ""],
+    ["Trần Thị Bình", "Hà Nội", "Quốc gia", "Kumite", "TTP", "0900000002", ""],
   ];
   const worksheet = XLSX.utils.aoa_to_sheet(rows);
   worksheet["!cols"] = [
     { wch: 30 }, { wch: 22 }, { wch: 18 },
-    { wch: 24 }, { wch: 18 }, { wch: 32 },
+    { wch: 24 }, { wch: 22 }, { wch: 18 }, { wch: 32 },
   ];
-  worksheet["!autofilter"] = { ref: "A1:F3" };
+  worksheet["!autofilter"] = { ref: "A1:G3" };
 
   const instructions = XLSX.utils.aoa_to_sheet([
     ["HƯỚNG DẪN NHẬP DANH SÁCH TRỌNG TÀI"],
     ["1", "Không đổi tên các cột ở dòng đầu tiên."],
     ["2", "Chỉ cần nhập Họ và tên và Đơn vị; hệ thống sẽ tự cấp Mã trọng tài."],
     ["3", "Nội dung phụ trách: Kata, Kumite hoặc Cả hai."],
-    ["4", "Có thể xóa hai dòng ví dụ trước khi nhập dữ liệu thật."],
-    ["5", "Khi import lại, người trùng Họ và tên + Đơn vị sẽ được cập nhật, không tạo bản sao."],
+    ["4", "Trọng tài chính/phụ: nhập TTC (trọng tài chính) hoặc TTP (trọng tài phụ)."],
+    ["5", "Có thể xóa hai dòng ví dụ trước khi nhập dữ liệu thật."],
+    ["6", "Khi import lại, người trùng Họ và tên + Đơn vị sẽ được cập nhật, không tạo bản sao."],
   ]);
   instructions["!cols"] = [{ wch: 8 }, { wch: 85 }];
   instructions["!merges"] = [XLSX.utils.decode_range("A1:B1")];
@@ -112,6 +120,7 @@ export async function parseRefereeExcelFile(file) {
       unit,
       grade: getCell(row, "grade"),
       specialty: getCell(row, "specialty") || "Cả hai",
+      refereeRole: getCell(row, "refereeRole") || "TTP",
       phone: getCell(row, "phone"),
       note: getCell(row, "note"),
       active: true,
@@ -247,4 +256,103 @@ export function generateNextRefereeCode(referees = []) {
   let number = 1;
   while (used.has(normalizeText(`TT-${String(number).padStart(3, "0")}`))) number += 1;
   return `TT-${String(number).padStart(3, "0")}`;
+}
+
+const safeFileName = (value = "Giai_dau") =>
+  String(value).normalize("NFC").replace(/[^a-zA-Z0-9À-ỹ]+/g, "_").replace(/^_+|_+$/g, "");
+
+const displayRefereeRole = (value) => {
+  const role = String(value || "").trim().toLocaleLowerCase("vi");
+  return role === "ttc" || role.includes("chính") ? "TTC" : "TTP";
+};
+
+export function exportRefereeMatListsExcel(tournament, management) {
+  const workbook = XLSX.utils.book_new();
+  const report = management.report || {};
+  const refereeMap = new Map((management.referees || []).map((item) => [item.id, item]));
+  const assignments = management.assignments || [];
+  const officialNames = new Set([report.chairman, report.deputyChairman, report.secretary].map(normalizeText).filter(Boolean));
+  const matCount = Math.max(1, Number(management.matCount || assignments.length || 1));
+  const blankMatches = ["", "", "", "", "", ""];
+  const defaultFont = { name: "Times New Roman", sz: 12, color: { rgb: "000000" } };
+  const thinBorder = { top: { style: "thin", color: { rgb: "000000" } }, bottom: { style: "thin", color: { rgb: "000000" } }, left: { style: "thin", color: { rgb: "000000" } }, right: { style: "thin", color: { rgb: "000000" } } };
+
+  for (let mat = 1; mat <= matCount; mat += 1) {
+    const fixed = management.fixedByMat?.[String(mat)] || {};
+    const assignment = assignments.find((item) => Number(item.mat) === mat);
+    const fixedRows = [
+      ["Trưởng sàn", refereeMap.get(fixed.chiefId)],
+      ["Phó sàn 1", refereeMap.get(fixed.deputy1Id)],
+      ["Phó sàn 2", refereeMap.get(fixed.deputy2Id)],
+    ];
+    const randomRows = (assignment?.randomIds || []).map((id) => refereeMap.get(id)).filter((referee) => referee && !officialNames.has(normalizeText(referee.name)));
+    const empty = () => Array(11).fill("");
+    const rows = [
+      ["BAN TỔ CHỨC", "", "", "", "", "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", "", "", "", "", ""],
+      ["", "", "", "", "", "Độc lập - Tự do - Hạnh phúc", "", "", "", "", ""],
+      ["DANH SÁCH TRỌNG TÀI", ...Array(10).fill("")],
+      [String(report.eventName || tournament.name || "").toUpperCase(), ...Array(10).fill("")],
+      [`SÀN ${mat}`, ...Array(10).fill("")],
+      [`1. Tổng trọng tài: ${report.chairman || ""}`, ...Array(10).fill("")],
+      [`2. Phó tổng trọng tài: ${report.deputyChairman || ""}`, ...Array(10).fill("")],
+      [`3. Thư ký ban trọng tài: ${report.secretary || ""}`, ...Array(10).fill("")],
+      empty(),
+      ["STT", "HỌ VÀ TÊN", "ĐƠN VỊ", "TRÌNH ĐỘ", "AK", "", "", "", "", "", "GHI CHÚ"],
+      ["", "", "", "", "AO", "", "", "", "", "", ""],
+      ["", "", "", "", "TRẬN 1", "TRẬN 2", "TRẬN 3", "TRẬN 4", "TRẬN 5", "TRẬN 6", ""],
+    ];
+    fixedRows.forEach(([duty, referee], index) => rows.push([
+      index + 1, referee?.name || "Chưa chọn", referee?.unit || "", referee ? formatRefereeRole(referee.refereeRole) : "",
+      ...blankMatches, [duty, referee?.note].filter(Boolean).join(" - "),
+    ]));
+    randomRows.forEach((referee, index) => rows.push([
+      fixedRows.length + index + 1, referee.name || "", referee.unit || "", formatRefereeRole(referee.refereeRole),
+      ...blankMatches, referee.note || "",
+    ]));
+    rows.push(empty(), ["TM. HỘI ĐỒNG TRỌNG TÀI", ...Array(7).fill(""), "NGƯỜI LẬP BẢNG", "", ""]);
+    rows.push(["TỔNG TRỌNG TÀI", ...Array(10).fill("")]);
+
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    const lastDataRow = 12 + fixedRows.length + randomRows.length;
+    sheet["!merges"] = [
+      XLSX.utils.decode_range("A1:E1"), XLSX.utils.decode_range("F1:K1"), XLSX.utils.decode_range("F2:K2"),
+      XLSX.utils.decode_range("A3:K3"), XLSX.utils.decode_range("A4:K4"), XLSX.utils.decode_range("A5:K5"),
+      XLSX.utils.decode_range("A6:K6"), XLSX.utils.decode_range("A7:K7"), XLSX.utils.decode_range("A8:K8"),
+      XLSX.utils.decode_range("A10:A12"), XLSX.utils.decode_range("B10:B12"), XLSX.utils.decode_range("C10:C12"),
+      XLSX.utils.decode_range("D10:D12"), XLSX.utils.decode_range("K10:K12"),
+      XLSX.utils.decode_range(`A${lastDataRow + 2}:E${lastDataRow + 2}`),
+      XLSX.utils.decode_range(`I${lastDataRow + 2}:K${lastDataRow + 2}`),
+      XLSX.utils.decode_range(`A${lastDataRow + 3}:E${lastDataRow + 3}`),
+    ];
+    sheet["!cols"] = [
+      { wch: 6 }, { wch: 28 }, { wch: 24 }, { wch: 20 },
+      { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 24 },
+    ];
+    sheet["!rows"] = [{ hpt: 22 }, { hpt: 20 }, { hpt: 24 }, { hpt: 34 }, { hpt: 24 }, null, null, null, null, { hpt: 19 }, { hpt: 19 }, { hpt: 22 }];
+    Object.keys(sheet).filter((address) => !address.startsWith("!")).forEach((address) => {
+      sheet[address].s = { ...(sheet[address].s || {}), font: defaultFont, alignment: { vertical: "center" } };
+    });
+    ["A1", "F1", "F2", "A3", "A4", "A5"].forEach((address) => {
+      if (sheet[address]) sheet[address].s = { font: { ...defaultFont, bold: true, sz: address === "A4" ? 14 : 12 }, alignment: { horizontal: "center", vertical: "center", wrapText: true } };
+    });
+    for (let row = 9; row <= 11; row += 1) {
+      for (let column = 0; column < 11; column += 1) {
+        const address = XLSX.utils.encode_cell({ r: row, c: column });
+        if (!sheet[address]) sheet[address] = { t: "s", v: "" };
+        sheet[address].s = { font: { ...defaultFont, bold: true }, fill: { fgColor: { rgb: "FFF200" } }, alignment: { horizontal: "center", vertical: "center", wrapText: true }, border: thinBorder };
+      }
+    }
+    for (let row = 12; row < lastDataRow; row += 1) {
+      for (let column = 0; column < 11; column += 1) {
+        const address = XLSX.utils.encode_cell({ r: row, c: column });
+        if (!sheet[address]) sheet[address] = { t: "s", v: "" };
+        sheet[address].s = { font: defaultFont, alignment: { horizontal: column === 0 || (column >= 4 && column <= 9) ? "center" : "left", vertical: "center" }, border: thinBorder };
+      }
+    }
+    sheet["!pageSetup"] = { orientation: "landscape", fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+    sheet["!margins"] = { left: 0.2, right: 0.2, top: 0.3, bottom: 0.3, header: 0.1, footer: 0.1 };
+    XLSX.utils.book_append_sheet(workbook, sheet, `Sàn ${mat}`);
+  }
+
+  XLSX.writeFile(workbook, `Danh_Sach_Trong_Tai_Theo_San_${safeFileName(tournament.name)}.xlsx`);
 }

@@ -349,6 +349,20 @@ button[onclick*="clear"]:hover {
 .time-presets .btn:hover {
   background: #dee2e6;
 }
+.custom-time-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.custom-time-control input {
+  width: 72px;
+  padding: 7px 8px;
+  border: 1px solid #ced4da;
+  border-radius: 8px;
+  font: inherit;
+  text-align: center;
+}
 
 /* Swap Control */
 .swap-control {
@@ -616,7 +630,14 @@ body {
 .time-presets {
   margin: 0;
   gap: 6px;
+}
+
+.time-controls {
   flex-wrap: nowrap;
+}
+
+.time-presets {
+  flex-wrap: wrap;
 }
 
 .time-controls .btn,

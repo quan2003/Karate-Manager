@@ -19,6 +19,7 @@ let state = {
     minutes: 3,
     seconds: 0,
     deciseconds: 0,
+    hasStarted: false,
     isRunning: false,
   },
   errorNames: { C1: "C1", C2: "C2", C3: "C3", HC: "HC", H: "H" },
@@ -367,6 +368,7 @@ function loadState() {
   if (saved) {
     const parsedState = JSON.parse(saved);
     state = { ...state, ...parsedState };
+    state.timer = { ...state.timer, ...parsedState.timer, hasStarted: parsedState.timer?.hasStarted === true };
     state.hantei = normalizeHanteiState(parsedState.hantei);
   }
   updateUI();
@@ -507,6 +509,14 @@ function updatePreview() {
   const minutes = String(state.timer.minutes).padStart(2, "0");
   const seconds = String(state.timer.seconds).padStart(2, "0");
   document.getElementById("previewTimer").textContent = `${minutes}:${seconds}`;
+  const previewDecimal = document.querySelector(".mini-timer-decimal");
+  if (previewDecimal) previewDecimal.textContent = `.${state.timer.deciseconds}`;
+  const remainingDeciseconds = (state.timer.minutes * 60 + state.timer.seconds) * 10 + state.timer.deciseconds;
+  const miniTimer = document.querySelector(".mini-timer");
+  if (miniTimer) {
+    miniTimer.classList.remove("timer-white", "timer-yellow", "timer-red");
+    miniTimer.classList.add(remainingDeciseconds <= 0 || !state.timer.hasStarted ? "timer-white" : remainingDeciseconds <= 150 ? "timer-red" : "timer-yellow");
+  }
 
   // Update penalty buttons in preview
   updatePreviewPenalties("Aka", state.akaPenalties);
@@ -540,6 +550,7 @@ function toggleTimer() {
 }
 
 function startTimer() {
+  state.timer.hasStarted = true;
   state.timer.isRunning = true;
   document.getElementById("startStopBtn").textContent = "Stop";
   saveState();
@@ -586,6 +597,7 @@ function resetTimer() {
   state.timer.minutes = Math.floor(totalSeconds / 60);
   state.timer.seconds = totalSeconds % 60;
   state.timer.deciseconds = 0;
+  state.timer.hasStarted = false;
   saveState();
 }
 
@@ -1088,6 +1100,7 @@ function resetAllSettings() {
       minutes: 3,
       seconds: 0,
       deciseconds: 0,
+      hasStarted: false,
       isRunning: false,
     },
     errorNames: { C1: "C1", C2: "C2", C3: "C3", HC: "HC", H: "H" },
@@ -1737,6 +1750,7 @@ function loadPendingMatch() {
       minutes: 3,
       seconds: 0,
       deciseconds: 0,
+      hasStarted: false,
       isRunning: false,
     },
     errorNames: { C1: "C1", C2: "C2", C3: "C3", HC: "HC", H: "H" },

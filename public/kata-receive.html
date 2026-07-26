@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🥋 Đăng ký bài quyền – K-SPORT</title>
+<style>
+  :root {
+    --red: #dc2626; --blue: #2563eb; --green: #16a34a;
+    --bg: #0f172a; --card: #1e293b; --border: #334155;
+    --text: #f1f5f9; --muted: #94a3b8;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+  .header { background: linear-gradient(135deg, #1e3a5f, #0f2040); padding: 14px 16px; text-align: center; border-bottom: 1px solid var(--border); }
+  .header h1 { font-size: 18px; font-weight: 700; }
+  .header p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .mat-badge { display: inline-block; background: var(--blue); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; margin-top: 4px; }
+  .content { padding: 12px; max-width: 480px; margin: 0 auto; }
+  .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin: 14px 0 8px; }
+  /* Match cards */
+  .match-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; cursor: pointer; transition: border-color .2s; }
+  .match-card:hover { border-color: var(--blue); }
+  .match-card.selected { border-color: var(--blue); background: #1e3355; }
+  .match-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .match-code { font-size: 11px; font-weight: 700; background: #334155; padding: 2px 7px; border-radius: 6px; color: var(--muted); }
+  .match-round { font-size: 11px; color: var(--muted); }
+  .match-athletes { display: flex; gap: 8px; }
+  .athlete-pill { flex: 1; padding: 6px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; text-align: center; }
+  .athlete-pill.aka { background: rgba(220,38,38,.18); border: 1px solid rgba(220,38,38,.4); color: #fca5a5; }
+  .athlete-pill.ao  { background: rgba(37,99,235,.18); border: 1px solid rgba(37,99,235,.4); color: #93c5fd; }
+  .athlete-pill.empty { background: #1e293b; border: 1px dashed #475569; color: #475569; font-style: italic; }
+  .kata-tag { font-size: 10px; font-weight: 400; display: block; margin-top: 2px; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Form */
+  .form-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-top: 8px; }
+  .form-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+  .slot-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .slot-tab { flex: 1; padding: 10px; border-radius: 8px; border: 2px solid var(--border); background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s; }
+  .slot-tab.aka.active { border-color: var(--red); background: rgba(220,38,38,.15); color: #fca5a5; }
+  .slot-tab.ao.active  { border-color: var(--blue); background: rgba(37,99,235,.15); color: #93c5fd; }
+  .slot-tab:not(.active) { opacity: .5; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
+  input[type=text] { width: 100%; padding: 10px 12px; background: #0f172a; border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; }
+  input[type=text]:focus { border-color: var(--blue); }
+  .autocomplete-wrap { position: relative; margin-bottom: 12px; }
+  .kata-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; max-height: 250px; overflow-y: auto; padding-right: 4px; }
+  .kata-item { background: #0f172a; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 12px; text-align: center; cursor: pointer; user-select: none; transition: all .2s; }
+  .kata-item:active { opacity: .7; }
+  .kata-item.selected { border-color: var(--blue); background: rgba(37,99,235,.2); color: #93c5fd; font-weight: bold; }
+  /* Custom scrollbar for grid */
+  .kata-grid::-webkit-scrollbar { width: 6px; }
+  .kata-grid::-webkit-scrollbar-track { background: #0f172a; border-radius: 4px; }
+  .kata-grid::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  .registrar-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .registrar-row input { flex: 1; }
+  .btn-submit { width: 100%; padding: 14px; background: linear-gradient(135deg, var(--green), #15803d); border: none; border-radius: 10px; color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; transition: opacity .2s; letter-spacing: .3px; }
+  .btn-submit:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-submit:not(:disabled):active { opacity: .8; }
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #166534; color: #fff; padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 600; z-index: 999; box-shadow: 0 4px 16px rgba(0,0,0,.5); opacity: 0; transition: opacity .3s; pointer-events: none; white-space: nowrap; max-width: 90vw; }
+  .toast.error { background: #991b1b; }
+  .toast.show { opacity: 1; }
+  /* Pending badge */
+  .pending-bar { background: #78350f; border: 1px solid #d97706; border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #fde68a; margin-bottom: 10px; display: none; align-items: center; gap: 8px; }
+  .pending-bar.show { display: flex; }
+  /* Offline indicator */
+  .offline-badge { display: none; background: #7f1d1d; color: #fca5a5; font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 600; }
+  .offline-badge.show { display: inline-block; }
+  /* Locked overlay */
+  .locked-overlay { display: none; background: rgba(120,35,15,.85); border: 1px solid #d97706; border-radius: 10px; padding: 12px; text-align: center; font-size: 14px; color: #fde68a; font-weight: 600; margin-bottom: 10px; }
+  .locked-overlay.show { display: block; }
+  /* Spinner */
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
+  .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+    <button id="menuBtn" onclick="document.getElementById('categoryDrawer').style.display='block'" style="background: none; border: none; color: white; font-size: 24px; cursor: pointer; padding: 4px;">☰</button>
+    <div style="flex:1;">
+      <h1>🥋 Đăng ký bài quyền</h1>
+      <p style="margin-top: 2px;">K-SPORT – Tiếp nhận Kata <span class="offline-badge" id="offlineBadge">Offline</span></p>
+    </div>
+    <div style="width: 32px;"></div>
+  </div>
+  <div class="mat-badge" id="matBadge">Đang kết nối...</div>
+</div>
+
+<!-- Drawer for Categories -->
+<div id="categoryDrawer" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 3000;">
+   <div style="width: 80%; max-width: 320px; background: var(--card); height: 100%; padding: 20px; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.5);">
+       <h3 style="margin-bottom: 16px; font-size: 16px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">Chọn nội dung</h3>
+       <ul id="categoryList" style="list-style: none;"></ul>
+       <button onclick="document.getElementById('categoryDrawer').style.display='none'" style="margin-top: 24px; width: 100%; padding: 12px; background: var(--border); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">Đóng</button>
+   </div>
+</div>
+
+<div class="content">
+  <div class="pending-bar" id="pendingBar">
+    ⏳ <span id="pendingCount">0</span> yêu cầu đang chờ gửi lại khi có mạng
+  </div>
+
+  <p class="section-title">Trận đang chờ – Chọn trận</p>
+  <div id="matchList"><div class="empty-state"><div class="icon">⏳</div><p>Đang tải danh sách trận...</p></div></div>
+
+  <div id="formSection" style="display:none">
+    <div class="form-card">
+      <h3 id="formTitle">Đăng ký bài quyền</h3>
+      <div class="locked-overlay" id="lockedOverlay">🔒 Trận đang diễn ra – không thể thay đổi bài quyền</div>
+      <div id="formBody">
+        <div class="slot-tabs">
+          <button class="slot-tab aka active" id="tabAka" onclick="selectSlot(1)">🔴 Đỏ (Athlete 1)</button>
+          <button class="slot-tab ao" id="tabAo" onclick="selectSlot(2)">🔵 Xanh (Athlete 2)</button>
+        </div>
+        <div class="autocomplete-wrap">
+          <label>Chọn bài quyền *</label>
+          <input type="text" id="kataSearch" placeholder="Gõ để lọc bài quyền..." autocomplete="off" oninput="filterKataGrid()">
+          <div class="kata-grid" id="kataGrid"></div>
+        </div>
+        <div class="registrar-row">
+          <div style="flex:1">
+            <label>Người tiếp nhận</label>
+            <input type="text" id="registrarInput" placeholder="Tên người nhận bài..." value="">
+          </div>
+        </div>
+        <button class="btn-submit" id="submitBtn" onclick="submitKata()">✅ Xác nhận đăng ký</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== CONFIG =====
+const SERVER_URL = window.location.origin; // same origin
+const MAT_ID = new URLSearchParams(window.location.search).get('mat') || '1';
+const PIN = new URLSearchParams(window.location.search).get('pin') || '';
+
+// ===== WKF KATA LIST =====
+const WKF_KATA_LIST = [
+  "001 Anan","002 Anan Dai","003 Ananko","004 Aoyagi","005 Bassai",
+  "006 Bassai Dai","007 Bassai Sho","008 Chatanyara Kusanku",
+  "009 Chibana No Kushanku","010 Chinte","011 Chinto","012 Enpi",
+  "013 Fukyugata Ichi","014 Fukyugata Ni","015 Gankaku","016 Garyu",
+  "017 Gekisai (Geksai) 1","018 Gekisai (Geksai) 2","019 Gojushiho",
+  "020 Gojushiho Dai","021 Gojushiho Sho","022 Hakucho","023 Hangetsu",
+  "024 Haufa (Haffa)","025 Heian Shodan","026 Heian Nidan",
+  "027 Heian Sandan","028 Heian Yondan","029 Heian Godan","030 Heiku",
+  "031 Ishimine Bassai","032 Itosu Rohai Shodan","033 Itosu Rohai Nidan",
+  "034 Itosu Rohai Sandan","035 Jiin","036 Jion","037 Jitte",
+  "038 Juroku","039 Kanchin","040 Kanku Dai","041 Kanku Sho",
+  "042 Kanshu","043 Kishimoto No Kushanku","044 Kousoukun",
+  "045 Kousoukun Dai","046 Kousoukun Sho","047 Kururunfa","048 Kusanku",
+  "049 Kyan No Chinto","050 Kyan No Wanshu","051 Matsukaze",
+  "052 Matsumura Bassai","053 Matsumura Rohai","054 Meikyo","055 Myojo",
+  "056 Naifanchin Shodan","057 Naifanchin Nidan","058 Naifanchin Sandan",
+  "059 Naihanchi","060 Nijushiho","061 Nipaipo","062 Niseishi",
+  "063 Ohan","064 Ohan Dai","065 Oyadomari No Passai","066 Pachu",
+  "067 Paiku","068 Papuren","069 Passai","070 Pinan Shodan",
+  "071 Pinan Nidan","072 Pinan Sandan","073 Pinan Yondan",
+  "074 Pinan Godan","075 Rohai","076 Saifa","077 Sanchin","078 Sansai",
+  "079 Sanseiru","080 Sanseru","081 Seichin","082 Seienchin (Seiyunchin)",
+  "083 Seipai","084 Seiryu","085 Seishan","086 Seisan (Sesan)",
+  "087 Shiho Kousoukun","088 Shinpa","089 Shinsei","090 Shisochin",
+  "091 Sochin","092 Suparinpei","093 Tekki Shodan","094 Tekki Nidan",
+  "095 Tekki Sandan","096 Tensho","097 Tomari Bassai","098 Unshu",
+  "099 Unsu","100 Useishi","101 Wankan","102 Wanshu"
+];
+
+// ===== STATE =====
+let matches = [];
+let selectedMatch = null;
+let selectedSlot = 1;
+let selectedKataName = '';
+let selectedCategoryId = 'all';
+let categoryOptions = [];
+let pendingQueue = JSON.parse(localStorage.getItem('kata_pending_queue') || '[]');
+let isOnline = navigator.onLine;
+let pollTimer = null;
+let submitting = false;
+let savedRegistrar = localStorage.getItem('kata_registrar_name') || '';
+document.getElementById('registrarInput').value = savedRegistrar;
+
+// ===== NETWORK STATUS =====
+window.addEventListener('online', () => { isOnline = true; updateOfflineUI(); flushPendingQueue(); });
+window.addEventListener('offline', () => { isOnline = false; updateOfflineUI(); });
+
+function updateOfflineUI() {
+  document.getElementById('offlineBadge').classList.toggle('show', !isOnline);
+}
+
+// ===== LOAD MATCHES =====
+async function loadMatches() {
+  try {
+    const r = await fetch(`${SERVER_URL}/api/kata-receive/matches?mat=${encodeURIComponent(MAT_ID)}&pin=${encodeURIComponent(PIN)}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const json = await r.json();
+    if (!json.success) throw new Error(json.error || 'Lỗi server');
+    matches = json.matches || [];
+    document.getElementById('matBadge').textContent = `Thảm ${json.matId || MAT_ID}`;
+    parseCategories();
+    renderMatchList();
+  } catch (e) {
+    document.getElementById('matBadge').textContent = `Thảm ${MAT_ID}`;
+    if (matches.length === 0) {
+      document.getElementById('matchList').innerHTML = '<div class="empty-state"><div class="icon">📡</div><p>Không thể kết nối Thư ký<br><small>' + e.message + '</small></p></div>';
+    }
+  }
+}
+
+function parseCategories() {
+   const cats = new Map();
+   matches.forEach(m => {
+       if (m.categoryId) cats.set(m.categoryId, m.categoryName || 'Nội dung khác');
+   });
+   categoryOptions = Array.from(cats.entries()).map(([id, name]) => ({id, name}));
+   
+   if (selectedCategoryId === 'all' && categoryOptions.length > 0) {
+       selectedCategoryId = categoryOptions[0].id;
+   } else if (!categoryOptions.find(c => c.id === selectedCategoryId)) {
+       selectedCategoryId = 'all';
+   }
+   
+   renderCategoryMenu();
+}
+
+function renderCategoryMenu() {
+   const ul = document.getElementById('categoryList');
+   let html = `<li onclick="selectCategory('all')" style="padding: 12px; margin-bottom: 4px; border-radius: 8px; cursor: pointer; background: ${selectedCategoryId === 'all' ? 'rgba(37,99,235,0.2)' : 'transparent'}; color: ${selectedCategoryId === 'all' ? 'var(--blue)' : 'var(--text)'}; font-weight: ${selectedCategoryId === 'all' ? 'bold' : 'normal'};">Tất cả nội dung</li>`;
+   categoryOptions.forEach(c => {
+       const isSel = selectedCategoryId === c.id;
+       html += `<li onclick="selectCategory('${c.id}')" style="padding: 12px; margin-bottom: 4px; border-radius: 8px; cursor: pointer; background: ${isSel ? 'rgba(37,99,235,0.2)' : 'transparent'}; color: ${isSel ? 'var(--blue)' : 'var(--text)'}; font-weight: ${isSel ? 'bold' : 'normal'};">${c.name}</li>`;
+   });
+   ul.innerHTML = html;
+}
+
+function selectCategory(id) {
+   selectedCategoryId = id;
+   document.getElementById('categoryDrawer').style.display='none';
+   renderCategoryMenu();
+   renderMatchList();
+}
+
+function renderMatchList() {
+  const container = document.getElementById('matchList');
+  if (!matches.length) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">✅</div><p>Không có trận nào đang chờ</p></div>';
+    return;
+  }
+  
+  let filtered = selectedCategoryId === 'all' ? matches : matches.filter(m => m.categoryId === selectedCategoryId);
+  
+  if (!filtered.length) {
+    container.innerHTML = '<div class="empty-state"><p>Không có trận nào thuộc nội dung này</p></div>';
+    return;
+  }
+
+  // Sort matches so that completed/fully-registered ones go to the bottom
+  filtered.sort((a, b) => {
+     const aDone = a.isCompleted || (a.kata1 && a.kata2) ? 1 : 0;
+     const bDone = b.isCompleted || (b.kata1 && b.kata2) ? 1 : 0;
+     
+     if (aDone !== bDone) return aDone - bDone;
+     return matches.indexOf(a) - matches.indexOf(b);
+  });
+
+  container.innerHTML = filtered.map((m) => {
+    const i = matches.findIndex(mx => mx.id === m.id);
+    const isDone = m.isCompleted || (m.kata1 && m.kata2);
+    
+    const k1 = m.kata1 ? `<span class="kata-tag">🥋 ${m.kata1}</span>` : '';
+    const k2 = m.kata2 ? `<span class="kata-tag">🥋 ${m.kata2}</span>` : '';
+    const a1 = m.athlete1 ? `<div class="athlete-pill aka">${m.athlete1.name || '?'}${k1}</div>` : '<div class="athlete-pill empty">Chưa có VĐV</div>';
+    const a2 = m.athlete2 ? `<div class="athlete-pill ao">${m.athlete2.name || '?'}${k2}</div>`  : '<div class="athlete-pill empty">Chưa có VĐV</div>';
+    
+    const sel = selectedMatch && selectedMatch.id === m.id ? 'selected' : '';
+    const dimStyle = isDone ? 'opacity: 0.4;' : '';
+    const matchCode = (m.matchCode || ('#'+(i+1))).replace('M', '#');
+    const badgeHtml = selectedCategoryId === 'all' && m.categoryName ? `<div style="font-size:10px; color:#60a5fa; margin-bottom: 6px; font-weight:bold;">${m.categoryName}</div>` : '';
+
+    return `<div class="match-card ${sel}" style="${dimStyle}" onclick="selectMatch(${i})">
+      ${badgeHtml}
+      <div class="match-header"><span class="match-code">${matchCode}</span><span class="match-round">${m.roundName || ''}</span></div>
+      <div class="match-athletes">${a1}${a2}</div>
+    </div>`;
+  }).join('');
+}
+
+function selectMatch(i) {
+  selectedMatch = matches[i];
+  const isLocked = selectedMatch.isLocked;
+  document.getElementById('formSection').style.display = 'block';
+  document.getElementById('formTitle').textContent = `Trận: ${selectedMatch.matchCode || '#' + (i+1)}`;
+  document.getElementById('lockedOverlay').classList.toggle('show', !!isLocked);
+  document.getElementById('formBody').style.opacity = isLocked ? '.4' : '1';
+  document.getElementById('submitBtn').disabled = !!isLocked;
+  updateSlotTab();
+  renderMatchList();
+  document.getElementById('formSection').scrollIntoView({ behavior: 'smooth' });
+}
+
+function selectSlot(slot) {
+  selectedSlot = slot;
+  updateSlotTab();
+}
+function updateSlotTab() {
+  document.getElementById('tabAka').classList.toggle('active', selectedSlot === 1);
+  document.getElementById('tabAo').classList.toggle('active', selectedSlot === 2);
+  selectedKataName = selectedMatch ? (selectedSlot === 1 ? selectedMatch.kata1 : selectedMatch.kata2) : '';
+  document.getElementById('kataSearch').value = '';
+  renderKataGrid();
+}
+
+// ===== KATA GRID =====
+function normalize(s) { return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/gi,'d').toLowerCase(); }
+
+function renderKataGrid(filter = '') {
+  const grid = document.getElementById('kataGrid');
+  const term = normalize(filter);
+  const list = WKF_KATA_LIST.filter(o => !term || normalize(o).includes(term) || o.toLowerCase().includes(term));
+  
+  if (!list.length) {
+    grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #94a3b8; padding: 20px;">Không tìm thấy bài quyền</div>';
+    return;
+  }
+  
+  grid.innerHTML = list.map(o => {
+    const isSel = o === selectedKataName;
+    return `<div class="kata-item ${isSel ? 'selected' : ''}" onclick="pickKata('${o.replace(/'/g,"\\'")}')">${o}</div>`;
+  }).join('');
+}
+
+function filterKataGrid() {
+  renderKataGrid(document.getElementById('kataSearch').value);
+}
+
+function pickKata(val) {
+  selectedKataName = val;
+  renderKataGrid(document.getElementById('kataSearch').value);
+}
+
+// ===== SUBMIT =====
+async function submitKata() {
+  if (!selectedMatch || submitting) return;
+  const kataName = selectedKataName;
+  const registeredBy = document.getElementById('registrarInput').value.trim();
+  if (!kataName) { showToast('Vui lòng chọn bài quyền', 'error'); return; }
+  localStorage.setItem('kata_registrar_name', registeredBy);
+
+  const generateId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2);
+
+  const payload = {
+    requestId: generateId(),
+    matchId: selectedMatch.id,
+    matchCode: selectedMatch.matchCode,
+    slot: selectedSlot,
+    kataName,
+    registeredBy,
+    registeredAt: new Date().toISOString(),
+    matId: MAT_ID,
+    pin: PIN,
+    source: 'remote',
+    version: 1,
+  };
+
+  submitting = true;
+  const btn = document.getElementById('submitBtn');
+  btn.innerHTML = '<span class="spinner"></span>Đang gửi...';
+  btn.disabled = true;
+
+  const sent = await trySend(payload);
+  submitting = false;
+  btn.innerHTML = '✅ Xác nhận đăng ký';
+  btn.disabled = false;
+
+  if (sent) {
+    // Update local match state for instant feedback
+    if (selectedSlot === 1) selectedMatch.kata1 = kataName;
+    else selectedMatch.kata2 = kataName;
+    renderMatchList();
+    showToast('✅ Thư ký đã nhận!');
+    selectedKataName = '';
+    renderKataGrid(document.getElementById('kataSearch').value);
+  } else {
+    // Offline: queue
+    pendingQueue.push(payload);
+    savePendingQueue();
+    updatePendingBar();
+    showToast('📶 Lưu tạm – sẽ gửi khi có mạng', 'error');
+    if (selectedSlot === 1) selectedMatch.kata1 = kataName;
+    else selectedMatch.kata2 = kataName;
+    renderMatchList();
+  }
+}
+
+async function trySend(payload) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const r = await fetch(`${SERVER_URL}/api/kata-receive/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    const json = await r.json();
+    return json.success;
+  } catch { return false; }
+}
+
+// ===== PENDING QUEUE =====
+function savePendingQueue() { localStorage.setItem('kata_pending_queue', JSON.stringify(pendingQueue)); }
+function updatePendingBar() {
+  const bar = document.getElementById('pendingBar');
+  document.getElementById('pendingCount').textContent = pendingQueue.length;
+  bar.classList.toggle('show', pendingQueue.length > 0);
+}
+async function flushPendingQueue() {
+  if (!isOnline || pendingQueue.length === 0) return;
+  const toSend = [...pendingQueue];
+  for (const payload of toSend) {
+    const ok = await trySend(payload);
+    if (ok) pendingQueue = pendingQueue.filter(p => p.requestId !== payload.requestId);
+  }
+  savePendingQueue();
+  updatePendingBar();
+  if (toSend.length > pendingQueue.length) showToast('✅ Đã gửi lại ' + (toSend.length - pendingQueue.length) + ' yêu cầu');
+}
+
+// ===== TOAST =====
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (type||'') + ' show';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ===== POLLING =====
+async function poll() { await loadMatches(); pollTimer = setTimeout(poll, 5000); }
+
+// ===== INIT =====
+updateOfflineUI();
+updatePendingBar();
+poll();
+if (isOnline) setTimeout(flushPendingQueue, 2000);
+</script>
+</body>
+</html>

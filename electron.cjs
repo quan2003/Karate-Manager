@@ -35,6 +35,145 @@ function broadcastLanLiveStatuses() {
 }
 
 // =============================================
+// KATA RECEIVE SERVER (port 3002)
+// Phục vụ trang đăng ký bài quyền cho thiết bị ngoài
+// =============================================
+let kataReceiveServer = null;
+const kataReceiveState = {
+  matId: '1',
+  pin: '',
+  matches: [],         // danh sách trận hiện tại
+  lockedMatchIds: new Set(), // matchId đang thi đấu -> khoá
+  receivedRequestIds: new Set(), // chống gửi trùng
+};
+
+function readBodyJson(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); if (body.length > 512*1024) req.destroy(); });
+    req.on('end', () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
+    req.on('error', reject);
+  });
+}
+
+function startKataReceiveServer(matId, pin) {
+  if (kataReceiveServer) return { success: true, message: 'Đã chạy' };
+  kataReceiveState.matId = matId || '1';
+  kataReceiveState.pin = pin || '';
+
+  kataReceiveServer = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1:3002');
+    const pathname = url.pathname;
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Cache-Control', 'no-store');
+
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+    // Phục vụ trang HTML tiếp nhận
+    if (req.method === 'GET' && (pathname === '/' || pathname === '/kata-receive' || pathname === '/kata-receive.html')) {
+      try {
+        const html = fs.readFileSync(path.join(__dirname, 'public', 'kata-receive.html'), 'utf8');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+      } catch (e) {
+        res.writeHead(500); res.end('Lỗi tải trang: ' + e.message);
+      }
+      return;
+    }
+
+    // API: Lấy danh sách trận của thảm
+    if (req.method === 'GET' && pathname === '/api/kata-receive/matches') {
+      const reqPin = url.searchParams.get('pin') || '';
+      if (kataReceiveState.pin && reqPin !== kataReceiveState.pin) {
+        res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ success: false, error: 'Sai mã PIN' }));
+        return;
+      }
+      const matchesWithLock = kataReceiveState.matches.map(m => ({
+        ...m,
+        isLocked: kataReceiveState.lockedMatchIds.has(m.id),
+      }));
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ success: true, matId: kataReceiveState.matId, matches: matchesWithLock }));
+      return;
+    }
+
+    // API: Nhận đăng ký bài quyền từ thiết bị ngoài
+    if (req.method === 'POST' && pathname === '/api/kata-receive/submit') {
+      readBodyJson(req).then(data => {
+        // Kiểm tra PIN
+        if (kataReceiveState.pin && data.pin !== kataReceiveState.pin) {
+          res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ success: false, error: 'Sai mã PIN' }));
+          return;
+        }
+        // Chống gửi trùng bằng requestId
+        if (data.requestId && kataReceiveState.receivedRequestIds.has(data.requestId)) {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ success: true, duplicate: true, message: 'Đã nhận trước đó' }));
+          return;
+        }
+        // Kiểm tra khóa
+        if (kataReceiveState.lockedMatchIds.has(data.matchId)) {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ success: false, error: 'Trận đang diễn ra – không thể đăng ký' }));
+          return;
+        }
+        // Ghi nhận requestId
+        if (data.requestId) {
+          kataReceiveState.receivedRequestIds.add(data.requestId);
+          if (kataReceiveState.receivedRequestIds.size > 5000) {
+            const arr = [...kataReceiveState.receivedRequestIds];
+            kataReceiveState.receivedRequestIds = new Set(arr.slice(-2000));
+          }
+        }
+        // Cập nhật trận trong state local
+        const m = kataReceiveState.matches.find(m => m.id === data.matchId);
+        if (m) {
+          if (data.slot === 1) m.kata1 = data.kataName;
+          else m.kata2 = data.kataName;
+        }
+        // Forward sang renderer
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('kata-receive:kata-registered', {
+            matchId: data.matchId,
+            slot: data.slot,
+            kataName: data.kataName,
+            requestId: data.requestId,
+            registeredBy: data.registeredBy || '',
+            registeredAt: data.registeredAt || new Date().toISOString(),
+            source: 'remote',
+          });
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ success: true, message: 'Thư ký đã nhận' }));
+      }).catch(e => {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      });
+      return;
+    }
+
+    res.writeHead(404); res.end(JSON.stringify({ success: false, error: 'Not found' }));
+  });
+
+  kataReceiveServer.listen(3002, '0.0.0.0', () => console.log('Kata Receive Server on port 3002'));
+  kataReceiveServer.on('error', err => { console.error('KataReceive error:', err); kataReceiveServer = null; });
+  return { success: true, ip: getLocalIp(), port: 3002 };
+}
+
+function stopKataReceiveServer() {
+  if (kataReceiveServer) {
+    kataReceiveServer.close();
+    kataReceiveServer = null;
+  }
+  kataReceiveState.matches = [];
+  kataReceiveState.lockedMatchIds.clear();
+}
+
+// =============================================
 // Smart File Association - Nhận diện file khi khởi động
 // =============================================
 
@@ -718,6 +857,55 @@ ipcMain.handle("lan:stopServer", () => {
     return { success: true };
   }
   return { success: true, message: "Máy chủ chưa chạy" };
+});
+// =============================================
+// IPC Handlers cho Kata Receive Server
+// =============================================
+
+ipcMain.handle('kata-receive:start', (event, { matId, pin }) => {
+  return startKataReceiveServer(matId, pin);
+});
+
+ipcMain.handle('kata-receive:stop', () => {
+  stopKataReceiveServer();
+  return { success: true };
+});
+
+ipcMain.handle('kata-receive:getStatus', () => {
+  return {
+    running: kataReceiveServer !== null,
+    ip: getLocalIp(),
+    port: 3002,
+    matId: kataReceiveState.matId,
+    pin: kataReceiveState.pin,
+    matchCount: kataReceiveState.matches.length,
+  };
+});
+
+ipcMain.handle('kata-receive:updateMatches', (event, matches) => {
+  kataReceiveState.matches = (matches || []).map(m => ({
+    id: m.id,
+    matchCode: m.matchCode || '',
+    roundName: m.roundName || '',
+    categoryId: m.categoryId || '',
+    categoryName: m.categoryName || '',
+    isCompleted: !!m.isCompleted,
+    athlete1: m.athlete1 ? { id: m.athlete1.id, name: m.athlete1.name, club: m.athlete1.club } : null,
+    athlete2: m.athlete2 ? { id: m.athlete2.id, name: m.athlete2.name, club: m.athlete2.club } : null,
+    kata1: m.kata1 || '',
+    kata2: m.kata2 || '',
+  }));
+  return { success: true };
+});
+
+ipcMain.handle('kata-receive:lockMatch', (event, matchId) => {
+  kataReceiveState.lockedMatchIds.add(matchId);
+  return { success: true };
+});
+
+ipcMain.handle('kata-receive:unlockMatch', (event, matchId) => {
+  kataReceiveState.lockedMatchIds.delete(matchId);
+  return { success: true };
 });
 
 // =============================================

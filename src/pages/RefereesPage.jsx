@@ -6,13 +6,14 @@ import { useToast } from "../components/common/Toast";
 import appIcon from "../assets/icon.png";
 import {
   downloadRefereeTemplate,
+  exportRefereeMatListsExcel,
   generateNextRefereeCode,
   mergeImportedReferees,
   normalizeFixedAssignments,
   parseRefereeExcelFile,
   randomizeRefereeAssignments,
 } from "../services/refereeService";
-import { exportRefereeDeploymentPdf } from "../services/refereePdfService";
+import { exportRefereeDeploymentPdf, exportRefereeMatListsPdf } from "../services/refereePdfService";
 import "./RefereesPage.css";
 
 const EMPTY_REFEREE = {
@@ -21,9 +22,15 @@ const EMPTY_REFEREE = {
   unit: "",
   grade: "",
   specialty: "Cả hai",
+  refereeRole: "TTP",
   phone: "",
   note: "",
   active: true,
+};
+
+const formatRefereeRole = (value) => {
+  const role = String(value || "").trim().toLocaleLowerCase("vi");
+  return role === "ttc" || role.includes("chính") ? "TTC" : "TTP";
 };
 
 const makeId = () =>
@@ -47,6 +54,7 @@ function buildManagement(tournament) {
       eventName: tournament?.name || "",
       title: "PHÂN CÔNG TRỌNG TÀI",
       chairman: "",
+      deputyChairman: "",
       secretary: "",
       date: tournament?.startDate || tournament?.date || "",
       ...savedReport,
@@ -87,7 +95,7 @@ export default function RefereesPage() {
     return management.referees.filter((item) => {
       if (unitFilter !== "all" && item.unit !== unitFilter) return false;
       if (!query) return true;
-      return [item.code, item.name, item.unit, item.grade, item.specialty]
+      return [item.code, item.name, item.unit, item.grade, item.specialty, item.refereeRole]
         .some((value) => String(value || "").toLocaleLowerCase("vi").includes(query));
     });
   }, [management.referees, search, unitFilter]);
@@ -214,13 +222,19 @@ export default function RefereesPage() {
       toast.error("Một trọng tài đang giữ nhiều vị trí cố định. Hãy sửa trước khi random.");
       return;
     }
+    const officialNames = new Set([management.report.chairman, management.report.deputyChairman, management.report.secretary]
+      .map((name) => String(name || "").trim().toLocaleLowerCase("vi"))
+      .filter(Boolean));
+    const eligibleReferees = management.referees.filter((referee) =>
+      !officialNames.has(String(referee.name || "").trim().toLocaleLowerCase("vi"))
+    );
     const result = randomizeRefereeAssignments(
-      management.referees,
+      eligibleReferees,
       management.fixedByMat,
       management.matCount
     );
     const next = { ...management, ...result };
-    persist(next, `Đã random ${management.referees.length - selectedFixedIds.length} trọng tài cho ${management.matCount} thảm.`);
+    persist(next, `Đã random ${result.assignments.reduce((total, item) => total + item.randomIds.length, 0)} trọng tài cho ${management.matCount} thảm.`);
     if (result.warnings.length) toast.warning(result.warnings.join(" "), 9000);
   };
 
@@ -237,6 +251,28 @@ export default function RefereesPage() {
     }
   };
 
+  const exportMatPdf = async () => {
+    setExporting(true);
+    try {
+      await exportRefereeMatListsPdf(tournament, management);
+      toast.success("Đã xuất PDF danh sách riêng theo từng sàn.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Không thể xuất PDF từng sàn. Vui lòng thử lại.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportMatExcel = () => {
+    try {
+      exportRefereeMatListsExcel(tournament, management);
+      toast.success("Đã xuất Excel, mỗi sàn là một sheet riêng.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Không thể xuất Excel từng sàn. Vui lòng thử lại.");
+    }
+  };
   const clearAllReferees = () => {
     if (!management.referees.length) return;
     setConfirmDialog({
@@ -279,7 +315,9 @@ export default function RefereesPage() {
             <button className="btn btn-secondary" onClick={downloadRefereeTemplate}>📥 Tải mẫu Excel</button>
             <button className="btn btn-secondary" onClick={() => importInputRef.current?.click()}>📤 Import Excel</button>
             <input ref={importInputRef} type="file" accept=".xlsx,.xls" hidden onChange={importExcel} />
-            <button className="btn btn-primary" disabled={exporting} onClick={exportPdf}>{exporting ? "Đang xuất..." : "📄 Xuất PDF"}</button>
+            <button className="btn btn-secondary" disabled={exporting} onClick={exportMatExcel}>📊 Excel từng sàn</button>
+            <button className="btn btn-secondary" disabled={exporting} onClick={exportMatPdf}>📄 PDF từng sàn</button>
+            <button className="btn btn-primary" disabled={exporting} onClick={exportPdf}>{exporting ? "Đang xuất..." : "📄 PDF tổng"}</button>
           </div>
         </header>
 
@@ -298,7 +336,8 @@ export default function RefereesPage() {
           <div className="referee-config-grid">
             <label><span>Tên giải trên PDF</span><input className="input" value={management.report.eventName} onChange={(e) => setManagement({ ...management, report: { ...management.report, eventName: e.target.value } })} /></label>
             <label><span>Tiêu đề báo cáo</span><input className="input" value={management.report.title} onChange={(e) => setManagement({ ...management, report: { ...management.report, title: e.target.value } })} /></label>
-            <label><span>Trưởng ban trọng tài</span><input className="input" value={management.report.chairman} onChange={(e) => setManagement({ ...management, report: { ...management.report, chairman: e.target.value } })} /></label>
+            <label><span>Tổng trọng tài</span><input className="input" value={management.report.chairman} onChange={(e) => setManagement({ ...management, report: { ...management.report, chairman: e.target.value } })} /></label>
+            <label><span>Phó tổng trọng tài</span><input className="input" value={management.report.deputyChairman || ""} onChange={(e) => setManagement({ ...management, report: { ...management.report, deputyChairman: e.target.value } })} /></label>
             <label><span>Thư ký ban trọng tài</span><input className="input" value={management.report.secretary} onChange={(e) => setManagement({ ...management, report: { ...management.report, secretary: e.target.value } })} /></label>
             <label><span>Ngày trên báo cáo</span><input className="input" type="date" value={management.report.date} onChange={(e) => setManagement({ ...management, report: { ...management.report, date: e.target.value } })} /></label>
             <label><span>Số thảm</span><div className="mat-count-control"><button type="button" onClick={() => changeMatCount(management.matCount - 1)}>−</button><input type="number" min="1" max="20" value={management.matCount} onChange={(e) => changeMatCount(e.target.value)} /><button type="button" onClick={() => changeMatCount(management.matCount + 1)}>+</button></div></label>
@@ -319,6 +358,7 @@ export default function RefereesPage() {
             <input className="input required" placeholder="Đơn vị *" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} />
             <input className="input" placeholder="Cấp bậc" value={form.grade} onChange={(e) => setForm({ ...form, grade: e.target.value })} />
             <select className="input" value={form.specialty} onChange={(e) => setForm({ ...form, specialty: e.target.value })}><option>Cả hai</option><option>Kata</option><option>Kumite</option></select>
+            <select className="input" aria-label="Trọng tài chính hoặc phụ" value={formatRefereeRole(form.refereeRole)} onChange={(e) => setForm({ ...form, refereeRole: e.target.value })}><option value="TTC">TTC — Trọng tài chính</option><option value="TTP">TTP — Trọng tài phụ</option></select>
             <input className="input" placeholder="Số điện thoại" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             <input className="input referee-note-input" placeholder="Ghi chú" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
             <button className="btn btn-primary" type="submit">{editingId ? "Cập nhật" : "+ Thêm"}</button>
@@ -329,9 +369,9 @@ export default function RefereesPage() {
             <select className="input" value={unitFilter} onChange={(e) => setUnitFilter(e.target.value)}><option value="all">Tất cả đơn vị</option>{units.map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select>
             <span>Hiển thị {filteredReferees.length}/{management.referees.length}</span>
           </div>
-          <div className="referee-table-wrap"><table className="referee-table"><thead><tr><th>Mã</th><th>Họ và tên</th><th>Đơn vị</th><th>Cấp bậc</th><th>Nội dung</th><th>Trạng thái</th><th></th></tr></thead><tbody>
-            {filteredReferees.map((referee) => <tr key={referee.id} className={referee.active === false ? "inactive" : ""}><td>{referee.code}</td><td><strong>{referee.name}</strong>{referee.note && <small>{referee.note}</small>}</td><td>{referee.unit}</td><td>{referee.grade || "—"}</td><td>{referee.specialty || "Cả hai"}</td><td><label className="status-toggle"><input type="checkbox" checked={referee.active !== false} onChange={() => persist(invalidateRandom({ ...management, referees: management.referees.map((item) => item.id === referee.id ? { ...item, active: item.active === false } : item) }))} /><span>{referee.active === false ? "Tạm nghỉ" : "Hoạt động"}</span></label></td><td><div className="row-actions"><button onClick={() => editReferee(referee)}>Sửa</button><button className="danger" onClick={() => deleteReferee(referee)}>Xóa</button></div></td></tr>)}
-            {!filteredReferees.length && <tr><td colSpan="7" className="empty-state">Chưa có trọng tài. Hãy thêm trực tiếp hoặc import file Excel.</td></tr>}
+          <div className="referee-table-wrap"><table className="referee-table"><thead><tr><th>Mã</th><th>Họ và tên</th><th>Đơn vị</th><th>Cấp bậc</th><th>Nội dung</th><th>TTC/TTP</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+            {filteredReferees.map((referee) => <tr key={referee.id} className={referee.active === false ? "inactive" : ""}><td>{referee.code}</td><td><strong>{referee.name}</strong>{referee.note && <small>{referee.note}</small>}</td><td>{referee.unit}</td><td>{referee.grade || "—"}</td><td>{referee.specialty || "Cả hai"}</td><td>{formatRefereeRole(referee.refereeRole)}</td><td><label className="status-toggle"><input type="checkbox" checked={referee.active !== false} onChange={() => persist(invalidateRandom({ ...management, referees: management.referees.map((item) => item.id === referee.id ? { ...item, active: item.active === false } : item) }))} /><span>{referee.active === false ? "Tạm nghỉ" : "Hoạt động"}</span></label></td><td><div className="row-actions"><button onClick={() => editReferee(referee)}>Sửa</button><button className="danger" onClick={() => deleteReferee(referee)}>Xóa</button></div></td></tr>)}
+            {!filteredReferees.length && <tr><td colSpan="8" className="empty-state">Chưa có trọng tài. Hãy thêm trực tiếp hoặc import file Excel.</td></tr>}
           </tbody></table></div>
         </section>
 

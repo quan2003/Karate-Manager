@@ -39,6 +39,8 @@ let state = {
   },
   timer: {
     seconds: 300,
+    deciseconds: 0,
+    presetSeconds: 300,
     isRunning: false,
   },
 };
@@ -54,6 +56,11 @@ function loadState() {
     // Đảm bảo score luôn là số, không bao giờ null/undefined
     if (state.aka) state.aka.score = state.aka.score ?? 0;
     if (state.ao) state.ao.score = state.ao.score ?? 0;
+    if (state.timer) {
+      state.timer.deciseconds = Number(state.timer.deciseconds) || 0;
+      state.timer.presetSeconds =
+        Number(state.timer.presetSeconds) > 0 ? Number(state.timer.presetSeconds) : 300;
+    }
   }
 
   // Load match history
@@ -985,7 +992,7 @@ let timerInterval = null;
 function updateTimerDisplay() {
   const minutes = Math.floor(state.timer.seconds / 60);
   const seconds = state.timer.seconds % 60;
-  const display = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  const display = `${minutes}:${seconds.toString().padStart(2, "0")}.${state.timer.deciseconds || 0}`;
   document.getElementById("timeDisplay").textContent = display;
 }
 
@@ -996,8 +1003,11 @@ function startTimer() {
   saveState();
 
   timerInterval = setInterval(() => {
-    if (state.timer.seconds > 0) {
-      state.timer.seconds--;
+    const totalTicks = state.timer.seconds * 10 + (state.timer.deciseconds || 0);
+    if (totalTicks > 0) {
+      const nextTicks = totalTicks - 1;
+      state.timer.seconds = Math.floor(nextTicks / 10);
+      state.timer.deciseconds = nextTicks % 10;
       saveState();
       updateTimerDisplay();
     } else {
@@ -1005,7 +1015,7 @@ function startTimer() {
       // Play sound or alert
       alert("Hết giờ!");
     }
-  }, 1000);
+  }, 100);
 }
 
 function stopTimer() {
@@ -1019,16 +1029,32 @@ function stopTimer() {
 
 function resetTimer() {
   stopTimer();
-  state.timer.seconds = 300;
+  state.timer.seconds = state.timer.presetSeconds || 300;
+  state.timer.deciseconds = 0;
   saveState();
   updateTimerDisplay();
 }
 
 function setTime(seconds) {
+  const normalizedSeconds = Math.max(1, Math.min(3600, Math.round(Number(seconds) || 0)));
   stopTimer();
-  state.timer.seconds = seconds;
+  state.timer.seconds = normalizedSeconds;
+  state.timer.deciseconds = 0;
+  state.timer.presetSeconds = normalizedSeconds;
   saveState();
   updateTimerDisplay();
+}
+
+function setCustomTime() {
+  const input = document.getElementById("customTimeSeconds");
+  if (!input) return;
+  const seconds = Number(input.value);
+  if (!Number.isFinite(seconds) || seconds < 1 || seconds > 3600) {
+    alert("Vui lòng nhập thời gian từ 1 đến 3600 giây.");
+    input.focus();
+    return;
+  }
+  setTime(seconds);
 }
 
 function resetAll() {
@@ -1036,7 +1062,8 @@ function resetAll() {
     stopTimer();
     state.aka.score = 0;
     state.ao.score = 0;
-    state.timer.seconds = 300;
+    state.timer.seconds = state.timer.presetSeconds || 300;
+    state.timer.deciseconds = 0;
     state.aka.kataName = "";
     state.ao.kataName = "";
     state.aka.athlete = "";
@@ -1060,7 +1087,7 @@ function resetAll() {
 function resetMatch() {
   if (
     confirm(
-      "🆕 Reset cho trận mới?\n\nSẽ xóa:\n- Điểm số (AKA & AO)\n- Thông tin VĐV/Đội\n- Bài Kata\n- Reset thời gian về 5:00\n\nLưu ý: Vòng đấu và nội dung thi sẽ được giữ nguyên"
+      "🆕 Reset cho trận mới?\n\nSẽ xóa:\n- Điểm số (AKA & AO)\n- Thông tin VĐV/Đội\n- Bài Kata\n- Reset về thời gian đã chọn\n\nLưu ý: Vòng đấu và nội dung thi sẽ được giữ nguyên"
     )
   ) {
     stopTimer();
@@ -1082,7 +1109,8 @@ function resetMatch() {
     state.ao.kataName = "";
 
     // Reset timer
-    state.timer.seconds = 300;
+    state.timer.seconds = state.timer.presetSeconds || 300;
+    state.timer.deciseconds = 0;
     state.scoringStarted = false;
 
     // Clear UI inputs
@@ -1954,7 +1982,8 @@ function loadPendingMatch() {
   if (typeof resetTimer === "function") {
     resetTimer();
   } else {
-    state.timer.seconds = 300;
+    state.timer.seconds = state.timer.presetSeconds || 300;
+    state.timer.deciseconds = 0;
     state.timer.isRunning = false;
   }
 

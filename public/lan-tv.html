@@ -5,22 +5,43 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>K-SPORT LAN TV</title>
   <style>
-    :root{color-scheme:dark;--bg:#050a12;--panel:#0d192b;--line:#334155;--muted:#94a3b8;--green:#22c55e;--yellow:#facc15;--red:#ef4444}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% 0,#17314f 0,#0d192b 48%,var(--bg) 100%);color:#f8fafc;font-family:"Segoe UI",Tahoma,Arial,sans-serif;overflow:hidden}.screen{height:100vh;display:grid;grid-template-rows:auto minmax(0,1fr) auto;padding:clamp(18px,2.8vw,46px);gap:clamp(16px,2.2vh,30px)}header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:clamp(14px,1.8vh,22px)}.brand-lockup{display:flex;align-items:center;gap:clamp(14px,1.4vw,24px)}.brand-logo{width:clamp(52px,4.5vw,82px);height:clamp(52px,4.5vw,82px);object-fit:cover;border-radius:18%;box-shadow:0 8px 24px rgba(0,0,0,.32);flex:0 0 auto}.brand{font-weight:900;font-size:clamp(24px,3vw,50px);letter-spacing:.08em}.summary{color:var(--yellow);border:2px solid var(--yellow);border-radius:14px;padding:9px 20px;font-size:clamp(16px,1.7vw,28px);font-weight:900}.mats{min-height:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));grid-auto-rows:minmax(0,1fr);gap:clamp(14px,1.7vw,26px)}.mat-card{min-height:0;border:1px solid #263b55;border-radius:20px;background:linear-gradient(145deg,rgba(19,40,65,.96),rgba(7,16,29,.98));box-shadow:0 15px 40px rgba(0,0,0,.28);padding:clamp(18px,2vw,30px);display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:clamp(14px,2vh,24px);overflow:hidden}.mat-card.stale{border-color:rgba(239,68,68,.65)}.mat-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.mat-name{color:var(--yellow);font-weight:900;font-size:clamp(24px,2.5vw,42px)}.live{display:flex;align-items:center;color:#86efac;font-size:clamp(13px,1.1vw,18px);font-weight:800}.dot{display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--green);margin-right:8px;box-shadow:0 0 15px var(--green)}.stale .live{color:#fca5a5}.stale .dot,.offline .dot{background:var(--red);box-shadow:0 0 15px var(--red)}.current-wrap{display:flex;flex-direction:column;justify-content:center;min-height:0}.label{font-size:clamp(13px,1.25vw,21px);font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}.current{font-size:clamp(27px,3.6vw,62px);font-weight:900;line-height:1.08;text-transform:uppercase;text-shadow:0 7px 24px #000;margin-top:10px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.participants{font-size:clamp(18px,2vw,32px);font-weight:700;color:#e2e8f0;margin-top:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meta{color:#cbd5e1;font-size:clamp(13px,1.15vw,19px);margin-top:10px;min-height:1.3em}.nextbox{border-left:6px solid var(--green);background:linear-gradient(90deg,rgba(34,197,94,.16),rgba(34,197,94,.025));padding:14px 18px;border-radius:0 12px 12px 0}.next{font-size:clamp(19px,2vw,34px);font-weight:800;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.next-participants{font-size:clamp(15px,1.45vw,24px);font-weight:650;color:#d1fae5;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.empty{color:var(--muted)}.waiting{grid-column:1/-1;display:grid;place-content:center;text-align:center;color:var(--muted)}.waiting strong{font-size:clamp(32px,5vw,76px);color:#cbd5e1}.waiting span{font-size:clamp(16px,1.6vw,26px);margin-top:14px}footer{display:flex;justify-content:space-between;align-items:center;color:#94a3b8;font-size:clamp(13px,1.15vw,20px)}.clock{font-variant-numeric:tabular-nums;color:#e2e8f0}@media(max-width:900px){.mats{grid-template-columns:1fr}.mat-card{padding:18px}.current{font-size:clamp(25px,6vw,44px)}}
+    :root{color-scheme:dark;--bg:#050a12;--panel:#0d192b;--line:#334155;--muted:#94a3b8;--green:#22c55e;--yellow:#facc15;--orange:#f59e0b;--red:#ef4444}*{box-sizing:border-box}html,body{width:100%;height:100%}body{margin:0;min-width:0;overflow:hidden;background:radial-gradient(circle at 50% 0,#17314f 0,#0d192b 48%,var(--bg) 100%);color:#f8fafc;font-family:"Segoe UI",Tahoma,Arial,sans-serif}button{font:inherit}.screen{width:100%;height:100dvh;min-width:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:clamp(10px,1.7vh,24px);padding:clamp(14px,2.2vw,38px);overflow:hidden}header{min-width:0;display:flex;align-items:center;justify-content:space-between;gap:clamp(12px,2vw,30px);border-bottom:1px solid var(--line);padding-bottom:clamp(10px,1.4vh,18px);white-space:nowrap}.brand-lockup{min-width:0;display:flex;align-items:center;gap:clamp(10px,1.2vw,20px);flex:1 1 auto}.brand-logo{width:clamp(44px,4.2vw,74px);height:clamp(44px,4.2vw,74px);flex:0 0 auto;object-fit:cover;border-radius:18%;box-shadow:0 8px 24px rgba(0,0,0,.32)}.brand{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:900;font-size:clamp(23px,3vw,48px);letter-spacing:.08em}.summary{flex:0 0 auto;color:var(--yellow);border:2px solid var(--yellow);border-radius:14px;padding:clamp(7px,1vh,11px) clamp(12px,1.6vw,24px);font-size:clamp(14px,1.55vw,26px);font-weight:900}.mats{min-width:0;min-height:0;display:grid;gap:clamp(10px,1.35vw,22px);overflow:hidden;align-items:stretch}.mats[data-visible-count="1"]{grid-template-columns:minmax(0,1fr)}.mats[data-visible-count="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}.mats[data-visible-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}.mats[data-visible-count="4"]{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr))}.mats.wide-page{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr))}.mat-card{--status-color:var(--green);min-width:0;min-height:0;position:relative;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:clamp(10px,1.5vh,20px);overflow:hidden;padding:clamp(16px,1.7vw,28px);border:1px solid #263b55;border-radius:clamp(14px,1.3vw,22px);background:linear-gradient(145deg,rgba(19,40,65,.97),rgba(7,16,29,.99));box-shadow:0 15px 40px rgba(0,0,0,.28);transition:border-color .35s ease,box-shadow .35s ease,opacity .35s ease;contain:layout paint}.mat-card.status-live{border-color:rgba(34,197,94,.58);box-shadow:0 15px 42px rgba(0,0,0,.3),inset 0 0 0 1px rgba(34,197,94,.12)}.mat-card.status-preparing{--status-color:var(--orange)}.mat-card.status-paused{--status-color:var(--red);opacity:.76}.mat-card.status-ended{--status-color:#64748b;opacity:.58;filter:saturate(.62)}.mat-head{min-width:0;display:flex;align-items:center;justify-content:space-between;gap:10px}.mat-name{min-width:0;color:var(--yellow);font-weight:900;font-size:clamp(24px,2.45vw,42px);line-height:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mat-status{flex:0 0 auto;display:flex;align-items:center;gap:7px;max-width:48%;padding:6px 10px;border:1px solid color-mix(in srgb,var(--status-color) 70%,transparent);border-radius:999px;background:color-mix(in srgb,var(--status-color) 11%,transparent);color:color-mix(in srgb,var(--status-color) 74%,white);font-size:clamp(10px,.9vw,15px);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.status-dot{width:9px;height:9px;flex:0 0 auto;border-radius:50%;background:var(--status-color);box-shadow:0 0 12px color-mix(in srgb,var(--status-color) 75%,transparent)}.current-wrap{min-width:0;min-height:0;display:flex;flex-direction:column;justify-content:center;overflow:hidden}.label{color:var(--muted);font-size:clamp(11px,1vw,18px);font-weight:800;letter-spacing:.13em;text-transform:uppercase}.current-title,.current-participants,.next-title,.next-participants{min-width:0;max-width:100%;overflow:hidden;overflow-wrap:anywhere;word-break:normal}.current-title{margin-top:clamp(7px,1vh,12px);font-size:clamp(30px,3.6vw,62px);font-weight:900;line-height:1.07;text-transform:uppercase;text-shadow:0 7px 24px #000;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3}.current-title.long{font-size:clamp(27px,3.05vw,52px)}.current-title.extra-long{font-size:clamp(24px,2.55vw,44px)}.current-participants{margin-top:clamp(8px,1.2vh,14px);color:#f8fafc;font-size:clamp(21px,2.15vw,36px);font-weight:800;line-height:1.18;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}.meta{min-width:0;min-height:1.3em;margin-top:clamp(7px,1vh,12px);color:#cbd5e1;font-size:clamp(12px,1.05vw,18px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.nextbox{min-width:0;overflow:hidden;border-left:5px solid var(--green);border-radius:0 12px 12px 0;padding:clamp(10px,1.2vw,17px);background:linear-gradient(90deg,rgba(34,197,94,.16),rgba(34,197,94,.025))}.nextbox.empty{border-left-color:#64748b}.next-title{margin-top:5px;font-size:clamp(17px,1.7vw,29px);font-weight:800;line-height:1.14;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}.next-participants{margin-top:6px;color:#d1fae5;font-size:clamp(15px,1.4vw,23px);font-weight:750;line-height:1.16;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}.empty-text{color:var(--muted)}.mats.dense .mat-card{gap:8px;padding:clamp(12px,1.25vw,20px)}.mats.dense .mat-name{font-size:clamp(19px,1.8vw,30px)}.mats.dense .current-title{font-size:clamp(21px,2.15vw,37px);-webkit-line-clamp:2}.mats.dense .current-title.long{font-size:clamp(19px,1.95vw,33px)}.mats.dense .current-title.extra-long{font-size:clamp(18px,1.75vw,29px)}.mats.dense .current-participants{font-size:clamp(17px,1.55vw,26px)}.mats.dense .next-title{font-size:clamp(14px,1.25vw,21px)}.mats.dense .next-participants{font-size:clamp(13px,1.12vw,19px)}.mats.dense .meta{font-size:clamp(10px,.85vw,14px)}.waiting{grid-column:1/-1;display:grid;place-content:center;text-align:center;color:var(--muted)}.waiting strong{color:#cbd5e1;font-size:clamp(28px,4.5vw,68px)}.waiting span{margin-top:12px;font-size:clamp(15px,1.5vw,24px)}footer{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;color:#94a3b8;font-size:clamp(12px,1.05vw,18px)}#connection{min-width:0;display:flex;align-items:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}#connection .status-dot{margin-right:8px;--status-color:var(--green)}#connection.offline .status-dot{--status-color:var(--red)}#status{overflow:hidden;text-overflow:ellipsis}.pager{display:flex;align-items:center;justify-content:center;gap:8px;transition:opacity .2s ease}.pager.hidden{visibility:hidden;opacity:0;pointer-events:none}.page-button{width:32px;height:30px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:rgba(15,23,42,.75);color:#e2e8f0;cursor:pointer}.page-button:hover{border-color:var(--yellow);color:var(--yellow)}.page-indicator{min-width:78px;text-align:center;font-weight:700}.clock{justify-self:end;color:#e2e8f0;font-variant-numeric:tabular-nums;white-space:nowrap}
+    @media(max-width:1550px){.mats[data-visible-count="3"]{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr))}.mats[data-visible-count="3"] .mat-card:last-child{grid-column:1/-1}}
+    @media(max-width:900px){.screen{padding:12px}.brand{font-size:clamp(20px,5vw,34px)}.summary{font-size:clamp(12px,2.7vw,18px)}.mats,.mats[data-visible-count="2"],.mats[data-visible-count="3"],.mats[data-visible-count="4"],.mats.wide-page{grid-template-columns:minmax(0,1fr);grid-template-rows:repeat(2,minmax(0,1fr))}.mats[data-visible-count="3"] .mat-card:last-child{grid-column:auto}footer{grid-template-columns:minmax(0,1fr) auto}.pager{grid-row:1;grid-column:2}.clock{display:none}}
+    @media(max-height:780px){.screen{gap:9px;padding-top:10px;padding-bottom:10px}.brand-logo{width:42px;height:42px}.mat-card{gap:7px;padding-top:12px;padding-bottom:12px}.current-title{-webkit-line-clamp:2}.nextbox{padding-top:8px;padding-bottom:8px}}
+    .mat-status{border-color:color-mix(in srgb,var(--status-color) 78%,transparent);background:linear-gradient(135deg,color-mix(in srgb,var(--status-color) 20%,#0b1524),color-mix(in srgb,var(--status-color) 8%,#0b1524));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--status-color) 12%,transparent),0 5px 18px rgba(0,0,0,.2)}
+    .participants-line{color:#e2e8f0;overflow-wrap:anywhere;word-break:normal}
+    .player-side{font-weight:900;text-shadow:0 2px 12px rgba(0,0,0,.42)}
+    .player-aka{color:#fb7185}.player-ao{color:#60a5fa}.player-vs{display:inline-block;margin:0 .24em;color:#e2e8f0;font-size:.72em;font-weight:800;text-transform:lowercase;vertical-align:.08em}
+    .side-dot{display:inline-block;width:.38em;height:.38em;margin-right:.28em;border-radius:50%;vertical-align:.12em;background:currentColor;box-shadow:0 0 10px currentColor}
+    .participant-fallback{color:#cbd5e1}
+    @media(max-width:900px){.player-vs{margin:0 .16em}.side-dot{margin-right:.2em}}
   </style>
 </head>
 <body>
   <main class="screen">
     <header><div class="brand-lockup"><img class="brand-logo" src="/assets/ksport-logo.png" alt="Logo K-SPORT"><div class="brand">K-SPORT LIVE</div></div><div class="summary" id="summary">ĐANG KẾT NỐI</div></header>
-    <section class="mats" id="mats"><div class="waiting"><strong>Đang chờ dữ liệu các thảm...</strong><span>Các máy Thư ký sẽ tự động xuất hiện tại đây</span></div></section>
-    <footer><div id="connection"><span class="dot"></span><span id="status">Đang kết nối máy Admin</span></div><div class="clock" id="clock"></div></footer>
+    <section class="mats" id="mats" aria-live="polite"><div class="waiting"><strong>Đang chờ dữ liệu các thảm...</strong><span>Các máy Thư ký sẽ tự động xuất hiện tại đây</span></div></section>
+    <footer>
+      <div id="connection"><span class="status-dot"></span><span id="status">Đang kết nối máy Admin</span></div>
+      <nav class="pager hidden" id="pager" aria-label="Chuyển trang thảm"><button class="page-button" id="prev-page" type="button" aria-label="Trang trước">‹</button><span class="page-indicator" id="page-indicator">Trang 1/1</span><button class="page-button" id="next-page" type="button" aria-label="Trang sau">›</button></nav>
+      <div class="clock" id="clock"></div>
+    </footer>
   </main>
   <script>
     const STALE_AFTER_MS = 12000;
+    const AUTO_PAGE_MS = 10000;
     const matsEl = document.getElementById('mats');
     const summaryEl = document.getElementById('summary');
     const connectionEl = document.getElementById('connection');
     const statusEl = document.getElementById('status');
+    const pagerEl = document.getElementById('pager');
+    const pageIndicatorEl = document.getElementById('page-indicator');
+    const cardCache = new Map();
+    const previousStatuses = new Map();
     let rows = [];
+    let currentPage = 0;
+    let lastPageChange = Date.now();
     let streamConnected = false;
 
     function text(value) {
@@ -29,37 +50,166 @@
         .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
 
+    function playerName(value) {
+      if (typeof value === 'string' || typeof value === 'number') return String(value).trim();
+      if (!value || typeof value !== 'object') return '';
+      return String(value.fullName || value.name || value.athleteName || value.displayName || '').trim();
+    }
+
+    function firstPlayer(match, keys) {
+      for (const key of keys) {
+        const name = playerName(match?.[key]);
+        if (name) return name;
+      }
+      return '';
+    }
+
+    function getParticipantSides(match = {}) {
+      let aka = firstPlayer(match, ['redPlayer', 'akaPlayer', 'player1', 'athleteA', 'athlete1', 'red', 'aka']);
+      let ao = firstPlayer(match, ['bluePlayer', 'aoPlayer', 'player2', 'athleteB', 'athlete2', 'blue', 'ao']);
+      const fallback = playerName(match.participantText);
+      if ((!aka || !ao) && fallback) {
+        const parts = fallback.split(/\s+vs\.?\s+/i);
+        if (parts.length === 2) {
+          if (!aka) aka = parts[0].trim();
+          if (!ao) ao = parts[1].trim();
+        }
+      }
+      return { aka, ao, fallback };
+    }
+
+    function participantMarkup(match, className, emptyText = '') {
+      const { aka, ao, fallback } = getParticipantSides(match);
+      const title = aka && ao ? `${aka} vs ${ao}` : aka || ao || fallback || emptyText;
+      if (!title) return '';
+      if (!aka && !ao) return `<div class='${className} participants-line participant-fallback' title='${text(title)}'>${text(title)}</div>`;
+      return `<div class='${className} participants-line' title='${text(title)}'>${aka ? `<span class='player-side player-aka'><span class='side-dot' aria-hidden='true'></span>${text(aka)}</span>` : ''}${aka && ao ? `<span class='player-vs'>vs</span>` : ''}${ao ? `<span class='player-side player-ao'><span class='side-dot' aria-hidden='true'></span>${text(ao)}</span>` : ''}</div>`;
+    }
+
+    function getMatStatus(row, now = Date.now()) {
+      const data = row.data || {};
+      const current = data.current || {};
+      const updatedAt = new Date(row.updated_at).getTime();
+      const stale = !Number.isFinite(updatedAt) || now - updatedAt > STALE_AFTER_MS;
+      if (stale) return { key: 'paused', label: 'Tạm dừng', rank: 2 };
+      if (current.status === 'completed' || data.status === 'completed') return { key: 'ended', label: 'Đã kết thúc', rank: 3 };
+      if (!current.name || (!current.matchId && !current.participantText)) return { key: 'preparing', label: 'Chuẩn bị', rank: 1 };
+      return { key: 'live', label: 'Đang thi đấu', rank: 0 };
+    }
+
     function sortMats(left, right) {
-      return String(left.mat_id || '').localeCompare(String(right.mat_id || ''), 'vi', { numeric: true });
+      const a = getMatStatus(left), b = getMatStatus(right);
+      return a.rank - b.rank || String(left.mat_id || '').localeCompare(String(right.mat_id || ''), 'vi', { numeric: true });
+    }
+
+    function getPageSize(total) {
+      if (total <= 4) return total || 1;
+      if (window.innerWidth < 900) return 2;
+      if (window.innerWidth >= 2500 && window.innerHeight >= 1200) return 6;
+      return 4;
+    }
+
+    function getTitleSizeClass(value) {
+      const length = String(value || '').length;
+      return length > 80 ? 'extra-long' : length > 52 ? 'long' : '';
+    }
+
+    function buildMeta(data, current) {
+      const meta = [];
+      if (data.roundName) meta.push(data.roundName);
+      if (data.matchCode) meta.push(`Trận ${data.matchCode}`);
+      if (current.scheduledTime) meta.push(`Lịch ${current.scheduledTime}`);
+      return meta.join(' • ');
+    }
+
+    function createMatCard(matId) {
+      const card = document.createElement('article');
+      card.className = 'mat-card';
+      card.dataset.matId = String(matId);
+      cardCache.set(String(matId), card);
+      return card;
+    }
+
+    function updateMatCard(card, row, status, dense) {
+      const data = row.data || {};
+      const current = data.current || {};
+      const next = data.next || {};
+      const currentTitle = current.name || 'Đang chờ Thư ký cập nhật...';
+      const nextTitle = next.name || 'Không còn trận tiếp theo';
+      const currentParticipantsMarkup = participantMarkup(current, 'current-participants');
+      const nextParticipantsMarkup = participantMarkup(next, 'next-participants', next.name ? 'Chưa xác định VĐV' : 'Đã hoàn tất lịch thi đấu của thảm này');
+      const meta = buildMeta(data, current);
+      const signature = JSON.stringify({ data, status: status.key, dense });
+      card.className = `mat-card status-${status.key}`;
+      card.setAttribute('aria-label', `Thảm ${row.mat_id}: ${status.label}`);
+      if (card.dataset.signature === signature) return;
+      card.dataset.signature = signature;
+      card.innerHTML = `
+        <div class="mat-head"><div class="mat-name">THẢM ${text(row.mat_id)}</div><div class="mat-status" title="${text(status.label)}"><span class="status-dot"></span>${text(status.label)}</div></div>
+        <div class="current-wrap">
+          <div class="label">${status.key === 'ended' ? 'Trạng thái' : 'Nội dung hiện tại'}</div>
+          <div class="current-title ${getTitleSizeClass(currentTitle)} ${current.name ? '' : 'empty-text'}" title="${text(currentTitle)}">${text(currentTitle)}</div>
+          ${currentParticipantsMarkup}
+          <div class="meta" title="${text(meta)}">${text(meta)}</div>
+        </div>
+        <div class="nextbox ${next.name ? '' : 'empty'}"><div class="label">Nội dung tiếp theo</div><div class="next-title ${next.name ? '' : 'empty-text'}" title="${text(nextTitle)}">${text(nextTitle)}</div>${nextParticipantsMarkup}</div>`;
+    }
+
+    function animateReorder(previousPositions) {
+      if (!Element.prototype.animate) return;
+      for (const card of matsEl.querySelectorAll('.mat-card')) {
+        const previous = previousPositions.get(card.dataset.matId);
+        if (!previous) continue;
+        const current = card.getBoundingClientRect();
+        const dx = previous.left - current.left, dy = previous.top - current.top;
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+        card.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'translate(0,0)' }], { duration: 420, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      }
     }
 
     function render() {
       const now = Date.now();
       const sorted = [...rows].sort(sortMats);
-      const onlineCount = sorted.filter(row => now - new Date(row.updated_at).getTime() <= STALE_AFTER_MS).length;
-      summaryEl.textContent = sorted.length ? `${onlineCount}/${sorted.length} THẢM ĐANG LIVE` : 'ĐANG CHỜ CÁC THẢM';
+      const liveCount = sorted.filter(row => getMatStatus(row, now).key === 'live').length;
+      const nextSummary = sorted.length ? `${liveCount}/${sorted.length} THẢM ĐANG LIVE` : 'ĐANG CHỜ CÁC THẢM';
+      if (summaryEl.textContent !== nextSummary) summaryEl.textContent = nextSummary;
       if (!sorted.length) {
+        matsEl.dataset.visibleCount = '0';
+        matsEl.className = 'mats';
         matsEl.innerHTML = '<div class="waiting"><strong>Đang chờ dữ liệu các thảm...</strong><span>Các máy Thư ký sẽ tự động xuất hiện tại đây</span></div>';
+        pagerEl.classList.add('hidden');
         return;
       }
-      matsEl.innerHTML = sorted.map(row => {
-        const data = row.data || {};
-        const current = data.current || {};
-        const next = data.next || {};
-        const updatedAt = new Date(row.updated_at).getTime();
-        const stale = !Number.isFinite(updatedAt) || now - updatedAt > STALE_AFTER_MS;
-        const meta = [];
-        if (data.roundName) meta.push(data.roundName);
-        if (data.matchCode) meta.push(`Trận ${data.matchCode}`);
-        if (current.scheduledTime) meta.push(`Lịch ${current.scheduledTime}`);
-        const currentParticipants = current.participantText || '';
-        const nextParticipants = next.participantText || (next.name ? 'Chưa xác định VĐV' : '');
-        return `<article class="mat-card${stale ? ' stale' : ''}">
-          <div class="mat-head"><div class="mat-name">THẢM ${text(row.mat_id)}</div><div class="live"><span class="dot"></span>${stale ? 'MẤT ĐỒNG BỘ' : 'LIVE'}</div></div>
-          <div class="current-wrap"><div class="label">${current.status === 'completed' ? 'Trạng thái' : 'Đang thi đấu'}</div><div class="current${current.name ? '' : ' empty'}">${text(current.name || 'Đang chờ Thư ký cập nhật...')}</div>${currentParticipants ? `<div class="participants">${text(currentParticipants)}</div>` : ''}<div class="meta">${text(meta.join(' • '))}</div></div>
-          <div class="nextbox"><div class="label">Nội dung tiếp theo</div><div class="next${next.name ? '' : ' empty'}">${text(next.name || 'Đã hoàn tất lịch thi đấu của thảm này')}</div>${nextParticipants ? `<div class="next-participants">${text(nextParticipants)}</div>` : ''}</div>
-        </article>`;
-      }).join('');
+      const pageSize = getPageSize(sorted.length);
+      const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+      currentPage = Math.min(currentPage, pageCount - 1);
+      const visibleRows = sorted.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
+      const dense = visibleRows.length >= 3;
+      const visibleCards = [];
+      for (const row of visibleRows) {
+        const matId = String(row.mat_id || '1');
+        const card = cardCache.get(matId) || createMatCard(matId);
+        updateMatCard(card, row, getMatStatus(row, now), dense);
+        visibleCards.push(card);
+      }
+      matsEl.className = `mats${dense ? ' dense' : ''}${pageSize === 6 ? ' wide-page' : ''}`;
+      matsEl.dataset.visibleCount = String(visibleRows.length);
+      const currentCards = Array.from(matsEl.children);
+      const orderChanged = currentCards.length !== visibleCards.length || visibleCards.some((card, index) => currentCards[index] !== card);
+      if (orderChanged) {
+        const previousPositions = new Map(currentCards.filter(card => card.classList.contains('mat-card')).map(card => [card.dataset.matId, card.getBoundingClientRect()]));
+        matsEl.replaceChildren(...visibleCards);
+        requestAnimationFrame(() => animateReorder(previousPositions));
+      }
+      pagerEl.classList.toggle('hidden', pageCount <= 1);
+      pageIndicatorEl.textContent = `Trang ${currentPage + 1}/${pageCount}`;
+    }
+
+    function setPage(nextPage) {
+      const pageCount = Math.max(1, Math.ceil(rows.length / getPageSize(rows.length)));
+      currentPage = (nextPage + pageCount) % pageCount;
+      lastPageChange = Date.now();
+      render();
     }
 
     function setConnection(ok, message) {
@@ -68,7 +218,13 @@
     }
 
     function applyRows(nextRows) {
-      if (Array.isArray(nextRows)) rows = nextRows;
+      if (!Array.isArray(nextRows)) return;
+      const nextStatusMap = new Map(nextRows.map(row => [String(row.mat_id || '1'), getMatStatus(row).key]));
+      const newlyLive = nextRows.some(row => { const id = String(row.mat_id || '1'); return nextStatusMap.get(id) === 'live' && previousStatuses.get(id) !== 'live'; });
+      previousStatuses.clear();
+      nextStatusMap.forEach((status, id) => previousStatuses.set(id, status));
+      rows = nextRows;
+      if (newlyLive) currentPage = 0;
       render();
     }
 
@@ -79,33 +235,42 @@
         const result = await response.json();
         applyRows(result.data || []);
         if (!streamConnected) setConnection(true, 'Đã kết nối máy Admin • chế độ dự phòng');
-      } catch {
-        if (!streamConnected) setConnection(false, 'Mất kết nối máy Admin — đang thử lại');
-      }
+      } catch { if (!streamConnected) setConnection(false, 'Mất kết nối máy Admin — đang thử lại'); }
     }
 
     function connectStream() {
       const stream = new EventSource('/api/live-status/events');
-      stream.addEventListener('open', () => {
-        streamConnected = true;
-        setConnection(true, 'Đồng bộ trực tiếp với máy Admin');
-      });
-      stream.addEventListener('live-status', event => {
-        try { applyRows(JSON.parse(event.data)); } catch { /* wait for the next event */ }
-      });
-      stream.addEventListener('error', () => {
-        streamConnected = false;
-        setConnection(false, 'Đang kết nối lại máy Admin...');
+      stream.addEventListener('open', () => { streamConnected = true; setConnection(true, 'Đồng bộ trực tiếp với máy Admin'); });
+      stream.addEventListener('live-status', event => { try { applyRows(JSON.parse(event.data)); } catch { /* chờ sự kiện kế tiếp */ } });
+      stream.addEventListener('error', () => { streamConnected = false; setConnection(false, 'Đang kết nối lại máy Admin...'); });
+    }
+
+    function createDemoRows(count) {
+      const events = ['Kumite cá nhân Nam hạng cân đến 30kg lứa tuổi 8–9 tuổi','Kumite cá nhân Nữ hạng cân trên 45kg lứa tuổi 14–15 tuổi','Kata cá nhân Nam nhóm tuổi thiếu niên nâng cao','Kumite đồng đội Nữ nhóm tuổi trẻ mở rộng','Kata đồng đội hỗn hợp lứa tuổi 10–11 tuổi','Kumite cá nhân Nam hạng cân đến 55kg lứa tuổi 16–17 tuổi'];
+      const names = [['Nguyễn Đức Huy','Võ Công Tài'],['Trần Thị Thảo Nhi','Võ Lê Uyên Thy'],['Phạm Minh Anh','Lê Gia Bảo'],['CLB K-Sport A','CLB Karate Thành phố'],['Đội Kata Quận 1','Đội Kata Quận 3'],['Đặng Hoàng Nam','Bùi Quốc Khánh']];
+      return Array.from({ length: count }, (_, index) => {
+        const ended = count >= 4 && index === count - 1, paused = count >= 6 && index === count - 2;
+        return { tournament_id:'demo', tournament_name:'Giải Karate mô phỏng', mat_id:String(index + 1), updated_at:new Date(Date.now() - (paused ? STALE_AFTER_MS + 5000 : 0)).toISOString(), data:{ roundName:index % 2 ? 'Tứ kết' : 'Vòng loại', matchCode:`M${index + 1}`, current:{ name:ended ? 'Đã hoàn tất lịch thi đấu của thảm này' : events[index % events.length], status:ended ? 'completed' : null, matchId:ended ? null : `demo-${index + 1}`, participantText:ended ? null : `${names[index % names.length][0]} vs ${names[index % names.length][1]}`, scheduledTime:`${8 + index}:30` }, next:ended ? null : { name:events[(index + 1) % events.length], participantText:`${names[(index + 1) % names.length][0]} vs ${names[(index + 1) % names.length][1]}` } } };
       });
     }
 
-    setInterval(() => {
-      document.getElementById('clock').textContent = new Date().toLocaleString('vi-VN');
-    }, 1000);
+    document.getElementById('prev-page').addEventListener('click', () => setPage(currentPage - 1));
+    document.getElementById('next-page').addEventListener('click', () => setPage(currentPage + 1));
+    window.addEventListener('resize', () => { currentPage = 0; render(); });
+    setInterval(() => { document.getElementById('clock').textContent = new Date().toLocaleString('vi-VN'); }, 1000);
     setInterval(render, 3000);
-    setInterval(refresh, 5000);
-    refresh();
-    connectStream();
+    setInterval(() => { const pageCount = Math.ceil(rows.length / getPageSize(rows.length)); if (pageCount > 1 && Date.now() - lastPageChange >= AUTO_PAGE_MS && !document.hidden) setPage(currentPage + 1); }, 1000);
+
+    const demoCount = Number(new URLSearchParams(location.search).get('demo'));
+    if ([1,2,3,4,6].includes(demoCount)) {
+      applyRows(createDemoRows(demoCount));
+      setConnection(true, `Dữ liệu mô phỏng ${demoCount} thảm`);
+      setInterval(() => { rows = rows.map(row => getMatStatus(row).key === 'paused' ? row : { ...row, updated_at:new Date().toISOString() }); render(); }, 5000);
+    } else {
+      setInterval(refresh, 5000);
+      refresh();
+      connectStream();
+    }
   </script>
 </body>
 </html>

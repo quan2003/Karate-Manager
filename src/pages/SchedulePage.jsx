@@ -89,6 +89,9 @@ export default function SchedulePage() {
     afternoonStart: "13:00",
     afternoonEnd: "17:30",
     durations: DEFAULT_MATCH_DURATIONS,
+    priorityMode: "standard_gender_order",
+    customPriorityOrder: [],
+    athleteRestMinutes: 15,
   });
 
   useEffect(() => {
@@ -155,6 +158,7 @@ export default function SchedulePage() {
       const numSplits = getCount(cat);
       if (numSplits > 1) {
         for (let i = 0; i < numSplits; i++) {
+          const perSplit = Math.ceil((cat.athletes?.length || 0) / numSplits);
           items.push({
             ...cat,
             id: `${cat.id}_split${i}`,
@@ -162,7 +166,9 @@ export default function SchedulePage() {
             name: `${cat.name} - Trận ${i + 1}/${numSplits}`,
             isSplit: true,
             splitIndex: i,
-            totalSplits: numSplits
+            totalSplits: numSplits,
+            bracket: null,
+            athletes: (cat.athletes || []).slice(i * perSplit, (i + 1) * perSplit),
           });
         }
       } else {
@@ -267,8 +273,8 @@ export default function SchedulePage() {
 
   // Xung đột thực sự trong lịch: VĐV bị xếp CÙNG GIỜ ở 2 thảm khác nhau
   const scheduleConflicts = useMemo(() => {
-    return detectScheduleConflicts(schedule, categories);
-  }, [schedule, categories]);
+    return detectScheduleConflicts(schedule, categories, matchDurations);
+  }, [schedule, categories, matchDurations]);
 
   // Unassigned categories (not assigned on ANY day)
   const unassignedCategories = categories.filter(c => !schedule[c.id]);
@@ -445,20 +451,29 @@ export default function SchedulePage() {
       matCount,
       sessionConfig,
       matchDurations,
-      schedule
+      schedule,
+      {
+        customEvents,
+        priorityMode: tournament.scheduleConfig?.priorityMode || "standard_gender_order",
+        customPriorityOrder: tournament.scheduleConfig?.customPriorityOrder || categories.map((category) => category.id),
+        athleteRestMinutes: tournament.scheduleConfig?.athleteRestMinutes ?? 15,
+      }
     );
 
     saveSchedule(newSchedule);
-    toast.success(`Đã tự động xếp lịch nối tiếp thông minh cho ${unassignedCategories.length} nội dung trong ngày này.`);
+    const newlyScheduled = categories.filter(
+      (category) => !schedule[category.id] && newSchedule[category.id]
+    ).length;
+    const stillMissing = categories.filter((category) => !newSchedule[category.id]).length;
+    if (stillMissing > 0) {
+      toast.warning(`Đã xếp thêm ${newlyScheduled} nội dung; còn ${stillMissing} nội dung không đủ khung giờ ngày này.`);
+    } else {
+      toast.success(`Đã xếp thêm ${newlyScheduled} nội dung trong ngày này.`);
+    }
   };
 
   // Auto-assign ALL categories across ALL days
   const handleAutoAssignAll = () => {
-    const allUnassigned = categories.filter(c => !schedule[c.id]);
-    if (allUnassigned.length === 0) {
-      toast.info("Tất cả nội dung đã được xếp lịch");
-      return;
-    }
     if (tournamentDays.length === 0) {
       toast.error("Vui lòng setup lịch thi đấu trước!");
       return;
@@ -478,11 +493,23 @@ export default function SchedulePage() {
       matCount,
       sessionConfig,
       matchDurations,
-      schedule
+      {},
+      {
+        customEvents,
+        priorityMode: tournament.scheduleConfig?.priorityMode || "standard_gender_order",
+        customPriorityOrder: tournament.scheduleConfig?.customPriorityOrder || categories.map((category) => category.id),
+        athleteRestMinutes: tournament.scheduleConfig?.athleteRestMinutes ?? 15,
+      }
     );
 
     saveSchedule(newSchedule);
-    toast.success(`Đã tự động phân bổ thông minh cho ${allUnassigned.length} nội dung.`);
+    const scheduledCount = Object.keys(newSchedule).length;
+    const missingCount = Math.max(0, categories.length - scheduledCount);
+    if (missingCount > 0) {
+      toast.warning(`Đã xếp ${scheduledCount}/${categories.length} nội dung; còn ${missingCount} nội dung không đủ khung giờ.`);
+    } else {
+      toast.success(`Đã xếp lại và cân bằng toàn bộ ${scheduledCount} nội dung.`);
+    }
   };
 
   // Save schedule config
@@ -495,6 +522,9 @@ export default function SchedulePage() {
       dates: tournamentDays,
       startDate: tournamentDays[0] || tournament.startDate || tournament.date,
       durations: matchDurations,
+      priorityMode: tournament.scheduleConfig?.priorityMode || "standard_gender_order",
+        customPriorityOrder: tournament.scheduleConfig?.customPriorityOrder || categories.map((category) => category.id),
+      athleteRestMinutes: tournament.scheduleConfig?.athleteRestMinutes ?? 15,
     };
     dispatch({
       type: ACTIONS.UPDATE_TOURNAMENT,
@@ -518,6 +548,9 @@ export default function SchedulePage() {
       afternoonEnd: cfg.afternoonEnd || sessionConfig.afternoonEnd,
       matCount: cfg.matCount || matCount,
       durations: cfg.durations || matchDurations || DEFAULT_MATCH_DURATIONS,
+      priorityMode: cfg.priorityMode || "standard_gender_order",
+      customPriorityOrder: cfg.customPriorityOrder || categories.map((category) => category.id),
+      athleteRestMinutes: cfg.athleteRestMinutes ?? 15,
     });
     setShowSetupModal(true);
   };
@@ -545,6 +578,9 @@ export default function SchedulePage() {
       afternoonEnd: setupForm.afternoonEnd,
       matCount: setupForm.matCount,
       durations: setupForm.durations,
+      priorityMode: setupForm.priorityMode || "standard_gender_order",
+      customPriorityOrder: setupForm.customPriorityOrder || categories.map((category) => category.id),
+      athleteRestMinutes: setupForm.athleteRestMinutes ?? 15,
     };
     dispatch({
       type: ACTIONS.UPDATE_TOURNAMENT,
@@ -756,7 +792,7 @@ export default function SchedulePage() {
                 onClick={() => { handleAutoAssignAll(); clearHint(); }}
                 data-hint="BƯỚC 2: XẾP TẤT CẢ"
               >
-                📅 Tự động xếp TẤT CẢ
+                📅 Xếp lại TẤT CẢ
               </button>
             )}
             <button 
@@ -1503,8 +1539,9 @@ export default function SchedulePage() {
           isOpen={showSetupModal}
           onClose={() => setShowSetupModal(false)}
           title="⚙️ Setup lịch thi đấu"
+          size="large"
         >
-          <div className="assign-form">
+          <div className="assign-form schedule-setup-form">
             <p style={{color:'#64748b',fontSize:'13px',marginBottom:'12px'}}>
               Cấu hình số ngày, giờ thi đấu. Hệ thống sẽ tự động phân bổ các nội dung vào các ngày.
             </p>
@@ -1563,6 +1600,64 @@ export default function SchedulePage() {
                 </div>
               </div>
             </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginTop:'16px'}}>
+              <div className="input-group">
+                <label className="input-label">Ưu tiên xếp trước</label>
+                <select className="input" value={setupForm.priorityMode || "standard_gender_order"}
+                  onChange={(e) => setSetupForm(prev => ({
+                    ...prev,
+                    priorityMode: e.target.value,
+                    customPriorityOrder: prev.customPriorityOrder?.length
+                      ? prev.customPriorityOrder
+                      : categories.map((category) => category.id),
+                  }))}>
+                  <option value="karate_standard">Thứ tự chuẩn Karate</option>
+                  <option value="standard_gender_order">Nam CN → Nữ CN → Đội nam → Đội nữ → Hỗn hợp</option>
+                  <option value="custom_order">Tự sắp xếp từng hạng mục</option>
+                  <option value="category_order">Theo thứ tự danh sách hạng mục</option>
+                  <option value="kata_first">Kata trước</option>
+                  <option value="kumite_first">Kumite trước</option>
+                  <option value="age_young_first">Lứa tuổi nhỏ trước</option>
+                  <option value="age_old_first">Lứa tuổi lớn trước</option>
+                </select>
+              </div>
+              <div className="input-group">
+                <label className="input-label">Nghỉ giữa nội dung trùng VĐV (phút)</label>
+                <input type="number" min="0" step="5" className="input"
+                  value={setupForm.athleteRestMinutes ?? 15}
+                  onChange={(e) => setSetupForm(prev => ({...prev, athleteRestMinutes: Math.max(0, parseInt(e.target.value) || 0)}))} />
+              </div>
+            </div>
+
+            {setupForm.priorityMode === "custom_order" && (
+              <div style={{marginTop:'12px'}}>
+                <div className="input-label">Sắp xếp hạng mục theo ý muốn</div>
+                <div style={{maxHeight:'260px',overflowY:'auto',border:'1px solid #e2e8f0',borderRadius:'8px'}}>
+                  {(setupForm.customPriorityOrder || categories.map((category) => category.id))
+                    .map((categoryId) => categories.find((category) => category.id === categoryId))
+                    .filter(Boolean)
+                    .map((category, index, orderedCategories) => (
+                      <div key={category.id} style={{display:'flex',alignItems:'center',gap:'8px',padding:'7px 9px',borderBottom:'1px solid #f1f5f9'}}>
+                        <span style={{minWidth:'24px',fontWeight:700,color:'#64748b'}}>{index + 1}</span>
+                        <span style={{flex:1,fontSize:'12px',fontWeight:600}}>{category.name}</span>
+                        <button type="button" className="btn btn-sm" disabled={index === 0}
+                          onClick={() => setSetupForm((prev) => {
+                            const order = [...(prev.customPriorityOrder || categories.map((item) => item.id))];
+                            [order[index - 1], order[index]] = [order[index], order[index - 1]];
+                            return {...prev, customPriorityOrder: order};
+                          })}>↑</button>
+                        <button type="button" className="btn btn-sm" disabled={index === orderedCategories.length - 1}
+                          onClick={() => setSetupForm((prev) => {
+                            const order = [...(prev.customPriorityOrder || categories.map((item) => item.id))];
+                            [order[index], order[index + 1]] = [order[index + 1], order[index]];
+                            return {...prev, customPriorityOrder: order};
+                          })}>↓</button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
 
             <div style={{marginTop:'16px'}}>
               <div className="input-label">⏱️ Thời lượng trận đấu dự kiến (phút)</div>

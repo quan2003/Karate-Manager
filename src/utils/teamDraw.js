@@ -72,6 +72,10 @@ export function getTeamSizeForCategory(category = {}, tournament = {}) {
   return Math.max(1, Math.floor(teamSize));
 }
 
+function getClubGroupingKey(value) {
+  return normalizeText(value || "Khong CLB");
+}
+
 function splitMembersIntoFullTeams(members, targetSize) {
   const teams = [];
   const fullTeamCount = Math.floor(members.length / targetSize);
@@ -93,22 +97,23 @@ export function getTeamsFromAthletes(athletes = [], category = {}, tournament = 
   const clubMap = new Map();
 
   athletes.forEach((athlete) => {
-    const clubKey = (athlete.club || "Khong CLB").trim();
-    if (!clubMap.has(clubKey)) clubMap.set(clubKey, []);
-    clubMap.get(clubKey).push(athlete);
+    const clubName = String(athlete.club || "Khong CLB").trim().replace(/\s+/g, " ");
+    const groupingKey = getClubGroupingKey(clubName);
+    if (!clubMap.has(groupingKey)) clubMap.set(groupingKey, { clubName, members: [] });
+    clubMap.get(groupingKey).members.push(athlete);
   });
 
   const teams = [];
-  clubMap.forEach((members, clubKey) => {
+  clubMap.forEach(({ clubName, members }) => {
     const memberGroups = splitMembersIntoFullTeams(members, targetSize);
     memberGroups.forEach((teamMembers, index) => {
       const teamNumber = index + 1;
       const idMembers = teamMembers.map((member) => member.id || member.name).join("_");
 
       teams.push({
-        id: `team_${sanitizeIdPart(clubKey)}_${teamNumber}_${sanitizeIdPart(idMembers)}`,
-        name: memberGroups.length > 1 ? `${clubKey} - Đội ${teamNumber}` : clubKey,
-        club: clubKey,
+        id: `team_${sanitizeIdPart(clubName)}_${teamNumber}_${sanitizeIdPart(idMembers)}`,
+        name: memberGroups.length > 1 ? `${clubName} - Đội ${teamNumber}` : clubName,
+        club: clubName,
         country: teamMembers[0]?.country || "VN",
         gender: teamMembers[0]?.gender,
         isTeam: true,

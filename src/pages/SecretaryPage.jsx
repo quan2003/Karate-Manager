@@ -28,6 +28,100 @@ import Bracket from "../components/Bracket/Bracket";
 import appIcon from "../assets/icon.png";
 import "./SecretaryPage.css";
 
+const WKF_KATA_LIST = [
+  "001 Anan", "002 Anan Dai", "003 Ananko", "004 Aoyagi", "005 Bassai",
+  "006 Bassai Dai", "007 Bassai Sho", "008 Chatanyara Kusanku",
+  "009 Chibana No Kushanku", "010 Chinte", "011 Chinto", "012 Enpi",
+  "013 Fukyugata Ichi", "014 Fukyugata Ni", "015 Gankaku", "016 Garyu",
+  "017 Gekisai (Geksai) 1", "018 Gekisai (Geksai) 2", "019 Gojushiho",
+  "020 Gojushiho Dai", "021 Gojushiho Sho", "022 Hakucho", "023 Hangetsu",
+  "024 Haufa (Haffa)", "025 Heian Shodan", "026 Heian Nidan",
+  "027 Heian Sandan", "028 Heian Yondan", "029 Heian Godan", "030 Heiku",
+  "031 Ishimine Bassai", "032 Itosu Rohai Shodan", "033 Itosu Rohai Nidan",
+  "034 Itosu Rohai Sandan", "035 Jiin", "036 Jion", "037 Jitte",
+  "038 Juroku", "039 Kanchin", "040 Kanku Dai", "041 Kanku Sho",
+  "042 Kanshu", "043 Kishimoto No Kushanku", "044 Kousoukun",
+  "045 Kousoukun Dai", "046 Kousoukun Sho", "047 Kururunfa", "048 Kusanku",
+  "049 Kyan No Chinto", "050 Kyan No Wanshu", "051 Matsukaze",
+  "052 Matsumura Bassai", "053 Matsumura Rohai", "054 Meikyo", "055 Myojo",
+  "056 Naifanchin Shodan", "057 Naifanchin Nidan", "058 Naifanchin Sandan",
+  "059 Naihanchi", "060 Nijushiho", "061 Nipaipo", "062 Niseishi",
+  "063 Ohan", "064 Ohan Dai", "065 Oyadomari No Passai", "066 Pachu",
+  "067 Paiku", "068 Papuren", "069 Passai", "070 Pinan Shodan",
+  "071 Pinan Nidan", "072 Pinan Sandan", "073 Pinan Yondan",
+  "074 Pinan Godan", "075 Rohai", "076 Saifa", "077 Sanchin", "078 Sansai",
+  "079 Sanseiru", "080 Sanseru", "081 Seichin", "082 Seienchin (Seiyunchin)",
+  "083 Seipai", "084 Seiryu", "085 Seishan", "086 Seisan (Sesan)",
+  "087 Shiho Kousoukun", "088 Shinpa", "089 Shinsei", "090 Shisochin",
+  "091 Sochin", "092 Suparinpei", "093 Tekki Shodan", "094 Tekki Nidan",
+  "095 Tekki Sandan", "096 Tensho", "097 Tomari Bassai", "098 Unshu",
+  "099 Unsu", "100 Useishi", "101 Wankan", "102 Wanshu"
+];
+
+const removeVietnameseAccents = (str) => {
+  if (!str) return "";
+  return str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D");
+};
+
+function AutocompleteInput({ defaultValue, options, onOk, onCancel, inputRef }) {
+  const [value, setValue] = useState(defaultValue || "");
+  const [showOptions, setShowOptions] = useState(false);
+
+  const filteredOptions = options.filter((o) => {
+    const search = removeVietnameseAccents(value).toLowerCase();
+    const target = removeVietnameseAccents(o).toLowerCase();
+    return target.includes(search) || o.toLowerCase().includes(value.toLowerCase());
+  });
+
+  return (
+    <div style={{ position: "relative", textAlign: "left" }}>
+      <input
+        ref={inputRef}
+        className="secretary-dialog-input"
+        type="text"
+        value={value}
+        onChange={(e) => { setValue(e.target.value); setShowOptions(true); }}
+        onFocus={() => setShowOptions(true)}
+        onBlur={() => setTimeout(() => setShowOptions(false), 200)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onOk(value);
+          if (e.key === "Escape") onCancel();
+        }}
+        autoComplete="off"
+        placeholder="Nhập tên bài quyền..."
+        style={{ width: "100%", boxSizing: "border-box" }}
+      />
+      {showOptions && filteredOptions.length > 0 && (
+        <ul style={{
+          position: "absolute", top: "100%", left: 0, right: 0,
+          background: "#fff", border: "1px solid #cbd5e1", borderRadius: "6px",
+          maxHeight: "200px", overflowY: "auto", margin: 0, padding: 0,
+          listStyle: "none", zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+        }}>
+          {filteredOptions.map((opt, i) => (
+            <li
+              key={i}
+              onMouseDown={() => { setValue(opt); setShowOptions(false); setTimeout(() => onOk(opt), 0); }}
+              style={{
+                padding: "8px 12px", cursor: "pointer", fontSize: "13px",
+                borderBottom: "1px solid #f1f5f9"
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "#f0f9ff"}
+              onMouseLeave={(e) => e.currentTarget.style.background = ""}
+            >
+              {opt}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /**
  * SecretaryPage - Trang bấm điểm cho Thư ký
  */
@@ -57,6 +151,27 @@ function SecretaryPage() {
   const medalSyncQueueRef = useRef(Promise.resolve());
   const liveExtraRef = useRef({});
   const { activeHint, clearHint } = useOnboarding();
+  // Lưu tên bài quyền đã đăng ký: { [matchId]: { kata1, kata2 } }
+  const [kataRegistrations, setKataRegistrations] = useState(() => {
+    try {
+      const saved = localStorage.getItem("secretary_kata_registrations");
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+  const saveKataRegistration = useCallback((matchId, slot, kataName) => {
+    setKataRegistrations((prev) => {
+      const updated = {
+        ...prev,
+        [matchId]: {
+          ...(prev[matchId] || {}),
+          [slot === 1 ? "kata1" : "kata2"]: kataName,
+        },
+      };
+      localStorage.setItem("secretary_kata_registrations", JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
 
   // Sidebar search/filter
   const [sidebarSearch, setSidebarSearch] = useState("");
@@ -69,6 +184,112 @@ function SecretaryPage() {
   const activeSelectedMat = selectedMat === "all" || matOptions.some((mat) => mat.id === selectedMat)
     ? selectedMat
     : "all";
+
+  // ===== KATA RECEIVE SERVER STATE =====
+  const [kataReceive, setKataReceive] = useState({
+    running: false, ip: '', port: 3002, pin: '', url: '', matId: '1'
+  });
+  const [showKataQR, setShowKataQR] = useState(false);
+  const isElectron = Boolean(window.electronAPI?.kataReceive);
+
+  const startKataReceiveServer = useCallback(async () => {
+    if (!isElectron) return;
+    const matId = activeSelectedMat === 'all' ? '1' : activeSelectedMat;
+    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    try {
+      const result = await window.electronAPI.kataReceive.start(matId, pin);
+      if (result.success) {
+        const url = `http://${result.ip}:${result.port}/?mat=${encodeURIComponent(matId)}&pin=${encodeURIComponent(pin)}`;
+        setKataReceive({ running: true, ip: result.ip, port: result.port, pin, url, matId });
+        setShowKataQR(true);
+        setNotification('📱 Đã bật nhận bài quyền từ thiết bị ngoài');
+        setTimeout(() => setNotification(''), 3000);
+      } else {
+        setError('Không thể bật server: ' + (result.error || ''));
+      }
+    } catch (e) { setError('Lỗi: ' + e.message); }
+  }, [isElectron, activeSelectedMat]);
+
+  const stopKataReceiveServer = useCallback(async () => {
+    if (!isElectron) return;
+    try { await window.electronAPI.kataReceive.stop(); } catch {}
+    setKataReceive({ running: false, ip: '', port: 3002, pin: '', url: '', matId: '1' });
+    setShowKataQR(false);
+    setNotification('📴 Đã tắt nhận bài quyền từ thiết bị ngoài');
+    setTimeout(() => setNotification(''), 3000);
+  }, [isElectron]);
+
+  // Lắng nghe kata được gửi từ thiết bị ngoài → cập nhật kataRegistrations
+  useEffect(() => {
+    if (!isElectron) return undefined;
+    const cleanup = window.electronAPI.kataReceive.onKataRegistered((data) => {
+      setKataRegistrations((prev) => {
+        const updated = {
+          ...prev,
+          [data.matchId]: {
+            ...(prev[data.matchId] || {}),
+            [data.slot === 1 ? 'kata1' : 'kata2']: data.kataName,
+            [data.slot === 1 ? 'kata1Source' : 'kata2Source']: 'remote',
+            [data.slot === 1 ? 'kata1RegisteredBy' : 'kata2RegisteredBy']: data.registeredBy || '',
+            [data.slot === 1 ? 'kata1RegisteredAt' : 'kata2RegisteredAt']: data.registeredAt || new Date().toISOString(),
+          },
+        };
+        localStorage.setItem('secretary_kata_registrations', JSON.stringify(updated));
+        return updated;
+      });
+      setNotification(`📱 Nhận từ thiết bị: ${data.kataName}${data.registeredBy ? ' (' + data.registeredBy + ')' : ''}`);
+      setTimeout(() => setNotification(''), 4000);
+    });
+    return cleanup;
+  }, [isElectron]);
+
+  // Đồng bộ danh sách trận lên Kata Receive Server
+  const forceSyncKata = useCallback(() => {
+    if (!isElectron || !kataReceive.running || !matchData?.categories) return;
+
+    // Lấy TẤT CẢ các nội dung Kata thuộc Thảm đang chọn
+    const kataCategories = matchData.categories.filter((c) => {
+      const matchesMat = activeSelectedMat === "all" || String(getCategoryMatId(matchData, c)) === String(activeSelectedMat);
+      const typeStr = String(c.type || "").toLowerCase();
+      const nameStr = String(c.name || "").toLowerCase();
+      const isKata = typeStr === "kata" || nameStr.includes("kata") || nameStr.includes("quyền");
+      return isKata && matchesMat;
+    });
+
+    let allKataMatches = [];
+    for (const c of kataCategories) {
+      const rawMatches = (c.bracket?.matches || c.matches || []).filter((m) => !m.isBye);
+      const matchesWithKata = rawMatches.map((m) => {
+        const hasWinner = matchResults.some(r => r.matchId === m.id && r.winnerId) || !!m.winner;
+        return {
+          id: m.id,
+          matchCode: m.matchCode,
+          categoryId: c.id,
+          categoryName: c.name,
+          athlete1: m.athlete1,
+          athlete2: m.athlete2,
+          kata1: kataRegistrations[m.id]?.kata1 || m.kata1 || "",
+          kata2: kataRegistrations[m.id]?.kata2 || m.kata2 || "",
+          isCompleted: hasWinner,
+          roundName: c.bracket?.roundNames?.[m.round - 1] || `Vòng ${m.round}`,
+        };
+      });
+      allKataMatches = allKataMatches.concat(matchesWithKata);
+    }
+
+    window.electronAPI.kataReceive.updateMatches(allKataMatches).catch(() => {});
+  }, [isElectron, kataReceive.running, matchData, activeSelectedMat, kataRegistrations, matchResults]);
+
+  useEffect(() => {
+    forceSyncKata();
+  }, [forceSyncKata]);
+
+  // Khóa trận đang thi đấu
+  useEffect(() => {
+    if (!isElectron || !kataReceive.running || !activeMatchId) return;
+    window.electronAPI.kataReceive.lockMatch(activeMatchId).catch(() => {});
+  }, [isElectron, kataReceive.running, activeMatchId]);
+
   const filteredCategories = useMemo(() => {
     if (!matchData?.categories) return [];
     const search = sidebarSearch.toLowerCase().trim();
@@ -311,6 +532,15 @@ function SecretaryPage() {
     // Deep clone bracket to allow mutation by the engine helper
     const clonedBracket = JSON.parse(JSON.stringify(selectedCategory.bracket));
 
+    // Merge kata registrations vào bracket
+    if (kataRegistrations && Object.keys(kataRegistrations).length > 0) {
+      clonedBracket.matches = clonedBracket.matches.map((m) => {
+        const kataInfo = kataRegistrations[m.id];
+        if (!kataInfo) return m;
+        return { ...m, ...kataInfo };
+      });
+    }
+
     // Apply all local results to the cloned bracket
     // This ensures winners are advanced to next rounds automatically
     // Sort results by round to ensure proper advancement dependency
@@ -355,6 +585,26 @@ function SecretaryPage() {
     if (!selectedCategory?.bracket) return;
 
     switch (action) {
+      case "set_kata": {
+        const athlete = athleteSlot === 1 ? match.athlete1 : match.athlete2;
+        const currentKata = (kataRegistrations[match.id] || {})[athleteSlot === 1 ? "kata1" : "kata2"] || "";
+        setDialog({
+          type: "prompt",
+          title: "🥋 Đăng ký bài quyền (Kata)",
+          message: `Nhập hoặc chọn tên bài quyền cho ${athlete?.name || "VĐV"}:`,
+          defaultValue: currentKata,
+          options: WKF_KATA_LIST,
+          onOk: (kataName) => {
+            setDialog(null);
+            if (kataName === null || kataName === undefined) return;
+            saveKataRegistration(match.id, athleteSlot, kataName.trim());
+            setNotification(`🥋 Đã đăng ký bài "${kataName.trim()}" cho ${athlete?.name || "VĐV"}`);
+            setTimeout(() => setNotification(""), 3000);
+          },
+          onCancel: () => setDialog(null),
+        });
+        break;
+      }
       case "disqualify": {
         const athlete = athleteSlot === 1 ? match.athlete1 : match.athlete2;
         const opponent = athleteSlot === 1 ? match.athlete2 : match.athlete1;
@@ -662,6 +912,104 @@ function SecretaryPage() {
             )}
           </div>
         </header>
+        {/* ===== KATA RECEIVE PANEL ===== */}
+        {isElectron && matchData && (
+          <div style={{
+            background: kataReceive.running ? 'linear-gradient(135deg,#14532d,#166534)' : '#1e293b',
+            border: `1px solid ${kataReceive.running ? '#22c55e' : '#334155'}`,
+            borderRadius: '10px', padding: '10px 14px', margin: '0 0 8px 0',
+            display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+          }}>
+            <span style={{ fontSize: '16px' }}>📱</span>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: kataReceive.running ? '#86efac' : '#94a3b8', flex: 1 }}>
+              {kataReceive.running
+                ? `Đang tiếp nhận bài quyền – Thảm ${kataReceive.matId} • PIN: ${kataReceive.pin}`
+                : 'Tiếp nhận bài quyền từ thiết bị ngoài'}
+            </span>
+            {kataReceive.running && (
+              <>
+                <button
+                  onClick={() => {
+                    forceSyncKata();
+                    setNotification('🔄 Đã làm mới danh sách bài quyền trên thiết bị');
+                    setTimeout(() => setNotification(''), 3000);
+                  }}
+                  style={{ background: '#0284c7', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: 700, padding: '5px 10px', cursor: 'pointer' }}
+                >
+                  🔄 Cập nhật ĐT
+                </button>
+                <button
+                  onClick={() => setShowKataQR(v => !v)}
+                  style={{ background: '#15803d', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: 700, padding: '5px 10px', cursor: 'pointer' }}
+                >
+                  {showKataQR ? 'Ẩn QR' : '🔍 Xem QR & Link'}
+                </button>
+              </>
+            )}
+            <button
+              onClick={kataReceive.running ? stopKataReceiveServer : startKataReceiveServer}
+              style={{
+                background: kataReceive.running ? '#dc2626' : '#2563eb',
+                border: 'none', borderRadius: '6px', color: '#fff',
+                fontSize: '12px', fontWeight: 700, padding: '6px 14px', cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {kataReceive.running ? '⏹ Tắt' : '▶ Bật tiếp nhận bài quyền'}
+            </button>
+          </div>
+        )}
+
+        {/* QR Modal */}
+        {showKataQR && kataReceive.running && (
+          <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)',
+            zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }} onClick={() => setShowKataQR(false)}>
+            <div style={{
+              background: '#1e293b', border: '1px solid #334155', borderRadius: '16px',
+              padding: '24px', maxWidth: '380px', width: '90vw', textAlign: 'center',
+            }} onClick={e => e.stopPropagation()}>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '6px', color: '#f1f5f9' }}>
+                📱 Đăng ký bài quyền từ điện thoại
+              </h3>
+              <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>
+                Mở camera quét QR hoặc nhập link trên cùng mạng Wi-Fi
+              </p>
+              {/* QR via Google Charts API */}
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(kataReceive.url)}`}
+                alt="QR Code"
+                style={{ width: 200, height: 200, background: '#fff', borderRadius: '8px', padding: 4 }}
+                onError={e => { e.target.style.display='none'; }}
+              />
+              <div style={{ margin: '14px 0 8px', fontSize: '13px', color: '#64748b' }}>hoặc mở link:</div>
+              <div style={{
+                background: '#0f172a', borderRadius: '8px', padding: '10px 12px',
+                fontSize: '12px', wordBreak: 'break-all', color: '#60a5fa',
+                fontFamily: 'monospace', marginBottom: '10px',
+              }}>
+                {kataReceive.url}
+              </div>
+              <div style={{
+                display: 'flex', gap: '8px', justifyContent: 'center',
+                background: '#0f172a', borderRadius: '8px', padding: '10px',
+                marginBottom: '14px',
+              }}>
+                <span style={{ fontSize: '13px', color: '#94a3b8' }}>Mã PIN:</span>
+                <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '4px', color: '#fbbf24' }}>
+                  {kataReceive.pin}
+                </span>
+              </div>
+              <button
+                onClick={() => setShowKataQR(false)}
+                style={{ background: '#475569', border: 'none', borderRadius: '8px', color: '#fff', padding: '8px 24px', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        )}
         {error && <div className="error-message">{error}</div>}
         {notification && (
           <div className="notification-toast">{notification}</div>
@@ -1206,20 +1554,30 @@ function SecretaryPage() {
             if (e.target === e.currentTarget) dialog.onCancel();
           }}
         >
-          <div className="secretary-dialog">
+          <div className="secretary-dialog" style={{ overflow: "visible" }}>
             <div className="secretary-dialog-title">{dialog.title}</div>
             <div className="secretary-dialog-message">{dialog.message}</div>
             {dialog.type === "prompt" && (
-              <input
-                ref={dialogInputRef}
-                className="secretary-dialog-input"
-                type="text"
-                defaultValue={dialog.defaultValue || ""}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") dialog.onOk(e.target.value);
-                  if (e.key === "Escape") dialog.onCancel();
-                }}
-              />
+              dialog.options ? (
+                <AutocompleteInput
+                  defaultValue={dialog.defaultValue}
+                  options={dialog.options}
+                  onOk={dialog.onOk}
+                  onCancel={dialog.onCancel}
+                  inputRef={dialogInputRef}
+                />
+              ) : (
+                <input
+                  ref={dialogInputRef}
+                  className="secretary-dialog-input"
+                  type="text"
+                  defaultValue={dialog.defaultValue || ""}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") dialog.onOk(e.target.value);
+                    if (e.key === "Escape") dialog.onCancel();
+                  }}
+                />
+              )
             )}
             <div className="secretary-dialog-actions">
               <button
@@ -1234,7 +1592,11 @@ function SecretaryPage() {
                 }`}
                 onClick={() => {
                   if (dialog.type === "prompt") {
-                    dialog.onOk(dialogInputRef.current?.value ?? "");
+                    if (dialog.options) {
+                      dialog.onOk(dialogInputRef.current?.value ?? "");
+                    } else {
+                      dialog.onOk(dialogInputRef.current?.value ?? "");
+                    }
                   } else {
                     dialog.onOk();
                   }

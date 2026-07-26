@@ -861,17 +861,19 @@ body.vertical-layout .team-info-container {
 .timer-main {
   font-size: calc(8vw * var(--font-scale));
   font-weight: bold;
-  color: white;
 }
 
 .timer-decimal {
   font-size: calc(3.5vw * var(--font-scale));
   font-weight: bold;
-  color: #ffd700;
 }
 
-.timer-section.timer-warning .timer-main,
-.timer-section.timer-warning .timer-decimal {
+.timer-section.timer-white .timer-main,
+.timer-section.timer-white .timer-decimal { color: #ffffff; }
+.timer-section.timer-yellow .timer-main,
+.timer-section.timer-yellow .timer-decimal { color: #ffd700; }
+.timer-section.timer-red .timer-main,
+.timer-section.timer-red .timer-decimal {
   color: #ff0000;
   animation: pulse 0.5s infinite;
 }

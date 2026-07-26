@@ -693,6 +693,7 @@ function tournamentReducer(state, action) {
                       ))
                       .map((a) => ({
                         id: uuidv4(),
+                        cloudAthleteId: a.cloudAthleteId || a.id || null,
                         name: a.name,
                         gender: a.gender || null,
                         birthDate: a.birthDate || null,

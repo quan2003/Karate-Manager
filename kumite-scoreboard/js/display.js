@@ -23,6 +23,7 @@ let state = {
     minutes: 3,
     seconds: 0,
     deciseconds: 0,
+    hasStarted: false,
     isRunning: false,
   },
   errorNames: { C1: "C1", C2: "C2", C3: "C3", HC: "HC", H: "H" },
@@ -60,6 +61,7 @@ function loadState() {
   if (saved) {
     const parsedState = JSON.parse(saved);
     state = { ...state, ...parsedState };
+    state.timer = { ...state.timer, ...parsedState.timer, hasStarted: parsedState.timer?.hasStarted === true };
   }
   updateDisplay();
 }
@@ -448,13 +450,11 @@ function updateTimerDisplay() {
     finalBeepPlayed = false;
   }
 
-  // Add warning class when time is low (15 seconds)
+  // Apply one color to the complete timer, including the decimal digit.
   const timerSection = document.querySelector(".timer-section");
-  if (timer.minutes === 0 && timer.seconds <= 15) {
-    timerSection.classList.add("timer-warning");
-  } else {
-    timerSection.classList.remove("timer-warning");
-  }
+  const remainingDeciseconds = totalSeconds * 10 + timer.deciseconds;
+  timerSection.classList.remove("timer-white", "timer-yellow", "timer-red");
+  timerSection.classList.add(remainingDeciseconds <= 0 || !timer.hasStarted ? "timer-white" : remainingDeciseconds <= 150 ? "timer-red" : "timer-yellow");
 }
 
 // Update team mode display
@@ -587,6 +587,7 @@ setInterval(function () {
     lastStateString = saved;
     const newState = JSON.parse(saved);
     state = { ...state, ...newState };
+    state.timer = { ...state.timer, ...newState.timer, hasStarted: newState.timer?.hasStarted === true };
     updateDisplay();
 
     // Check for fullscreen display trigger
