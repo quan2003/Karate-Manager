@@ -45,6 +45,7 @@ const kataReceiveState = {
   matches: [],         // danh sách trận hiện tại
   lockedMatchIds: new Set(), // matchId đang thi đấu -> khoá
   receivedRequestIds: new Set(), // chống gửi trùng
+  revision: 0,         // tăng mỗi khi dữ liệu thay đổi để thiết bị ngoài nhận biết
 };
 
 function readBodyJson(req) {
@@ -96,7 +97,7 @@ function startKataReceiveServer(matId, pin) {
         isLocked: kataReceiveState.lockedMatchIds.has(m.id),
       }));
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ success: true, matId: kataReceiveState.matId, matches: matchesWithLock }));
+      res.end(JSON.stringify({ success: true, matId: kataReceiveState.matId, revision: kataReceiveState.revision, matches: matchesWithLock }));
       return;
     }
 
@@ -134,6 +135,7 @@ function startKataReceiveServer(matId, pin) {
         if (m) {
           if (data.slot === 1) m.kata1 = data.kataName;
           else m.kata2 = data.kataName;
+          kataReceiveState.revision += 1;
         }
         // Forward sang renderer
         if (mainWindow && mainWindow.webContents) {
@@ -895,17 +897,21 @@ ipcMain.handle('kata-receive:updateMatches', (event, matches) => {
     kata1: m.kata1 || '',
     kata2: m.kata2 || '',
   }));
-  return { success: true };
+  kataReceiveState.revision += 1;
+  return { success: true, revision: kataReceiveState.revision };
 });
 
 ipcMain.handle('kata-receive:lockMatch', (event, matchId) => {
-  kataReceiveState.lockedMatchIds.add(matchId);
-  return { success: true };
+  kataReceiveState.lockedMatchIds.clear();
+  if (matchId) kataReceiveState.lockedMatchIds.add(matchId);
+  kataReceiveState.revision += 1;
+  return { success: true, revision: kataReceiveState.revision };
 });
 
 ipcMain.handle('kata-receive:unlockMatch', (event, matchId) => {
   kataReceiveState.lockedMatchIds.delete(matchId);
-  return { success: true };
+  kataReceiveState.revision += 1;
+  return { success: true, revision: kataReceiveState.revision };
 });
 
 // =============================================

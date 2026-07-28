@@ -23,6 +23,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",
     "better-sqlite3": "^9.6.0",
+    "docx": "^9.7.1",
     "dom-to-image-more": "^3.7.2",
     "electron-updater": "^6.8.3",
     "html2canvas": "^1.4.1",

@@ -169,6 +169,7 @@ export default function TournamentPage() {
   const [bulkDrawSelection, setBulkDrawSelection] = useState({});
   const [bulkDrawResults, setBulkDrawResults] = useState(null);
   const [bulkDrawing, setBulkDrawing] = useState(false);
+  const [bulkDrawCountdown, setBulkDrawCountdown] = useState(30);
   const fileInputRef = useRef(null);
   const [lanStatus, setLanStatus] = useState({ running: false, ip: '', port: 3000 });
   const [liveServerStatus, setLiveServerStatus] = useState({ state: "checking", mats: [], message: "" });
@@ -1088,6 +1089,7 @@ export default function TournamentPage() {
     });
     setBulkDrawSelection(selection);
     setBulkDrawResults(null);
+    setBulkDrawCountdown(30);
     setShowBulkDrawModal(true);
   };
 
@@ -1100,6 +1102,11 @@ export default function TournamentPage() {
 
     setBulkDrawing(true);
     const loadingStartedAt = Date.now();
+    setBulkDrawCountdown(30);
+    const countdownTimer = window.setInterval(() => {
+      const elapsedSeconds = Math.floor((Date.now() - loadingStartedAt) / 1000);
+      setBulkDrawCountdown(Math.max(0, 30 - elapsedSeconds));
+    }, 250);
 
     // Give React a chance to paint the loading state before generating brackets.
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -1153,12 +1160,14 @@ export default function TournamentPage() {
       }
     }
 
-    // Keep the loading feedback visible long enough to be perceived on fast draws.
-    const remainingLoadingTime = Math.max(0, 450 - (Date.now() - loadingStartedAt));
+    // Giữ màn hình bốc thăm trong đủ 30 giây theo yêu cầu.
+    const remainingLoadingTime = Math.max(0, 30000 - (Date.now() - loadingStartedAt));
     if (remainingLoadingTime > 0) {
       await new Promise(resolve => setTimeout(resolve, remainingLoadingTime));
     }
 
+    window.clearInterval(countdownTimer);
+    setBulkDrawCountdown(0);
     setBulkDrawing(false);
     setBulkDrawResults(results);
     toast.success(`Đã bốc thăm ${results.success.length}/${cats.length} nội dung`);
@@ -2679,7 +2688,33 @@ export default function TournamentPage() {
           title="🎲 Bốc thăm hàng loạt"
         >
           <div style={{maxHeight: '60vh', overflowY: 'auto'}}>
-            {!bulkDrawResults ? (
+            {bulkDrawing ? (
+              <div style={{minHeight:'360px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'32px 24px',textAlign:'center'}}>
+                <div style={{fontSize:'64px',marginBottom:'8px'}}>🎲</div>
+                <h3 style={{margin:'0 0 8px',fontSize:'22px',color:'#1e293b'}}>Đang bốc thăm tất cả...</h3>
+                <p style={{margin:'0 0 18px',fontSize:'13px',color:'#64748b'}}>
+                  Hệ thống đang xáo trộn và tạo sơ đồ thi đấu
+                </p>
+                <div style={{fontSize:'76px',lineHeight:1,fontWeight:900,color:'#4f46e5',fontVariantNumeric:'tabular-nums'}}>
+                  {bulkDrawCountdown}
+                </div>
+                <div style={{fontSize:'13px',fontWeight:600,color:'#64748b',marginTop:'6px'}}>giây</div>
+                <div style={{width:'min(360px, 90%)',height:'10px',background:'#e2e8f0',borderRadius:'999px',overflow:'hidden',marginTop:'24px'}}>
+                  <div
+                    style={{
+                      width:`${((30 - bulkDrawCountdown) / 30) * 100}%`,
+                      height:'100%',
+                      background:'linear-gradient(90deg,#6366f1,#8b5cf6)',
+                      borderRadius:'999px',
+                      transition:'width 0.25s linear'
+                    }}
+                  />
+                </div>
+                <p style={{margin:'14px 0 0',fontSize:'12px',color:'#94a3b8'}}>
+                  Vui lòng chờ, không đóng cửa sổ trong lúc bốc thăm.
+                </p>
+              </div>
+            ) : !bulkDrawResults ? (
               <>
                 <p style={{color:'#64748b',fontSize:'13px',marginBottom:'12px'}}>
                   Chọn các nội dung muốn bốc thăm. Chỉ các nội dung có ≥ 3 VĐV mới có thể bốc thăm.

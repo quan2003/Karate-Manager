@@ -29,6 +29,7 @@ import {
   exportScheduleToPDF,
   exportScheduleToExcel,
 } from "../services/scheduleExportService";
+import { exportScheduleHorizontalToPDF } from "../services/scheduleHorizontalExportService";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import "./SchedulePage.css";
@@ -852,6 +853,30 @@ export default function SchedulePage() {
             </button>
           </div>
           <div className="export-actions" style={{display:'flex', gap:'8px'}}>
+            <button
+              className="btn btn-sm"
+              style={{background:'#eff6ff',color:'#1d4ed8',border:'1px solid #bfdbfe'}}
+              onClick={async () => {
+                try {
+                  toast.info("Đang tạo lịch thi đấu dạng ngang...");
+                  await exportScheduleHorizontalToPDF(
+                    schedule,
+                    categories,
+                    customEvents,
+                    matCount,
+                    tournament,
+                    tournamentDays
+                  );
+                  toast.success("Đã xuất PDF lịch thi đấu dạng ngang!");
+                } catch (error) {
+                  console.error("Horizontal schedule export error:", error);
+                  toast.error("Không thể xuất lịch thi đấu dạng ngang.");
+                }
+              }}
+              title="Xuất tất cả ngày, các thảm nằm song song như bảng chương trình thi đấu"
+            >
+              ↔️ PDF Ngang
+            </button>
             <div className="dropdown-container" style={{position:'relative', display:'inline-block'}}>
               <button 
                 className={`btn btn-sm ${isStepActive ? "hint-pulse" : ""}`} 

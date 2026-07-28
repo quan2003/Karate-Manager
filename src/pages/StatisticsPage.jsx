@@ -10,9 +10,13 @@ import { useToast } from "../components/common/Toast";
 import * as XLSX from "xlsx";
 import { updateMatchResult as applyMatchResult } from "../utils/drawEngine";
 import { getTeamSizeForCategory, getTeamsFromAthletes } from "../utils/teamDraw";
+import { getEstimatedMatchCount } from "../services/scheduleService";
+import { exportAchievementConfirmationDocx } from "../services/achievementConfirmationDocxService";
 import { getAppBaseUrl, getTournamentLogos, getTournamentSignatures } from "../services/pdfService";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
+import excelLogo from "../assets/excel-logo.svg";
+import wordLogo from "../assets/word-logo.svg";
 import "./StatisticsPage.css";
 
 export default function StatisticsPage() {
@@ -703,6 +707,27 @@ export default function StatisticsPage() {
     toast.success("Đã xuất kết quả Excel!");
   };
 
+  const handleExportAchievementConfirmationWord = async () => {
+    try {
+      const { rowCount } = await exportAchievementConfirmationDocx(tournament);
+      toast.success(`Đã xuất giấy xác nhận thành tích cho ${rowCount} VĐV!`);
+    } catch (error) {
+      toast.error(error?.message || "Không thể xuất giấy xác nhận thành tích.");
+    }
+  };
+
+  const handleExportClubAchievementConfirmationWord = async (clubName) => {
+    try {
+      const { rowCount } = await exportAchievementConfirmationDocx(tournament, {
+        clubNames: [clubName],
+      });
+      toast.success(
+        `Đã xuất giấy xác nhận thành tích của ${clubName} cho ${rowCount} VĐV!`
+      );
+    } catch (error) {
+      toast.error(error?.message || "Không thể xuất giấy xác nhận thành tích.");
+    }
+  };
   // ===== EXPORT SINGLE CATEGORY RESULT =====
   // Resolve the actual team first. A club may have multiple teams, whose result
   // names are "<club> - Đội 1/2", while the raw athletes only store <club>.
@@ -2532,6 +2557,159 @@ export default function StatisticsPage() {
 
   };
 
+  const handleExportTournamentSummaryReport = () => {
+    const escapeReportHtml = (value) =>
+      String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    const formatPercent = (value, total) =>
+      total > 0 ? `${((value / total) * 100).toFixed(1)}%` : "0.0%";
+
+    const allEntries = getAllAthletes();
+    const uniqueAthletes = new Map();
+    allEntries.forEach((athlete) => {
+      const key = getAthleteIdentityKey(athlete);
+      if (!uniqueAthletes.has(key)) uniqueAthletes.set(key, athlete);
+    });
+    const uniqueList = Array.from(uniqueAthletes.values());
+    const maleCount = uniqueList.filter((athlete) => athlete.gender === "male").length;
+    const femaleCount = uniqueList.filter((athlete) => athlete.gender === "female").length;
+    const uniqueCount = uniqueList.length;
+
+    let totalMatches = 0;
+    let completedMatches = 0;
+    let completedCategories = 0;
+    tournament.categories.forEach((category) => {
+      const bracketMatches = Array.isArray(category.bracket?.matches)
+        ? category.bracket.matches.filter((match) => !match.isBye)
+        : [];
+      const categoryMatchCount = bracketMatches.length > 0
+        ? bracketMatches.length
+        : getEstimatedMatchCount(category);
+      const result = getCategoryResults(category.id);
+      const categoryCompleted = Boolean(result?.first?.trim());
+      totalMatches += categoryMatchCount;
+      completedMatches += categoryCompleted
+        ? categoryMatchCount
+        : bracketMatches.filter((match) => Boolean(match.winner)).length;
+      if (categoryCompleted) completedCategories += 1;
+    });
+    completedMatches = Math.min(completedMatches, totalMatches);
+
+    const clubMap = new Map(
+      getClubs().map((name) => [name, { name, gold: 0, silver: 0, bronze: 0, total: 0 }])
+    );
+    const addMedal = (clubName, medal) => {
+      const name = String(clubName || "").trim();
+      if (!name) return;
+      if (!clubMap.has(name)) {
+        clubMap.set(name, { name, gold: 0, silver: 0, bronze: 0, total: 0 });
+      }
+      const club = clubMap.get(name);
+      club[medal] += 1;
+      club.total += 1;
+    };
+    tournament.categories.forEach((category) => {
+      const result = getCategoryResults(category.id);
+      if (!result) return;
+      addMedal(result.club1, "gold");
+      addMedal(result.club2, "silver");
+      addMedal(result.club3a, "bronze");
+      addMedal(result.club3b, "bronze");
+    });
+    const ranking = Array.from(clubMap.values()).sort((a, b) =>
+      b.gold - a.gold ||
+      b.silver - a.silver ||
+      b.bronze - a.bronze ||
+      a.name.localeCompare(b.name, "vi")
+    );
+
+    const totalCategories = tournament.categories.length;
+    const pendingCategories = Math.max(0, totalCategories - completedCategories);
+    const pendingMatches = Math.max(0, totalMatches - completedMatches);
+    const rankingRows = ranking.map((club, index) => `
+      <tr class="rank-${index + 1}">
+        <td>${index + 1}</td>
+        <td class="club-name">${escapeReportHtml(club.name)}</td>
+        <td>${club.gold}</td>
+        <td>${club.silver}</td>
+        <td>${club.bronze}</td>
+        <td class="medal-total">${club.total}</td>
+        <td>${index + 1}</td>
+      </tr>`).join("");
+
+    const reportHtml = `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8">
+      <title>Báo cáo thống kê tổng hợp - ${escapeReportHtml(tournament.name)}</title>
+      <style>
+        @page { size: A4 portrait; margin: 11mm 10mm 12mm; }
+        * { box-sizing: border-box; }
+        body { margin: 0; color: #17384a; font-family: Arial, "Segoe UI", sans-serif; background: #fff; }
+        .report { width: 100%; }
+        .title { text-align: center; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; margin: 7px 0 18px; }
+        .subtitle { text-align: center; color: #374151; font-size: 14px; font-weight: 800; text-transform: uppercase; margin-bottom: 24px; }
+        .summary { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 21px; }
+        .summary td { border: 1px solid #cbd5e1; text-align: center; padding: 7px 5px; }
+        .summary .label { color: #4b5563; font-size: 9px; text-transform: uppercase; height: 28px; }
+        .summary .value { color: #173f59; font-size: 21px; font-weight: 800; height: 38px; }
+        .two-column { display: grid; grid-template-columns: 1fr 1.12fr; gap: 28px; align-items: start; margin-bottom: 20px; }
+        .section-title { font-size: 12px; font-weight: 800; text-transform: uppercase; margin: 0 0 5px 2px; }
+        table.data { width: 100%; border-collapse: collapse; table-layout: fixed; color: #252525; font-size: 10px; }
+        table.data th { background: #16577c; color: #fff; border: 1px solid #b6c2ca; padding: 6px 4px; font-weight: 700; }
+        table.data td { border: 1px solid #c7cdd1; padding: 5px 4px; text-align: center; }
+        table.data td:first-child { text-align: left; }
+        table.data tr.total-row td { font-weight: 800; border-bottom: 2px solid #87949c; }
+        .ranking-title { margin-top: 8px; }
+        .ranking { font-size: 9px !important; }
+        .ranking thead { display: table-header-group; }
+        .ranking tr { break-inside: avoid; page-break-inside: avoid; }
+        .ranking th, .ranking td { height: 23px; padding: 4px !important; }
+        .ranking td { text-align: center !important; }
+        .ranking .club-name { text-align: left !important; font-weight: 500; }
+        .ranking .medal-total { font-weight: 800; color: #174f70; }
+        .ranking .rank-1 td { background: #fff6cf; font-weight: 800; }
+        .ranking .rank-2 td { background: #edf4f7; }
+        .ranking .rank-3 td { background: #fff0df; font-weight: 700; }
+        .ranking .rank-4 td { background: #e3f5fc; color: #126586; font-weight: 700; }
+        .generated { margin-top: 9px; text-align: right; color: #718096; font-size: 8px; }
+        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+      </style></head><body><main class="report">
+        <h1 class="title">${escapeReportHtml(tournament.name)}</h1>
+        <div class="subtitle">Báo cáo thống kê tổng hợp giải đấu</div>
+        <table class="summary"><tr>
+          <td><div class="label">Tổng số đoàn</div><div class="value">${clubMap.size}</div></td>
+          <td><div class="label">Tổng VĐV</div><div class="value">${uniqueCount}</div></td>
+          <td><div class="label">Tổng lượt đăng ký</div><div class="value">${allEntries.length}</div></td>
+          <td><div class="label">Tổng số nội dung</div><div class="value">${totalCategories}</div></td>
+          <td><div class="label">Tổng số trận đấu</div><div class="value">${totalMatches}</div></td>
+        </tr></table>
+        <div class="two-column">
+          <section><h2 class="section-title">Cơ cấu giới tính</h2>
+            <table class="data"><thead><tr><th>Giới tính</th><th>Số lượng</th><th>Tỷ lệ (%)</th></tr></thead><tbody>
+              <tr><td>Nam</td><td>${maleCount}</td><td>${formatPercent(maleCount, uniqueCount)}</td></tr>
+              <tr><td>Nữ</td><td>${femaleCount}</td><td>${formatPercent(femaleCount, uniqueCount)}</td></tr>
+              <tr class="total-row"><td>Tổng cộng</td><td>${uniqueCount}</td><td>100.0%</td></tr>
+            </tbody></table>
+          </section>
+          <section><h2 class="section-title">Nội dung & tiến độ thi đấu</h2>
+            <table class="data"><thead><tr><th>Trạng thái</th><th>Số nội dung</th><th>Số trận</th><th>Tỷ lệ (%)</th></tr></thead><tbody>
+              <tr><td>Đã thi đấu</td><td>${completedCategories}</td><td>${completedMatches}</td><td>${formatPercent(completedMatches, totalMatches)}</td></tr>
+              <tr><td>Chưa thi đấu</td><td>${pendingCategories}</td><td>${pendingMatches}</td><td>${formatPercent(pendingMatches, totalMatches)}</td></tr>
+              <tr class="total-row"><td>Tổng cộng</td><td>${totalCategories}</td><td>${totalMatches}</td><td>${totalMatches > 0 ? "100.0%" : "0.0%"}</td></tr>
+            </tbody></table>
+          </section>
+        </div>
+        <h2 class="section-title ranking-title">Bảng xếp hạng toàn đoàn</h2>
+        <table class="data ranking"><thead><tr><th style="width:7%">STT</th><th style="width:31%">Đoàn / Đơn vị</th><th>Vàng</th><th>Bạc</th><th>Đồng</th><th>Tổng HC</th><th>Hạng</th></tr></thead><tbody>
+          ${rankingRows || '<tr><td colspan="7">Chưa có dữ liệu đoàn</td></tr>'}
+        </tbody></table>
+        <div class="generated">Ngày xuất báo cáo: ${new Date().toLocaleDateString("vi-VN")}</div>
+      </main></body></html>`;
+
+    printIframeWithLoading(reportHtml, "Báo cáo thống kê tổng hợp");
+  };
   const medals = getEstimatedMedals();
   const clubs = getClubs();
   const medalTally = getMedalTally();
@@ -3474,6 +3652,14 @@ export default function StatisticsPage() {
         {/* ===== TAB: OVERVIEW ===== */}
         {activeTab === "overview" && (
           <div className="stats-content">
+            <div className="results-actions" style={{ marginBottom: "16px", justifyContent: "flex-end" }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleExportTournamentSummaryReport}
+              >
+                📊 Báo cáo tổng hợp (PDF)
+              </button>
+            </div>
             <div className="overview-grid">
               <div className="overview-card">
                 <div className="overview-card-icon">📋</div>
@@ -4844,6 +5030,13 @@ export default function StatisticsPage() {
               </button>
               <button
                 className="btn btn-secondary"
+                style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}
+                onClick={handleExportAchievementConfirmationWord}
+              >
+                📝 Xuất Word - Giấy xác nhận thành tích
+              </button>
+              <button
+                className="btn btn-secondary"
                 style={{
                   background: "#fef3c7",
                   color: "#92400e",
@@ -5647,20 +5840,36 @@ export default function StatisticsPage() {
                         <td>
                           <div style={{ display: "flex", gap: "4px" }}>
                             <button
+                              type="button"
                               className="btn btn-sm"
                               style={{ padding: "4px 8px", fontSize: "11px" }}
                               onClick={() => handleExportResultsByClubExcel([club.name])}
                               title="Xuất kết quả CLB này (Excel)"
+                              aria-label={`Xuất Excel kết quả của ${club.name}`}
                             >
-                              📤
+                              <img
+                                src={excelLogo}
+                                alt=""
+                                aria-hidden="true"
+                                style={{ width: "16px", height: "16px", display: "block" }}
+                              />
                             </button>
                             <button
+                              type="button"
                               className="btn btn-sm"
                               style={{ padding: "4px 8px", fontSize: "11px" }}
-                              onClick={() => handleExportResultsByClubPDF([club.name])}
-                              title="Xuất kết quả CLB này (PDF)"
+                              onClick={() =>
+                                handleExportClubAchievementConfirmationWord(club.name)
+                              }
+                              title="Xuất Word - Giấy xác nhận thành tích của đơn vị"
+                              aria-label={`Xuất Word giấy xác nhận thành tích của ${club.name}`}
                             >
-                              📄
+                              <img
+                                src={wordLogo}
+                                alt=""
+                                aria-hidden="true"
+                                style={{ width: "16px", height: "16px", display: "block" }}
+                              />
                             </button>
                           </div>
                         </td>

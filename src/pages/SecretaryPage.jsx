@@ -258,7 +258,26 @@ function SecretaryPage() {
 
     let allKataMatches = [];
     for (const c of kataCategories) {
-      const rawMatches = (c.bracket?.matches || c.matches || []).filter((m) => !m.isBye);
+      // Apply local results before publishing, including automatic advancement.
+      let sourceBracket = c.bracket;
+      if (sourceBracket?.matches) {
+        sourceBracket = JSON.parse(JSON.stringify(sourceBracket));
+        [...matchResults]
+          .sort((a, b) => {
+            const matchA = sourceBracket.matches.find((m) => m.id === a.matchId);
+            const matchB = sourceBracket.matches.find((m) => m.id === b.matchId);
+            return (matchA?.round || 0) - (matchB?.round || 0);
+          })
+          .forEach((result) => {
+            if (!sourceBracket.matches.some((m) => m.id === result.matchId)) return;
+            if (result.disqualifiedSlot) {
+              disqualifyAthlete(sourceBracket, result.matchId, result.disqualifiedSlot, result.disqualifiedReason || "Loại");
+            } else if (result.winnerId) {
+              updateBracketWithResult(sourceBracket, result.matchId, result.score1, result.score2, result.winnerId);
+            }
+          });
+      }
+      const rawMatches = (sourceBracket?.matches || c.matches || []).filter((m) => !m.isBye);
       const matchesWithKata = rawMatches.map((m) => {
         const hasWinner = matchResults.some(r => r.matchId === m.id && r.winnerId) || !!m.winner;
         return {
@@ -277,7 +296,7 @@ function SecretaryPage() {
       allKataMatches = allKataMatches.concat(matchesWithKata);
     }
 
-    window.electronAPI.kataReceive.updateMatches(allKataMatches).catch(() => {});
+    return window.electronAPI.kataReceive.updateMatches(allKataMatches);
   }, [isElectron, kataReceive.running, matchData, activeSelectedMat, kataRegistrations, matchResults]);
 
   useEffect(() => {
@@ -286,8 +305,8 @@ function SecretaryPage() {
 
   // Khóa trận đang thi đấu
   useEffect(() => {
-    if (!isElectron || !kataReceive.running || !activeMatchId) return;
-    window.electronAPI.kataReceive.lockMatch(activeMatchId).catch(() => {});
+    if (!isElectron || !kataReceive.running) return;
+    window.electronAPI.kataReceive.lockMatch(activeMatchId || null).catch(() => {});
   }, [isElectron, kataReceive.running, activeMatchId]);
 
   const filteredCategories = useMemo(() => {
@@ -929,9 +948,13 @@ function SecretaryPage() {
             {kataReceive.running && (
               <>
                 <button
-                  onClick={() => {
-                    forceSyncKata();
-                    setNotification('🔄 Đã làm mới danh sách bài quyền trên thiết bị');
+                  onClick={async () => {
+                    try {
+                      await forceSyncKata();
+                      setNotification('🔄 Đã làm mới dữ liệu bài quyền ở cả hai bên');
+                    } catch {
+                      setError('Không thể làm mới dữ liệu bài quyền');
+                    }
                     setTimeout(() => setNotification(''), 3000);
                   }}
                   style={{ background: '#0284c7', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: 700, padding: '5px 10px', cursor: 'pointer' }}

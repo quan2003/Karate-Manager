@@ -301,6 +301,14 @@ function compareCategoriesByPriority(
   // sau đó mới tới Kumite.
   const canonicalA = parseKarateCategory(a);
   const canonicalB = parseKarateCategory(b);
+  const disciplineDifference =
+    Number(canonicalA.discipline === 'kumite') -
+    Number(canonicalB.discipline === 'kumite');
+  if (disciplineDifference !== 0) {
+    return priorityMode === 'kumite_first'
+      ? -disciplineDifference
+      : disciplineDifference;
+  }
   let canonicalAgeDifference = priorityMode === 'age_old_first'
     ? canonicalB.ageMin - canonicalA.ageMin
     : canonicalA.ageMin - canonicalB.ageMin;
@@ -532,33 +540,27 @@ export function smartAutoAssign(
       const lastGroup = lastGroupByDay.get(day);
       const groupStartKey = `${day}::${schedulingGroup}`;
       if (!groupStarts.has(groupStartKey)) {
-        const minimumStart = !isKarateStandard && !isAgePriority && lastGroup && lastGroup !== schedulingGroup
+        // Nhóm mới vẫn được tận dụng khoảng trống từ đầu buổi trên thảm rảnh.
+        groupStarts.set(groupStartKey, 0);
+      }
+      const categoryPhase = parseKarateCategory(category);
+      for (let mat = 1; mat <= matCount; mat += 1) {
+        if (fixedKataLane && fixedKataLane.mat !== mat) continue;
+        // Kumite chỉ cần chờ Kata cùng lứa tuổi trên chính thảm đang xét.
+        // Không khóa các thảm khác đang trống, để tất cả thảm có thể bắt đầu
+        // đồng thời từ đầu buổi.
+        const kataPhaseEnd = categoryPhase.discipline === 'kumite'
           ? Math.max(
             0,
             ...scheduleLog[day]
-              .filter((item) => !item.isEvent)
+              .filter((item) => {
+                if (!item.category || item.mat !== mat) return false;
+                const itemPhase = parseKarateCategory(item.category);
+                return itemPhase.discipline === 'kata';
+              })
               .map((item) => item.endMins)
           )
           : 0;
-        groupStarts.set(groupStartKey, minimumStart);
-      }
-      const categoryPhase = parseKarateCategory(category);
-      const kataPhaseEnd = categoryPhase.discipline === 'kumite'
-        ? Math.max(
-          0,
-          ...scheduleLog[day]
-            .filter((item) => {
-              if (!item.category) return false;
-              const itemPhase = parseKarateCategory(item.category);
-              return itemPhase.discipline === 'kata' &&
-                itemPhase.ageMin === categoryPhase.ageMin &&
-                itemPhase.ageMax === categoryPhase.ageMax;
-            })
-            .map((item) => item.endMins)
-        )
-        : 0;
-      for (let mat = 1; mat <= matCount; mat += 1) {
-        if (fixedKataLane && fixedKataLane.mat !== mat) continue;
         const lane = tournamentDays.indexOf(day) * matCount + (mat - 1);
         const earliestSlot = findEarliestFreeSlot(
           day,

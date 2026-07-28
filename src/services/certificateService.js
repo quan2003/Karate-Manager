@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { getAppBaseUrl } from "./pdfService";
+import { getTeamsFromAthletes } from "../utils/teamDraw";
 
 /**
  * Certificate Service
@@ -129,13 +130,32 @@ function isTeamCategory(cat) {
  * For team brackets, winner/loser are stored as team objects (name = club).
  * We look up all individual athletes from that club in cat.athletes.
  */
-function getMembersOfTeam(cat, teamNameOrClub) {
+function getMembersOfTeam(cat, teamNameOrClub, tournament) {
   if (!teamNameOrClub || !teamNameOrClub.trim()) return [];
-  const key = teamNameOrClub.trim().toLowerCase();
+  const normalize = (value) =>
+    String(value || "").trim().toLocaleLowerCase("vi");
+  const key = normalize(teamNameOrClub);
+  const bracketTeams = [];
+  (cat.bracket?.matches || []).forEach((match) => {
+    [match.athlete1, match.athlete2, match.winner].forEach((participant) => {
+      if (participant?.isTeam && participant.members?.length) {
+        bracketTeams.push(participant);
+      }
+    });
+  });
+  const generatedTeams = getTeamsFromAthletes(
+    cat.athletes || [],
+    cat,
+    tournament
+  );
+  const exactTeam = [...bracketTeams, ...generatedTeams].find(
+    (team) => normalize(team.name) === key || normalize(team.id) === key
+  );
+  if (exactTeam?.members?.length) return exactTeam.members;
+
   return (cat.athletes || []).filter(
-    (a) =>
-      (a.club || "").trim().toLowerCase() === key ||
-      (a.name || "").trim().toLowerCase() === key
+    (athlete) =>
+      normalize(athlete.club) === key || normalize(athlete.name) === key
   );
 }
 
@@ -172,13 +192,16 @@ export function getAwardedAthletes(tournament) {
         // Expand to individual members of the club
         // The "name" in result for team brackets is stored as the club name
         // Try matching by club field first, then fallback to name
-        const members = getMembersOfTeam(cat, nameOrTeam) ||
-                        getMembersOfTeam(cat, club);
+        const membersByTeam = getMembersOfTeam(cat, nameOrTeam, tournament);
+        const members = membersByTeam.length > 0
+          ? membersByTeam
+          : getMembersOfTeam(cat, club, tournament);
 
         if (members.length > 0) {
           members.forEach((member) => {
             records.push({
               id: `${cat.id}_${achievement}_${member.id || member.name}`,
+              athleteId: member.id || null,
               athleteName: (member.name || "").trim(),
               clubName: (member.club || nameOrTeam).trim(),
               categoryName,
@@ -194,6 +217,7 @@ export function getAwardedAthletes(tournament) {
           // Fallback: no members found, push the team name as one record
           records.push({
             id: `${cat.id}_${achievement}_${nameOrTeam}`,
+            athleteId: null,
             athleteName: nameOrTeam.trim(),
             clubName: (club || nameOrTeam).trim(),
             categoryName,
@@ -206,9 +230,17 @@ export function getAwardedAthletes(tournament) {
           });
         }
       } else {
+        const normalize = (value) =>
+          String(value || "").replace(/\s+/g, " ").trim().toLocaleLowerCase("vi");
+        const matchedAthlete = (cat.athletes || []).find(
+          (athlete) =>
+            normalize(athlete.name) === normalize(nameOrTeam) &&
+            (!club || normalize(athlete.club) === normalize(club))
+        );
         // Individual category: one record per person
         records.push({
           id: `${cat.id}_${achievement}_${nameOrTeam}`,
+          athleteId: matchedAthlete?.id || null,
           athleteName: nameOrTeam.trim(),
           clubName: (club || "").trim(),
           categoryName,
