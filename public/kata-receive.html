@@ -409,12 +409,38 @@ function pickKata(val) {
   renderKataGrid(document.getElementById('kataSearch').value);
 }
 
+function validateKataByAge(match, slot, kataName) {
+  const age = String(match.ageGroup || '').replace(/[–—]/g, '-');
+  const nums = (age.match(/\d+/g) || []).map(Number);
+  const min = nums[0], max = nums[1] == null ? min : nums[1];
+  let group = '', limit = 0;
+  if (min === 8 && max === 9) { group = '8–9'; limit = 2; }
+  else if (min === 10 && max === 11) { group = '10–11'; limit = 3; }
+  else if (min === 12 && max === 14) { group = '12–14'; limit = 4; }
+  else if (min >= 15) { group = '15+'; limit = 5; }
+  if (!limit) return 'Không nhận diện được lứa tuổi; hãy báo thư ký kiểm tra.';
+
+  const norm = value => String(value || '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
+  const kata = norm(kataName);
+  const history = (slot === 1 ? (match.previousKatas1 || []) : (match.previousKatas2 || [])).map(norm).filter(Boolean);
+  if (history[history.length - 1] === kata) return 'Không được lặp lại bài vừa trình diễn ở vòng trước.';
+  if (group === '8–9' && match.round === 2 && history[0] === kata) return 'Lứa tuổi 8–9: vòng 2 phải dùng bài B, khác bài A.';
+  if (group === '8–9' && match.round >= 3 && history.length >= 2 && (match.round % 2 === 1 ? history[0] : history[1]) !== kata) return 'Lứa tuổi 8–9: phải luân phiên bài A và B, vòng lẻ dùng A, vòng chẵn dùng B.';
+  if (group === '10–11' && match.round <= 3 && history.includes(kata)) return 'Ba vòng đầu của lứa tuổi 10–11 phải dùng ba bài A, B, C khác nhau.';
+  const resetAtFinal = match.isFinal && (group === '12–14' || group === '15+');
+  if (!resetAtFinal && new Set([...history, kata]).size > limit) return `Lứa tuổi ${group} chỉ được đăng ký tối đa ${limit} bài.`;
+  if (!match.isFinal && (group === '12–14' || group === '15+') && history.includes(kata)) return 'Trước chung kết phải dùng bài chưa trình diễn.';
+  return '';
+}
+
 // ===== SUBMIT =====
 async function submitKata() {
   if (!selectedMatch || submitting) return;
   const kataName = selectedKataName;
   const registeredBy = document.getElementById('registrarInput').value.trim();
   if (!kataName) { showToast('Vui lòng chọn bài quyền', 'error'); return; }
+  const ruleWarning = validateKataByAge(selectedMatch, selectedSlot, kataName);
+  if (ruleWarning) { showToast('⚠️ ' + ruleWarning, 'error'); return; }
   localStorage.setItem('kata_registrar_name', registeredBy);
 
   const generateId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2);

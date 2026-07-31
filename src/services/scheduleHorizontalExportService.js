@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { generateDefaultMats } from "./scheduleService";
+import { addMinutesToTime, estimateCategoryDuration, generateDefaultMats } from "./scheduleService";
 
 const escapeHtml = (value) =>
   String(value ?? "")
@@ -23,6 +23,7 @@ function buildDaySection(schedule, categories, customEvents, mats, date, dayInde
     if (!category) return;
     matItems.get(assignment.mat).push({
       time: assignment.time || "",
+      endTime: assignment.endTime || addMinutesToTime(assignment.time, estimateCategoryDuration(category)),
       name: category.name || "",
     });
   });
@@ -73,8 +74,12 @@ function buildDaySection(schedule, categories, customEvents, mats, date, dayInde
           ...categoriesAtTime.map((item) => item.name),
           ...matEvents.map((event) => `${event.icon || ""} ${event.name}`),
         ];
+        const timeRanges = [
+          ...categoriesAtTime.map((item) => `${item.time} - ${item.endTime}`),
+          ...matEvents.map((event) => `${event.time || ""} - ${addMinutesToTime(event.time, Math.max(5, Number(event.duration) || 15))}`),
+        ];
         return `
-          <td class="time">${escapeHtml(names.length ? time : "")}</td>
+          <td class="time">${timeRanges.map(escapeHtml).join("<br>")}</td>
           <td class="content">${names.map(escapeHtml).join("<br>")}</td>`;
       })
       .join("");
@@ -161,7 +166,7 @@ function buildHorizontalScheduleHtml(
           font-size: 12px;
         }
         th, td { border: 1px solid #111; padding: 3px 5px; }
-        .time-head, .time { width: 48px; text-align: center; font-weight: 700; }
+        .time-head, .time { width: 82px; text-align: center; font-weight: 700; white-space: nowrap; }
         .mat-head { height: 34px; font-size: 17px; text-transform: uppercase; }
         .content { height: 23px; font-weight: 600; text-transform: uppercase; }
         .event-row td {

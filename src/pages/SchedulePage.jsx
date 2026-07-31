@@ -24,6 +24,7 @@ import {
   addMinutesToTime,
   estimateCategoryDuration,
   getCategoryAgeKey,
+  getCategoryScheduleGroupKey,
 } from "../services/scheduleService";
 import {
   exportScheduleToPDF,
@@ -184,13 +185,20 @@ export default function SchedulePage() {
   const availableAgeGroups = useMemo(() => {
     const groups = new Map();
     categories.forEach((category) => {
-      const key = getCategoryAgeKey(category);
+      const ageKey = getCategoryAgeKey(category);
+      const key = getCategoryScheduleGroupKey(category);
       if (!groups.has(key)) {
         const rawLabel = String(category.ageGroup || '').trim();
-        groups.set(key, key === '18' ? '18 tuổi trở lên (gồm Vô địch tuyệt đối)' : key === 'unknown' ? 'Không xác định lứa tuổi' : rawLabel || key + ' tuổi');
+        const discipline = key.startsWith('kumite:') ? 'Kumite' : 'Kata';
+        const ageLabel = ageKey === '18' ? '18 tuổi trở lên (gồm Vô địch tuyệt đối)' : ageKey === 'unknown' ? 'Không xác định lứa tuổi' : rawLabel || ageKey + ' tuổi';
+        groups.set(key, discipline + ' - ' + ageLabel);
       }
     });
-    return [...groups.entries()].map(([key, label]) => ({ key, label })).sort((a, b) => (Number(b.key) || -1) - (Number(a.key) || -1));
+    return [...groups.entries()].map(([key, label]) => ({ key, label })).sort((a, b) => {
+      const [disciplineA, ageA] = a.key.split(':');
+      const [disciplineB, ageB] = b.key.split(':');
+      return disciplineA.localeCompare(disciplineB) || (Number(ageB) || -1) - (Number(ageA) || -1);
+    });
   }, [categories]);
 
   const setupEstimations = useMemo(() => {
@@ -569,7 +577,14 @@ export default function SchedulePage() {
       priorityMode: cfg.priorityMode || "standard_gender_order",
       customPriorityOrder: cfg.customPriorityOrder || categories.map((category) => category.id),
       athleteRestMinutes: cfg.athleteRestMinutes ?? 15,
-      ageGroupsByDay: (cfg.dates || []).map((date) => cfg.ageGroupsByDay?.[date] || []),
+      ageGroupsByDay: (cfg.dates || []).map((date) => {
+        const savedGroups = cfg.ageGroupsByDay?.[date] || [];
+        return [...new Set(savedGroups.flatMap((savedKey) =>
+          savedKey.includes(':')
+            ? [savedKey]
+            : availableAgeGroups.filter((group) => group.key.endsWith(':' + savedKey)).map((group) => group.key)
+        ))];
+      }),
     });
     setShowSetupModal(true);
   };
@@ -1680,7 +1695,7 @@ export default function SchedulePage() {
             {setupForm.competitionDays > 1 &&
               (setupForm.priorityMode === 'age_old_first' || setupForm.priorityMode === 'age_young_first') && (
               <div style={{marginTop: '14px'}}>
-                <div className='input-label'>📅 Chọn lứa tuổi thi đấu theo từng ngày</div>
+                <div className='input-label'>📅 Chọn Kata/Kumite và lứa tuổi theo từng ngày</div>
                 <div style={{display: 'grid', gap: '8px', marginTop: '8px'}}>
                   {Array.from({length: setupForm.competitionDays}).map((_, dayIndex) => (
                     <div key={dayIndex} style={{padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc'}}>
@@ -1705,7 +1720,7 @@ export default function SchedulePage() {
                     </div>
                   ))}
                 </div>
-                <div style={{fontSize: '11px', color: '#64748b', marginTop: '5px'}}>Nhóm chưa chọn ngày sẽ tự đưa vào ngày cuối để không bỏ sót nội dung.</div>
+                <div style={{fontSize: '11px', color: '#64748b', marginTop: '5px'}}>Có thể chọn cùng một nhóm ở nhiều ngày để hệ thống phân bổ. Chọn Kata - 12-14 tuổi ở Ngày 1 để đưa nhóm này lên ngày đầu. Nhóm chưa chọn sẽ tự đưa vào ngày cuối.</div>
               </div>
             )}
 

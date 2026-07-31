@@ -92,7 +92,13 @@ function buildPageHtml({ tournament, management, matEntries, continuation }) {
       <div class="meta-row"><span class="meta-label">Thư ký ban trọng tài:</span><span class="meta-value">${escapeHtml(report.secretary || "")}</span></div>
     </div>
     <div class="mats">${matEntries.map(({ mat, randomIds }) => {
-      const refs = randomIds.slice(continuation * 26, continuation * 26 + 26).map((id) => refereeMap.get(id)).filter(Boolean);
+      const officialNames = new Set([report.chairman, report.deputyChairman, report.secretary]
+        .map((name) => String(name || "").trim().toLocaleLowerCase("vi"))
+        .filter(Boolean));
+      const refs = randomIds
+        .map((id) => refereeMap.get(id))
+        .filter((referee) => referee && !officialNames.has(String(referee.name || "").trim().toLocaleLowerCase("vi")))
+        .slice(continuation * 26, continuation * 26 + 26);
       return buildMatTable(mat, management.fixedByMat?.[String(mat)], refs, refereeMap, continuation);
     }).join("")}</div>
   </div>`;

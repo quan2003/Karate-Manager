@@ -541,6 +541,13 @@ function updatePreviewPenalties(competitor, penalties) {
 }
 
 // Timer functions
+function playManualKumiteBeep() {
+  const audio = new Audio("sounds/beep-2.wav");
+  audio.play().catch((error) => {
+    console.warn("Unable to play Kumite sound:", error);
+  });
+}
+
 function toggleTimer() {
   if (state.timer.isRunning) {
     stopTimer();

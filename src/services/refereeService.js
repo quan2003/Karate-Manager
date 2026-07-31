@@ -266,6 +266,118 @@ const displayRefereeRole = (value) => {
   return role === "ttc" || role.includes("chính") ? "TTC" : "TTP";
 };
 
+export function exportRefereeDeploymentExcel(tournament, management) {
+  const workbook = XLSX.utils.book_new();
+  const report = management.report || {};
+  const referees = management.referees || [];
+  const refereeMap = new Map(referees.map((item) => [item.id, item]));
+  const assignments = management.assignments || [];
+  const officialNames = new Set([report.chairman, report.deputyChairman, report.secretary].map(normalizeText).filter(Boolean));
+  const fixedIds = new Set(Object.values(management.fixedByMat || {}).flatMap((fixed) =>
+    [fixed.chiefId, fixed.deputy1Id, fixed.deputy2Id].filter(Boolean)
+  ));
+  const unassignedEligibleReferees = referees.filter((referee) =>
+    referee.active !== false && !fixedIds.has(referee.id) && !officialNames.has(normalizeText(referee.name))
+  );
+  const hasRandomAssignments = assignments.some((assignment) => (assignment.randomIds || []).length > 0);
+  if (unassignedEligibleReferees.length > 0 && !hasRandomAssignments) {
+    throw new Error("Chưa có danh sách phân công. Hãy bấm “Random lại danh sách” trước khi xuất Excel tổng.");
+  }
+  const matCount = Math.max(1, Number(management.matCount || assignments.length || 1));
+  const columnsPerMat = 6;
+  const totalColumns = matCount * columnsPerMat;
+  const rows = Array.from({ length: 9 }, () => Array(totalColumns).fill(""));
+  rows[0][0] = String(report.eventName || tournament.name || "").toUpperCase();
+  rows[1][0] = report.title || "PHÂN CÔNG TRỌNG TÀI";
+  rows[3][0] = `Tổng trọng tài: ${report.chairman || ""}`;
+  rows[4][0] = `Phó tổng trọng tài: ${report.deputyChairman || ""}`;
+  rows[5][0] = `Thư ký ban trọng tài: ${report.secretary || ""}`;
+  rows[6][0] = `Ngày: ${report.date || tournament.startDate || tournament.date || ""}`;
+
+  const matRows = [];
+  for (let mat = 1; mat <= matCount; mat += 1) {
+    const fixed = management.fixedByMat?.[String(mat)] || {};
+    const assignment = assignments.find((item) => Number(item.mat) === mat);
+    const entries = [
+      { label: "Trưởng sàn", referee: refereeMap.get(fixed.chiefId), fixed: true },
+      { label: "Phó sàn 1", referee: refereeMap.get(fixed.deputy1Id), fixed: true },
+      { label: "Phó sàn 2", referee: refereeMap.get(fixed.deputy2Id), fixed: true },
+      ...(assignment?.randomIds || [])
+        .map((id) => refereeMap.get(id))
+        .filter((referee) => referee && !officialNames.has(normalizeText(referee.name)))
+        .map((referee, index) => ({ label: `${mat}-${index + 1}`, referee, fixed: false })),
+    ];
+    matRows.push(entries);
+    const offset = (mat - 1) * columnsPerMat;
+    rows[7][offset] = `THẢM ${mat}`;
+    ["STT", "HỌ VÀ TÊN", "MÃ TT", "ĐƠN VỊ", "NỘI DUNG/CẤP", "TTC/TTP"].forEach((value, index) => {
+      rows[8][offset + index] = value;
+    });
+  }
+
+  const maxEntries = Math.max(...matRows.map((entries) => entries.length), 0);
+  for (let rowIndex = 0; rowIndex < maxEntries; rowIndex += 1) {
+    const row = Array(totalColumns).fill("");
+    matRows.forEach((entries, matIndex) => {
+      const entry = entries[rowIndex];
+      if (!entry) return;
+      const referee = entry.referee;
+      const offset = matIndex * columnsPerMat;
+      row[offset] = entry.label;
+      row[offset + 1] = referee?.name || (entry.fixed ? "Chưa chọn" : "");
+      row[offset + 2] = referee?.code || "";
+      row[offset + 3] = referee?.unit || "";
+      row[offset + 4] = referee ? (referee.specialty || referee.grade || "") : "";
+      row[offset + 5] = referee ? displayRefereeRole(referee.refereeRole) : "";
+    });
+    rows.push(row);
+  }
+
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  sheet["!merges"] = [
+    XLSX.utils.decode_range(`A1:${XLSX.utils.encode_col(totalColumns - 1)}1`),
+    XLSX.utils.decode_range(`A2:${XLSX.utils.encode_col(totalColumns - 1)}2`),
+    ...Array.from({ length: matCount }, (_, index) => {
+      const start = XLSX.utils.encode_col(index * columnsPerMat);
+      const end = XLSX.utils.encode_col(index * columnsPerMat + columnsPerMat - 1);
+      return XLSX.utils.decode_range(`${start}8:${end}8`);
+    }),
+  ];
+  sheet["!cols"] = Array.from({ length: matCount }, () => [
+    { wch: 13 }, { wch: 28 }, { wch: 11 }, { wch: 22 }, { wch: 20 }, { wch: 11 },
+  ]).flat();
+  sheet["!rows"] = [{ hpt: 30 }, { hpt: 28 }, null, null, null, null, null, { hpt: 25 }, { hpt: 28 }];
+  sheet["!pageSetup"] = { orientation: "landscape", fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
+  sheet["!margins"] = { left: 0.2, right: 0.2, top: 0.3, bottom: 0.3, header: 0.1, footer: 0.1 };
+
+  const border = { top: { style: "thin", color: { rgb: "000000" } }, bottom: { style: "thin", color: { rgb: "000000" } }, left: { style: "thin", color: { rgb: "000000" } }, right: { style: "thin", color: { rgb: "000000" } } };
+  Object.keys(sheet).filter((address) => !address.startsWith("!")).forEach((address) => {
+    sheet[address].s = { font: { name: "Arial", sz: 10 }, alignment: { vertical: "center" } };
+  });
+  ["A1", "A2"].forEach((address) => {
+    sheet[address].s = { font: { name: "Arial", sz: address === "A1" ? 16 : 14, bold: true, color: { rgb: "0566B5" } }, alignment: { horizontal: "center", vertical: "center" } };
+  });
+  for (let matIndex = 0; matIndex < matCount; matIndex += 1) {
+    for (let rowIndex = 7; rowIndex < rows.length; rowIndex += 1) {
+      for (let columnIndex = 0; columnIndex < columnsPerMat; columnIndex += 1) {
+        const address = XLSX.utils.encode_cell({ r: rowIndex, c: matIndex * columnsPerMat + columnIndex });
+        if (!sheet[address]) sheet[address] = { t: "s", v: "" };
+        const isTitle = rowIndex === 7;
+        const isHeader = rowIndex === 8;
+        const isFixed = rowIndex >= 9 && rowIndex <= 11;
+        sheet[address].s = {
+          font: { name: "Arial", sz: 10, bold: isTitle || isHeader || isFixed },
+          fill: isTitle || isHeader ? { fgColor: { rgb: "FFF200" } } : isFixed ? { fgColor: { rgb: "DBEAFE" } } : undefined,
+          alignment: { horizontal: columnIndex === 0 || columnIndex === 2 || columnIndex === 5 ? "center" : "left", vertical: "center", wrapText: true },
+          border,
+        };
+      }
+    }
+  }
+
+  XLSX.utils.book_append_sheet(workbook, sheet, "PhanCongTong");
+  XLSX.writeFile(workbook, `Phan_Cong_Trong_Tai_Tong_${safeFileName(tournament.name)}.xlsx`);
+}
 export function exportRefereeMatListsExcel(tournament, management) {
   const workbook = XLSX.utils.book_new();
   const report = management.report || {};

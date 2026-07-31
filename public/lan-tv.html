@@ -16,6 +16,21 @@
     .side-dot{display:inline-block;width:.38em;height:.38em;margin-right:.28em;border-radius:50%;vertical-align:.12em;background:currentColor;box-shadow:0 0 10px currentColor}
     .participant-fallback{color:#cbd5e1}
     @media(max-width:900px){.player-vs{margin:0 .16em}.side-dot{margin-right:.2em}}
+
+    /* Màu nhận diện cố định theo thảm; màu đỏ/xanh của VĐV vẫn giữ nguyên. */
+    .mat-card{--mat-accent:#facc15;border-color:color-mix(in srgb,var(--mat-accent) 48%,#263b55);box-shadow:0 15px 40px rgba(0,0,0,.28),inset 0 1px 0 color-mix(in srgb,var(--mat-accent) 20%,transparent)}
+    .mat-card::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:linear-gradient(90deg,var(--mat-accent),color-mix(in srgb,var(--mat-accent) 18%,transparent));pointer-events:none}
+    .mat-card[data-mat-id="1"]{--mat-accent:#f59e0b}
+    .mat-card[data-mat-id="2"]{--mat-accent:#38bdf8}
+    .mat-card[data-mat-id="3"]{--mat-accent:#a78bfa}
+    .mat-card .mat-name{color:var(--mat-accent);text-shadow:0 0 18px color-mix(in srgb,var(--mat-accent) 28%,transparent)}
+    .mat-card.status-live{border-color:color-mix(in srgb,var(--mat-accent) 62%,#263b55);box-shadow:0 15px 42px rgba(0,0,0,.3),inset 0 0 0 1px color-mix(in srgb,var(--mat-accent) 14%,transparent)}
+    .mats[data-visible-count="3"] .current-wrap{justify-content:flex-start}
+    .mats[data-visible-count="3"] .current-title{font-size:clamp(20px,1.7vw,31px);line-height:1.04;-webkit-line-clamp:2}
+    .mats[data-visible-count="3"] .current-title.long{font-size:clamp(19px,1.55vw,28px)}
+    .mats[data-visible-count="3"] .current-title.extra-long{font-size:clamp(18px,1.4vw,25px)}
+    .mats[data-visible-count="3"] .current-participants{font-size:clamp(16px,1.35vw,24px);line-height:1.12}
+    @media(max-width:1550px){.mats[data-visible-count="3"] .mat-card{gap:7px;padding-top:14px;padding-bottom:14px}.mats[data-visible-count="3"] .nextbox{padding-top:8px;padding-bottom:8px}.mats[data-visible-count="3"] .next-title{-webkit-line-clamp:1}.mats[data-visible-count="3"] .next-participants{-webkit-line-clamp:1}}
   </style>
 </head>
 <body>

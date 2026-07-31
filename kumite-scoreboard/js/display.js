@@ -376,45 +376,28 @@ function updatePenaltyButtons(competitor, penalties) {
   });
 }
 
-// Beep audio context
-let audioContext = null;
+// Kumite warning/time-up sound
+const kumiteBeepSource = "sounds/beep-2.wav";
 let finalBeepPlayed = false;
 let warning15sPlayed = false; // Track if 15s warning beep has played
 
-// Play beep sound
-function playBeep(duration = 100, frequency = 800) {
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  }
+// Play the supplied WAV sequentially so repeated alerts never overlap.
+function playKumiteBeep(repeatCount = 1) {
+  let playedCount = 0;
 
-  const oscillator = audioContext.createOscillator();
-  const gainNode = audioContext.createGain();
+  const playNext = () => {
+    if (playedCount >= repeatCount) return;
 
-  oscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
+    const audio = new Audio(kumiteBeepSource);
+    playedCount += 1;
+    audio.addEventListener("ended", playNext, { once: true });
+    audio.play().catch((error) => {
+      console.warn("Unable to play Kumite sound:", error);
+    });
+  };
 
-  oscillator.frequency.value = frequency;
-  oscillator.type = "sine";
-
-  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(
-    0.01,
-    audioContext.currentTime + duration / 1000
-  );
-
-  oscillator.start(audioContext.currentTime);
-  oscillator.stop(audioContext.currentTime + duration / 1000);
+  playNext();
 }
-
-// Play multiple beeps with delay
-function playMultipleBeeps(count, duration, frequency, delayBetween) {
-  for (let i = 0; i < count; i++) {
-    setTimeout(() => {
-      playBeep(duration, frequency);
-    }, i * delayBetween);
-  }
-}
-
 // Update timer display
 function updateTimerDisplay() {
   const timer = state.timer;
@@ -433,7 +416,7 @@ function updateTimerDisplay() {
     timer.deciseconds === 0 &&
     !warning15sPlayed
   ) {
-    playMultipleBeeps(3, 800, 600, 1000); // 3 long beeps at 15s (same as time up)
+    playKumiteBeep(); // 15-second warning: play once
     warning15sPlayed = true;
   }
 
@@ -442,9 +425,9 @@ function updateTimerDisplay() {
     warning15sPlayed = false;
   }
 
-  // Play long beep when timer reaches 0
+  // Play the time-up sound three times when timer reaches 0
   if (totalSeconds === 0 && timer.deciseconds === 0 && !finalBeepPlayed) {
-    playMultipleBeeps(3, 800, 600, 1000); // 3 long beeps when time is up
+    playKumiteBeep(3);
     finalBeepPlayed = true;
   } else if (totalSeconds > 0) {
     finalBeepPlayed = false;

@@ -10,6 +10,7 @@ import { useToast } from "../components/common/Toast";
 import * as XLSX from "xlsx";
 import { updateMatchResult as applyMatchResult } from "../utils/drawEngine";
 import { getTeamSizeForCategory, getTeamsFromAthletes } from "../utils/teamDraw";
+import { calculateClubFeeSummary } from "../utils/feeCalculation";
 import { getEstimatedMatchCount } from "../services/scheduleService";
 import { exportAchievementConfirmationDocx } from "../services/achievementConfirmationDocxService";
 import { getAppBaseUrl, getTournamentLogos, getTournamentSignatures } from "../services/pdfService";
@@ -328,70 +329,11 @@ export default function StatisticsPage() {
   };
 
   const getClubFeeSummary = () => {
-    const summary = clubs.map((club) => {
-      let teamEntries = 0;
-      let individualCount = 0;
-      let extraEventsForSurcharge = 0;
-      const individualEventsByAthlete = {};
-
-      tournament.categories.forEach((cat) => {
-        // Tính số đội tham gia
-        const categoryName = cat.name?.toLowerCase() || "";
-        const isTeamCat =
-          cat.isTeam ||
-          categoryName.includes("đồng đội") ||
-          categoryName.includes("dong doi") ||
-          categoryName.includes("hỗn hợp") ||
-          categoryName.includes("hon hop") ||
-          categoryName.includes("team");
-        if (isTeamCat) {
-          const hasAthletesInTeam = (cat.athletes || []).some(
-            (a) => a.club?.trim() === club
-          );
-          if (hasAthletesInTeam) {
-            teamEntries += 1;
-          }
-        }
-        // Chỉ tính phụ thu trên số nội dung cá nhân; nội dung đồng đội không tính thêm 50.000đ.
-        if (isTeamCat) return;
-
-        (cat.athletes || []).forEach((a) => {
-          if (a.club?.trim() === club) {
-            const identifier = (a.name || "").replace(/\s+/g, ' ').trim().toLowerCase();
-            if (!individualEventsByAthlete[identifier]) {
-              individualEventsByAthlete[identifier] = new Set();
-            }
-            individualEventsByAthlete[identifier].add(cat.id || cat.name);
-          }
-        });
-      });
-
-      Object.values(individualEventsByAthlete).forEach((events) => {
-        const eventCount = events.size;
-        individualCount += 1;
-        if (feeSettings.enableSurcharge && eventCount > 1) {
-          extraEventsForSurcharge += 1;
-        }
-      });
-
-      const teamFeeTotal = teamEntries * feeSettings.teamFee;
-      const individualFeeTotal = individualCount * feeSettings.individualFee;
-      const surchargeTotal = extraEventsForSurcharge * feeSettings.surchargeFee;
-      const totalFee = teamFeeTotal + individualFeeTotal + surchargeTotal;
-
-      return {
-        club,
-        teamEntries,
-        teamFeeTotal,
-        individualCount,
-        individualFeeTotal,
-        extraEventsForSurcharge,
-        surchargeTotal,
-        totalFee,
-      };
+    return calculateClubFeeSummary({
+      categories: tournament.categories,
+      clubs,
+      feeSettings,
     });
-
-    return summary.sort((a, b) => a.club.localeCompare(b.club, "vi"));
   };
 
   const formatCurrency = (amount) => {
@@ -3184,14 +3126,13 @@ export default function StatisticsPage() {
 
     delegations.forEach((d) => {
       const allAth = getAllAthletes().filter((a) => a.club?.trim() === d.club);
+      const uniqueAthleteCount = new Set(allAth.map(getAthleteIdentityKey)).size;
       if (allAth.length === 0) return;
       htmlContent += `
         <div style="margin-bottom:20px;">
           <h3 style="margin:0 0 10px 0;font-size:16px;display:flex;justify-content:space-between;page-break-after:avoid;">
             <span>${d.club}</span>
-            <span style="font-weight:normal;font-size:14px;">(${
-              allAth.length
-            } VĐV)</span>
+            <span style="font-weight:normal;font-size:14px;">(${uniqueAthleteCount} VĐV / ${allAth.length} lượt đăng ký)</span>
           </h3>
           <table style="width:100%;border-collapse:collapse;font-size:14px;">
             <thead>
@@ -3276,7 +3217,7 @@ export default function StatisticsPage() {
     const data = summary.map((d, i) => ({
       STT: i + 1,
       "CLB/Đơn vị": d.club,
-      "Số VĐV Cá nhân": d.individualCount,
+      "Số lượt nội dung cá nhân": d.individualCount,
       "Thành tiền (Cá nhân)": d.individualFeeTotal,
       "Số Đội tham gia": d.teamEntries,
       "Thành tiền (Đồng đội)": d.teamFeeTotal,
@@ -4545,7 +4486,7 @@ export default function StatisticsPage() {
                           marginLeft: "8px",
                         }}
                       >
-                        ({allAth.length} VĐV)
+                        ({new Set(allAth.map(getAthleteIdentityKey)).size} VĐV / {allAth.length} lượt đăng ký)
                       </span>
                     </h4>
                     {isSelected && (
@@ -4601,7 +4542,7 @@ export default function StatisticsPage() {
                   className="form-group"
                   style={{ flex: 1, minWidth: "200px" }}
                 >
-                  <label>Lệ phí cá nhân (VNĐ/người)</label>
+                  <label>Lệ phí cá nhân (VNĐ/01 nội dung)</label>
                   <input
                     type="number"
                     min="0"
@@ -4720,7 +4661,7 @@ export default function StatisticsPage() {
                     <tr>
                       <th style={{ width: "40px" }}>STT</th>
                       <th>CLB/Đơn vị</th>
-                      <th style={{ textAlign: "center" }}>Số VĐV Cá nhân</th>
+                      <th style={{ textAlign: "center" }}>Số lượt nội dung cá nhân</th>
                       <th style={{ textAlign: "center" }}>Số Đội tham gia</th>
                       <th style={{ textAlign: "center" }}>
                         Nội dung cá nhân thi thêm

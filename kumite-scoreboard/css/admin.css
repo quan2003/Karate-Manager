@@ -101,6 +101,20 @@ body {
   font-size: 16px;
 }
 
+.btn-sound {
+  min-width: 52px;
+  padding-inline: 14px;
+  border-color: #f59e0b;
+  background: #fff7df;
+  font-size: 21px;
+  line-height: 1;
+}
+
+.btn-sound:hover {
+  border-color: #d97706;
+  background: #ffedb5;
+}
+
 .btn-sm {
   padding: 5px 10px;
   font-size: 12px;

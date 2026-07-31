@@ -23,6 +23,7 @@ import {
   getCategoryMatId,
   isCategoryCompleted,
 } from "../services/liveEventService";
+import { validateKataRegistration } from "../services/kataRegistrationRules";
 import Modal from "../components/common/Modal";
 import Bracket from "../components/Bracket/Bracket";
 import appIcon from "../assets/icon.png";
@@ -57,6 +58,28 @@ const WKF_KATA_LIST = [
   "095 Tekki Sandan", "096 Tensho", "097 Tomari Bassai", "098 Unshu",
   "099 Unsu", "100 Useishi", "101 Wankan", "102 Wanshu"
 ];
+
+const getAthleteKey = (athlete) =>
+  String(athlete?.id || athlete?.name || "").trim().toLowerCase();
+
+const getKataHistory = (category, currentMatch, athlete, registrations) => {
+  const athleteKey = getAthleteKey(athlete);
+  return (category?.bracket?.matches || [])
+    .filter((item) => !item.isBye && Number(item.round) < Number(currentMatch.round))
+    .sort((left, right) => Number(left.round) - Number(right.round))
+    .map((item) => {
+      const slot = getAthleteKey(item.athlete1) === athleteKey
+        ? 1
+        : getAthleteKey(item.athlete2) === athleteKey
+          ? 2
+          : 0;
+      if (!slot) return "";
+      return registrations[item.id]?.[slot === 1 ? "kata1" : "kata2"]
+        || item[slot === 1 ? "kata1" : "kata2"]
+        || "";
+    })
+    .filter(Boolean);
+};
 
 const removeVietnameseAccents = (str) => {
   if (!str) return "";
@@ -278,6 +301,7 @@ function SecretaryPage() {
           });
       }
       const rawMatches = (sourceBracket?.matches || c.matches || []).filter((m) => !m.isBye);
+      const maxRound = Math.max(...rawMatches.map((item) => Number(item.round) || 0));
       const matchesWithKata = rawMatches.map((m) => {
         const hasWinner = matchResults.some(r => r.matchId === m.id && r.winnerId) || !!m.winner;
         return {
@@ -290,7 +314,12 @@ function SecretaryPage() {
           kata1: kataRegistrations[m.id]?.kata1 || m.kata1 || "",
           kata2: kataRegistrations[m.id]?.kata2 || m.kata2 || "",
           isCompleted: hasWinner,
+          round: Number(m.round) || 1,
           roundName: c.bracket?.roundNames?.[m.round - 1] || `Vòng ${m.round}`,
+          ageGroup: c.ageGroup || c.name,
+          isFinal: Number(m.round) === maxRound,
+          previousKatas1: getKataHistory(c, m, m.athlete1, kataRegistrations),
+          previousKatas2: getKataHistory(c, m, m.athlete2, kataRegistrations),
         };
       });
       allKataMatches = allKataMatches.concat(matchesWithKata);
@@ -616,8 +645,24 @@ function SecretaryPage() {
           onOk: (kataName) => {
             setDialog(null);
             if (kataName === null || kataName === undefined) return;
-            saveKataRegistration(match.id, athleteSlot, kataName.trim());
-            setNotification(`🥋 Đã đăng ký bài "${kataName.trim()}" cho ${athlete?.name || "VĐV"}`);
+            const trimmedKata = kataName.trim();
+            const maxRound = Math.max(
+              ...(selectedCategory.bracket.matches || []).map((item) => Number(item.round) || 0)
+            );
+            const validation = validateKataRegistration({
+              ageGroup: selectedCategory.ageGroup || selectedCategory.name,
+              kataName: trimmedKata,
+              previousKatas: getKataHistory(selectedCategory, match, athlete, kataRegistrations),
+              round: Number(match.round) || 1,
+              isFinal: Number(match.round) === maxRound,
+            });
+            if (!validation.valid) {
+              setError(`⚠️ ${validation.message}`);
+              setTimeout(() => setError(""), 6000);
+              return;
+            }
+            saveKataRegistration(match.id, athleteSlot, trimmedKata);
+            setNotification(`🥋 Đã đăng ký bài "${trimmedKata}" cho ${athlete?.name || "VĐV"}${validation.warning ? ` — ⚠️ ${validation.warning}` : ""}`);
             setTimeout(() => setNotification(""), 3000);
           },
           onCancel: () => setDialog(null),

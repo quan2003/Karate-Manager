@@ -4,8 +4,11 @@ import { ACTIONS, useTournament, useTournamentDispatch } from "../context/Tourna
 import ConfirmDialog from "../components/common/ConfirmDialog";
 import { useToast } from "../components/common/Toast";
 import appIcon from "../assets/icon.png";
+import excelLogo from "../assets/excel-logo.svg";
+import pdfLogo from "../assets/pdf-logo.svg";
 import {
   downloadRefereeTemplate,
+  exportRefereeDeploymentExcel,
   exportRefereeMatListsExcel,
   generateNextRefereeCode,
   mergeImportedReferees,
@@ -264,6 +267,15 @@ export default function RefereesPage() {
     }
   };
 
+  const exportTotalExcel = () => {
+    try {
+      exportRefereeDeploymentExcel(tournament, management);
+      toast.success("Đã xuất Excel tổng phân công trọng tài.");
+    } catch (error) {
+      console.error(error);
+      toast.warning(error.message || "Không thể xuất Excel tổng. Vui lòng thử lại.", 7000);
+    }
+  };
   const exportMatExcel = () => {
     try {
       exportRefereeMatListsExcel(tournament, management);
@@ -312,12 +324,13 @@ export default function RefereesPage() {
             <p>Nhập danh sách, cố định ban điều hành từng thảm, random và xuất PDF.</p>
           </div>
           <div className="referee-header-actions">
-            <button className="btn btn-secondary" onClick={downloadRefereeTemplate}>📥 Tải mẫu Excel</button>
-            <button className="btn btn-secondary" onClick={() => importInputRef.current?.click()}>📤 Import Excel</button>
+            <button className="btn btn-secondary" onClick={downloadRefereeTemplate}><img className="referee-action-icon" src={excelLogo} alt="" /> Tải mẫu Excel</button>
+            <button className="btn btn-secondary" onClick={() => importInputRef.current?.click()}><img className="referee-action-icon" src={excelLogo} alt="" /> Import Excel</button>
             <input ref={importInputRef} type="file" accept=".xlsx,.xls" hidden onChange={importExcel} />
-            <button className="btn btn-secondary" disabled={exporting} onClick={exportMatExcel}>📊 Excel từng sàn</button>
-            <button className="btn btn-secondary" disabled={exporting} onClick={exportMatPdf}>📄 PDF từng sàn</button>
-            <button className="btn btn-primary" disabled={exporting} onClick={exportPdf}>{exporting ? "Đang xuất..." : "📄 PDF tổng"}</button>
+            <button className="btn btn-secondary" disabled={exporting} onClick={exportTotalExcel}><img className="referee-action-icon" src={excelLogo} alt="" /> Excel tổng</button>
+            <button className="btn btn-secondary" disabled={exporting} onClick={exportMatExcel}><img className="referee-action-icon" src={excelLogo} alt="" /> Excel từng sàn</button>
+            <button className="btn btn-secondary" disabled={exporting} onClick={exportMatPdf}><img className="referee-action-icon" src={pdfLogo} alt="" /> PDF từng sàn</button>
+            <button className="btn btn-primary" disabled={exporting} onClick={exportPdf}>{exporting ? "Đang xuất..." : <><img className="referee-action-icon" src={pdfLogo} alt="" /> PDF tổng</>}</button>
           </div>
         </header>
 

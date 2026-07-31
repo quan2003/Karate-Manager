@@ -354,9 +354,16 @@ function compareCategoriesByPriority(
   return originalOrder.get(a.id) - originalOrder.get(b.id);
 }
 
+
+
 export function getCategoryAgeKey(category) {
   const age = getCategoryAgeOrder(category);
-  return Number.isFinite(age) ? String(age) : "unknown";
+  return Number.isFinite(age) ? String(age) : 'unknown';
+}
+
+export function getCategoryScheduleGroupKey(category) {
+  const { discipline } = parseKarateCategory(category);
+  return discipline + ':' + getCategoryAgeKey(category);
 }
 
 function assignAgeGroupsToDays(categories, tournamentDays, durations, priorityMode) {
@@ -499,7 +506,11 @@ export function smartAutoAssign(
         }
       }
     }
-    return null;
+    // Bắt buộc xếp đủ: nối lịch sau phiên cuối khi khung chính thức đã kín.
+    let start = Math.max(minimumStart, sessions.length > 0 ? sessions[sessions.length - 1].end : 0);
+    start = Math.ceil(start / 5) * 5;
+    while (hasMatConflict(day, mat, start, start + duration)) start += 5;
+    return start;
   };
 
   const getLoad = (day, mat = null) =>
@@ -523,12 +534,20 @@ export function smartAutoAssign(
     const schedulingGroup = isKarateStandard
       ? getKarateSchedulingGroupKey(category)
       : getCategoryAgeKey(category);
+    const ageKey = getCategoryAgeKey(category);
+    const scheduleGroupKey = getCategoryScheduleGroupKey(category);
+    const dayIncludesCategoryGroup = (day) => {
+      const groups = ageGroupsByDay[day] || [];
+      return groups.includes(scheduleGroupKey) || groups.includes(ageKey);
+    };
     const configuredAgeDays = isAgePriority
-      ? tournamentDays.filter((day) => (ageGroupsByDay[day] || []).includes(getCategoryAgeKey(category)))
+      ? tournamentDays.filter(dayIncludesCategoryGroup)
       : [];
     const configuredGroups = Object.values(ageGroupsByDay);
     const hasAgeDayConfig = configuredGroups.some((groups) => groups?.length > 0);
-    const groupHasConfiguredDay = configuredGroups.some((groups) => groups?.includes(getCategoryAgeKey(category)));
+    const groupHasConfiguredDay = configuredGroups.some(
+      (groups) => groups?.includes(scheduleGroupKey) || groups?.includes(ageKey)
+    );
     const eligibleDays = isAgePriority && hasAgeDayConfig
       ? (configuredAgeDays.length > 0
         ? configuredAgeDays
