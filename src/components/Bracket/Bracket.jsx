@@ -313,8 +313,8 @@ export default function Bracket({
                         </>
                       )}
                       {categoryType === "kata" && match.kata1 && (
-                        <span className="kata-label" style={{ position: "absolute", top: "100%", left: "12px", fontSize: "10.5px", color: "#0d9488", fontWeight: "600", whiteSpace: "nowrap", pointerEvents: "none", zIndex: 1 }}>
-                          {match.kata1}
+                        <span className="kata-label" title={match.kata1RegisteredBy || ""} style={{ position: "absolute", top: "100%", left: "12px", fontSize: "10.5px", color: "#0d9488", fontWeight: "600", whiteSpace: "nowrap", pointerEvents: "none", zIndex: 1 }}>
+                          {match.kata1}{match.kata1Source === "remote" ? ` · Tiếp nhận${match.kata1RegisteredBy ? `: ${match.kata1RegisteredBy}` : ""}` : match.kata1Source === "secretary" ? " · Thư ký" : ""}
                         </span>
                       )}
                       {match.athlete1?.disqualified && (
@@ -415,8 +415,8 @@ export default function Bracket({
                         </>
                       )}
                       {categoryType === "kata" && match.kata2 && (
-                        <span className="kata-label" style={{ position: "absolute", top: "100%", left: "12px", fontSize: "10.5px", color: "#0d9488", fontWeight: "600", whiteSpace: "nowrap", pointerEvents: "none", zIndex: 1 }}>
-                          {match.kata2}
+                        <span className="kata-label" title={match.kata2RegisteredBy || ""} style={{ position: "absolute", top: "100%", left: "12px", fontSize: "10.5px", color: "#0d9488", fontWeight: "600", whiteSpace: "nowrap", pointerEvents: "none", zIndex: 1 }}>
+                          {match.kata2}{match.kata2Source === "remote" ? ` · Tiếp nhận${match.kata2RegisteredBy ? `: ${match.kata2RegisteredBy}` : ""}` : match.kata2Source === "secretary" ? " · Thư ký" : ""}
                         </span>
                       )}
                       {match.athlete2?.disqualified && (

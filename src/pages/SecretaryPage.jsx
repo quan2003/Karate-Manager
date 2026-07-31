@@ -183,11 +183,15 @@ function SecretaryPage() {
   });
   const saveKataRegistration = useCallback((matchId, slot, kataName) => {
     setKataRegistrations((prev) => {
+      const prefix = slot === 1 ? "kata1" : "kata2";
       const updated = {
         ...prev,
         [matchId]: {
           ...(prev[matchId] || {}),
-          [slot === 1 ? "kata1" : "kata2"]: kataName,
+          [prefix]: kataName,
+          [`${prefix}Source`]: "secretary",
+          [`${prefix}RegisteredBy`]: "Thư ký",
+          [`${prefix}RegisteredAt`]: new Date().toISOString(),
         },
       };
       localStorage.setItem("secretary_kata_registrations", JSON.stringify(updated));
@@ -619,7 +623,7 @@ function SecretaryPage() {
     });
 
     return clonedBracket;
-  }, [selectedCategory, matchResults]);
+  }, [selectedCategory, matchResults, kataRegistrations]);
   const matQueuePreview = useMemo(() => {
     if (!matchData || !selectedCategory) return null;
     return getCategoryLiveQueue(matchData, selectedCategory, {
