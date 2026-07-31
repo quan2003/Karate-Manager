@@ -23,8 +23,9 @@ function updateDisplay() {
   if (document.getElementById("tournamentTitle")) {
     document.getElementById("tournamentTitle").textContent = state.tournamentTitle || "";
   }
-  if (document.getElementById("eventTitle")) {
-    document.getElementById("eventTitle").textContent = state.eventTitle || "THẢM 1";
+  const eventTitle = document.getElementById("eventTitle");
+  if (eventTitle) {
+    eventTitle.textContent = state.eventTitle || "THẢM 1";
   }
   if (document.getElementById("matchInfo")) {
     document.getElementById("matchInfo").textContent = state.matchInfo || "KATA";

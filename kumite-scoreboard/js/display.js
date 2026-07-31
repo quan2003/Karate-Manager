@@ -84,10 +84,23 @@ function updateDisplay() {
   document.getElementById("categoryTitle").textContent =
     state.displayLayout === "vertical" ? "WARNING" : state.category;
   // Update event title
-  if (document.getElementById("eventTitle")) {
-    document.getElementById("eventTitle").textContent =
-      state.eventTitle || "THẢM 1";
-  } 
+  const eventTitle = document.getElementById("eventTitle");
+  if (eventTitle) {
+    const title = state.eventTitle || "THẢM 1";
+    const matTitle = title.match(/^thảm\s+(.+)$/i);
+    if (matTitle) {
+      eventTitle.replaceChildren();
+      const label = document.createElement("span");
+      label.className = "event-title-label";
+      label.textContent = "THẢM";
+      const number = document.createElement("span");
+      number.className = "event-title-number";
+      number.textContent = matTitle[1];
+      eventTitle.append(label, number);
+    } else {
+      eventTitle.textContent = title;
+    }
+  }
   const matchRoundDisplay = document.getElementById("matchRoundDisplay");
   if (matchRoundDisplay) {
     matchRoundDisplay.textContent = state.matchRound || "";
