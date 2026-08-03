@@ -487,6 +487,41 @@ export async function createAutoBackup(reason = "") {
 }
 
 /**
+ * Create and verify a snapshot before an explicitly approved schema migration.
+ * This function does not run a migration or advance a schema version.
+ */
+export async function createVerifiedMigrationBackup(migrationName) {
+  try {
+    if (!migrationName || typeof migrationName !== "string") {
+      return { success: false, error: "migrationName is required" };
+    }
+
+    const tournaments = await dbGetTournaments();
+    const rawData = JSON.stringify({ tournaments: tournaments || [] });
+    const id = `migration_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const reason = `Before migration: ${migrationName}`;
+
+    await dbSaveAutoBackup(id, reason, rawData, rawData.length);
+    const saved = await dbGetAutoBackupById(id);
+
+    if (!saved || saved.data !== rawData || saved.size !== rawData.length) {
+      return { success: false, error: "Migration backup verification failed" };
+    }
+
+    JSON.parse(saved.data);
+    return {
+      success: true,
+      backupId: id,
+      tournamentCount: tournaments?.length || 0,
+      size: rawData.length,
+    };
+  } catch (error) {
+    console.error("Migration backup failed:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Lấy danh sách auto-backup
  */
 export async function getAutoBackupHistory() {

@@ -4,6 +4,11 @@ import { v4 as uuidv4 } from "uuid";
 import { createAutoBackup } from "../services/backupService";
 import { dbGetTournaments, dbSaveTournaments, runMigrationIfNeeded } from "../services/dbService";
 import { updateMatchResult } from "../utils/drawEngine";
+import {
+  DEFAULT_BRONZE_MODE,
+  resolveBronzeMode,
+  validateBronzeMode,
+} from "../domain/bronzeMode.js";
 
 // Auto-backup counter to avoid backing up too frequently
 let autoBackupCounter = 0;
@@ -33,6 +38,11 @@ function normalizeCategoryImportKey(value) {
 }
 
 function buildImportedCategory(cat, existingCategory = null) {
+  const bronzeMode = Object.prototype.hasOwnProperty.call(cat, "bronze_mode")
+    ? cat.bronze_mode
+    : resolveBronzeMode(existingCategory);
+  validateBronzeMode(bronzeMode);
+
   return {
     ...(existingCategory || {}),
     id: existingCategory?.id || uuidv4(),
@@ -45,6 +55,7 @@ function buildImportedCategory(cat, existingCategory = null) {
     athletes: existingCategory?.athletes || [],
     bracket: existingCategory?.bracket || null,
     format: cat.format || existingCategory?.format || "single_elimination",
+    bronze_mode: bronzeMode,
   };
 }
 
@@ -379,6 +390,7 @@ function tournamentReducer(state, action) {
                     athletes: [],
                     bracket: null,
                     format: action.payload.format || "single_elimination", // or 'repechage'
+                    bronze_mode: DEFAULT_BRONZE_MODE,
                   },
                 ],
               }
@@ -429,6 +441,9 @@ function tournamentReducer(state, action) {
       break;
 
     case ACTIONS.UPDATE_CATEGORY:
+      if (Object.prototype.hasOwnProperty.call(action.payload, "bronze_mode")) {
+        validateBronzeMode(action.payload.bronze_mode);
+      }
       newState = {
         ...state,
         tournaments: state.tournaments.map((t) => ({

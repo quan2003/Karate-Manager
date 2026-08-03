@@ -5,6 +5,12 @@
  * Trong browser dev: fallback sang localStorage (để dev không bị lỗi)
  */
 
+import {
+  BRONZE_MODE_SCHEMA_SETTING_KEY,
+  BRONZE_MODE_SCHEMA_VERSION,
+  planBronzeModeMigration,
+} from "../domain/bronzeMode.js";
+
 const isElectron = () =>
   typeof window !== 'undefined' && window.electronAPI?.db != null;
 
@@ -63,6 +69,39 @@ export async function dbDeleteSetting(key) {
   }
   localStorage.removeItem(key);
   return true;
+}
+
+// ====================================================
+// BRONZE MODE SCHEMA (explicit migration only)
+// ====================================================
+
+export async function getBronzeModeSchemaStatus() {
+  const storedVersion = await dbGetSetting(BRONZE_MODE_SCHEMA_SETTING_KEY);
+  const parsedVersion = Number.parseInt(storedVersion, 10);
+  const currentVersion = Number.isInteger(parsedVersion) && parsedVersion >= 0
+    ? parsedVersion
+    : 0;
+
+  return {
+    currentVersion,
+    targetVersion: BRONZE_MODE_SCHEMA_VERSION,
+    needsMigration: currentVersion < BRONZE_MODE_SCHEMA_VERSION,
+  };
+}
+
+export async function previewBronzeModeMigration(tournaments = null) {
+  const source = tournaments ?? await dbGetTournaments();
+  return planBronzeModeMigration(source);
+}
+
+export async function dbSetBronzeModeSchemaVersion(version, verifiedBackupId) {
+  if (!Number.isInteger(version) || version < 0 || version > BRONZE_MODE_SCHEMA_VERSION) {
+    throw new RangeError(`Unsupported bronze mode schema version: ${String(version)}`);
+  }
+  if (version > 0 && (typeof verifiedBackupId !== "string" || !verifiedBackupId.startsWith("migration_"))) {
+    throw new Error("A verified migration backup is required before advancing the schema version");
+  }
+  return dbSetSetting(BRONZE_MODE_SCHEMA_SETTING_KEY, String(version));
 }
 
 // ====================================================
