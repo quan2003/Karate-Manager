@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ClipboardPenLine, Dumbbell, ShieldCheck } from "lucide-react";
+import { ClipboardPenLine, Dumbbell, Monitor, ShieldCheck } from "lucide-react";
 import { useRole, ROLES } from "../context/RoleContext";
 import { useOnboarding, CHECKLIST_STEPS } from "../context/OnboardingContext";
 import {
@@ -19,7 +19,7 @@ import packageJson from "../../package.json";
  */
 function RoleSelectPage() {
   const navigate = useNavigate();
-  const { setRole } = useRole();
+  const { role, setRole } = useRole();
   const { 
     resolveStepRoute, 
     setActiveHint, 
@@ -74,6 +74,8 @@ function RoleSelectPage() {
       navigate("/admin");
     } else if (role === ROLES.SECRETARY) {
       navigate("/secretary");
+    } else if (role === ROLES.DISPLAY) {
+      navigate("/display");
     } else {
       navigate("/coach");
     }
@@ -200,6 +202,18 @@ function RoleSelectPage() {
               <li>⏰ Theo thời hạn quy định</li>
             </ul>
             <button className="role-btn coach-btn">Vào với vai trò HLV</button>
+          </div>
+
+          <div className="role-card display-card" onClick={() => handleSelectRole(ROLES.DISPLAY)}>
+            <div className="role-icon"><div className="role-icon-badge display-icon"><Monitor size={38} strokeWidth={2.4} /></div></div>
+            <h2>Trình chiếu</h2>
+            <p className="role-description">Màn hình TV/LED chỉ đọc trong mạng LAN</p>
+            <ul className="role-features">
+              <li>✅ Xem tất cả các thảm</li>
+              <li>✅ Cập nhật trực tiếp</li>
+              <li>🔒 Không được sửa dữ liệu</li>
+            </ul>
+            <button className="role-btn display-btn">Mở màn hình DISPLAY</button>
           </div>
         </div>
 

@@ -60,7 +60,8 @@ export function getEstimatedParticipantCount(category) {
 export function getEstimatedMatchCount(category) {
   const bracketMatches = category.bracket?.matches;
   if (!category.isSplit && Array.isArray(bracketMatches) && bracketMatches.length > 0) {
-    return bracketMatches.filter((match) => !match.isBye).length;
+    return bracketMatches.filter((match) => !match.isBye).length
+      + (category.bracket?.auxiliaryMatches || []).filter((match) => match.operationalStatus !== "SUSPENDED_SOURCE_INCOMPLETE").length;
   }
   return estimateMatchCount(getEstimatedParticipantCount(category));
 }

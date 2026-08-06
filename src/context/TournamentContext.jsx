@@ -9,6 +9,11 @@ import {
   resolveBronzeMode,
   validateBronzeMode,
 } from "../domain/bronzeMode.js";
+import {
+  isSingleBronzeCoreEnabled,
+  reconcileBronzeAfterMainBracketChange,
+  updateAuxiliaryMatchResult,
+} from "../domain/bronzeIntegration.js";
 
 // Auto-backup counter to avoid backing up too frequently
 let autoBackupCounter = 0;
@@ -37,13 +42,10 @@ function normalizeCategoryImportKey(value) {
     .replace(/\s+/g, " ");
 }
 
-function buildImportedCategory(cat, existingCategory = null) {
-  const bronzeMode = Object.prototype.hasOwnProperty.call(cat, "bronze_mode")
-    ? cat.bronze_mode
-    : resolveBronzeMode(existingCategory);
-  validateBronzeMode(bronzeMode);
-
-  return {
+function buildImportedCategory(cat, existingCategory = null, defaultBronzeMode = DEFAULT_BRONZE_MODE) {
+  const hasIncomingBronzeMode = Object.prototype.hasOwnProperty.call(cat, "bronze_mode");
+  if (hasIncomingBronzeMode) validateBronzeMode(cat.bronze_mode);
+  const imported = {
     ...(existingCategory || {}),
     id: existingCategory?.id || uuidv4(),
     name: cat.name,
@@ -55,8 +57,11 @@ function buildImportedCategory(cat, existingCategory = null) {
     athletes: existingCategory?.athletes || [],
     bracket: existingCategory?.bracket || null,
     format: cat.format || existingCategory?.format || "single_elimination",
-    bronze_mode: bronzeMode,
   };
+  if (hasIncomingBronzeMode) imported.bronze_mode = cat.bronze_mode;
+  else if (!existingCategory) imported.bronze_mode = defaultBronzeMode;
+  if (!existingCategory) imported.eligibilityPolicy = cat.eligibilityPolicy || { version: 1 };
+  return imported;
 }
 
 function getParticipantRestoreKey(athlete) {
@@ -316,6 +321,7 @@ function tournamentReducer(state, action) {
     }
 
     case ACTIONS.ADD_TOURNAMENT:
+      validateBronzeMode(action.payload.default_bronze_mode ?? DEFAULT_BRONZE_MODE);
       newState = {
         ...state,
         tournaments: [
@@ -330,6 +336,8 @@ function tournamentReducer(state, action) {
               action.payload.startDate ||
               action.payload.date,
             location: action.payload.location,
+            default_bronze_mode: action.payload.default_bronze_mode ?? DEFAULT_BRONZE_MODE,
+            defaultEligibilityPolicy: action.payload.defaultEligibilityPolicy || { version: 1 },
             categories: [],
             createdAt: new Date().toISOString(),
           },
@@ -338,6 +346,9 @@ function tournamentReducer(state, action) {
       break;
 
     case ACTIONS.UPDATE_TOURNAMENT:
+      if (Object.prototype.hasOwnProperty.call(action.payload, "default_bronze_mode")) {
+        validateBronzeMode(action.payload.default_bronze_mode);
+      }
       newState = {
         ...state,
         tournaments: state.tournaments.map((t) =>
@@ -372,6 +383,7 @@ function tournamentReducer(state, action) {
       break;
 
     case ACTIONS.ADD_CATEGORY:
+      validateBronzeMode(action.payload.bronze_mode ?? DEFAULT_BRONZE_MODE);
       newState = {
         ...state,
         tournaments: state.tournaments.map((t) =>
@@ -390,7 +402,8 @@ function tournamentReducer(state, action) {
                     athletes: [],
                     bracket: null,
                     format: action.payload.format || "single_elimination", // or 'repechage'
-                    bronze_mode: DEFAULT_BRONZE_MODE,
+                    bronze_mode: action.payload.bronze_mode ?? t.default_bronze_mode ?? DEFAULT_BRONZE_MODE,
+                    eligibilityPolicy: action.payload.eligibilityPolicy || t.defaultEligibilityPolicy || { version: 1 },
                   },
                 ],
               }
@@ -425,7 +438,11 @@ function tournamentReducer(state, action) {
                 .map((cat) => [normalizeCategoryImportKey(cat.name), cat])
                 .filter(([key]) => key)
             ).entries()
-          ).map(([key, cat]) => buildImportedCategory(cat, existingByName.get(key)));
+          ).map(([key, cat]) => buildImportedCategory(
+            { ...cat, eligibilityPolicy: cat.eligibilityPolicy || t.defaultEligibilityPolicy || { version: 1 } },
+            existingByName.get(key),
+            t.default_bronze_mode ?? DEFAULT_BRONZE_MODE
+          ));
 
           return {
             ...t,
@@ -449,7 +466,19 @@ function tournamentReducer(state, action) {
         tournaments: state.tournaments.map((t) => ({
           ...t,
           categories: t.categories.map((c) =>
-            c.id === action.payload.id ? { ...c, ...action.payload } : c
+            c.id === action.payload.id ? (() => {
+              if (!Object.prototype.hasOwnProperty.call(action.payload, "bracket")) return { ...c, ...action.payload };
+              const prepared = reconcileBronzeAfterMainBracketChange({
+                category: c,
+                candidateBracket: action.payload.bracket,
+                singleEnabled: isSingleBronzeCoreEnabled(),
+              });
+              if (!prepared.ok) {
+                console.error("[BRONZE] Atomic bracket update blocked", prepared);
+                return c;
+              }
+              return { ...c, ...action.payload, bracket: prepared.bracketCopy };
+            })() : c
           ),
         })),
       };
@@ -937,6 +966,14 @@ function tournamentReducer(state, action) {
           let found = false;
           const updatedCategories = t.categories.map((c) => {
             if (!c.bracket?.matches) return c;
+
+            const auxiliaryMatch = (c.bracket.auxiliaryMatches || []).find((m) => m.id === matchId);
+            if (auxiliaryMatch) {
+              const auxiliaryResult = updateAuxiliaryMatchResult({ bracket: c.bracket, matchId, winnerId, score1, score2 });
+              if (!auxiliaryResult.ok) return c;
+              found = true;
+              return { ...c, bracket: auxiliaryResult.bracketCopy };
+            }
             
             // 1. Try finding by matchId (UUID)
             let match = c.bracket.matches.find((m) => m.id === matchId);

@@ -236,15 +236,15 @@ await test("B1 missing participant is invalid", () => {
   is(selectCategoryMedalists(withAuxiliary(singleFixture, [match])).status, MEDAL_SELECTION_STATUSES.INVALID_RESULT);
 });
 
-await test("WKF is explicitly unsupported", () => {
+await test("WKF without repechage plan is not ready", () => {
   const result = selectCategoryMedalists(wkfFixture);
-  is(result.status, MEDAL_SELECTION_STATUSES.UNSUPPORTED_IN_PHASE_3);
-  is(result.mode, BRONZE_MODES.WKF_REPECHAGE);
+  is(result.status, MEDAL_SELECTION_STATUSES.NOT_READY);
+  is(result.side, "A");
 });
 
-await test("WKF does not inspect auxiliary matches", () => {
+await test("WKF ignores unrelated auxiliary display records", () => {
   const fixture = withAuxiliary(wkfFixture, [{ resultStatus: "UNDER_APPEAL", matchCode: "RA1" }]);
-  is(selectCategoryMedalists(fixture).status, MEDAL_SELECTION_STATUSES.UNSUPPORTED_IN_PHASE_3);
+  is(selectCategoryMedalists(fixture).status, MEDAL_SELECTION_STATUSES.NOT_READY);
 });
 
 await test("invalid mode does not throw", () => {

@@ -27,6 +27,9 @@ import { validateKataRegistration } from "../services/kataRegistrationRules";
 import Modal from "../components/common/Modal";
 import Bracket from "../components/Bracket/Bracket";
 import appIcon from "../assets/icon.png";
+import { updateAuxiliaryMatchResult } from "../domain/bronzeIntegration.js";
+import { selectCategoryMedalists } from "../domain/bronzeMedalSelection.js";
+import QRCode from "qrcode";
 import "./SecretaryPage.css";
 
 const WKF_KATA_LIST = [
@@ -217,12 +220,29 @@ function SecretaryPage() {
     running: false, ip: '', port: 3002, pin: '', url: '', matId: '1'
   });
   const [showKataQR, setShowKataQR] = useState(false);
+  const [kataQrDataUrl, setKataQrDataUrl] = useState("");
   const isElectron = Boolean(window.electronAPI?.kataReceive);
 
-  const startKataReceiveServer = useCallback(async () => {
+  const getKataPinStorageKey = useCallback((matId) => {
+    const tournamentKey = matchData?.exportId || matchData?.tournamentId || "default";
+    return `kata_receive_pin_${tournamentKey}_${matId}`;
+  }, [matchData?.exportId, matchData?.tournamentId]);
+
+  const getOrCreateKataPin = useCallback((matId, forceNew = false) => {
+    const storageKey = getKataPinStorageKey(matId);
+    if (!forceNew) {
+      const savedPin = localStorage.getItem(storageKey);
+      if (/^\d{4}$/.test(savedPin || "")) return savedPin;
+    }
+    const nextPin = Math.floor(1000 + Math.random() * 9000).toString();
+    localStorage.setItem(storageKey, nextPin);
+    return nextPin;
+  }, [getKataPinStorageKey]);
+
+  const startKataReceiveServer = useCallback(async (forceNewPin = false) => {
     if (!isElectron) return;
     const matId = activeSelectedMat === 'all' ? '1' : activeSelectedMat;
-    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    const pin = getOrCreateKataPin(matId, forceNewPin);
     try {
       const result = await window.electronAPI.kataReceive.start(matId, pin);
       if (result.success) {
@@ -235,11 +255,36 @@ function SecretaryPage() {
         setError('Không thể bật server: ' + (result.error || ''));
       }
     } catch (e) { setError('Lỗi: ' + e.message); }
-  }, [isElectron, activeSelectedMat]);
+  }, [isElectron, activeSelectedMat, getOrCreateKataPin]);
+
+  const changeKataReceivePin = useCallback(async () => {
+    if (!isElectron) return;
+    try {
+      await window.electronAPI.kataReceive.stop();
+      setKataQrDataUrl("");
+      await startKataReceiveServer(true);
+      setNotification("🔐 Đã đổi PIN và tạo QR mới");
+      setTimeout(() => setNotification(""), 3000);
+    } catch (error) {
+      setError(`Không thể đổi PIN: ${error.message}`);
+    }
+  }, [isElectron, startKataReceiveServer]);
+
+  useEffect(() => {
+    let active = true;
+    if (!kataReceive.url) {
+      return undefined;
+    }
+    QRCode.toDataURL(kataReceive.url, { width: 400, margin: 2, errorCorrectionLevel: "M" })
+      .then((dataUrl) => { if (active) setKataQrDataUrl(dataUrl); })
+      .catch((error) => { if (active) setError(`Không thể tạo QR offline: ${error.message}`); });
+    return () => { active = false; };
+  }, [kataReceive.url]);
 
   const stopKataReceiveServer = useCallback(async () => {
     if (!isElectron) return;
-    try { await window.electronAPI.kataReceive.stop(); } catch {}
+    try { await window.electronAPI.kataReceive.stop(); } catch (error) { console.warn("Không thể dừng máy chủ nhận bài quyền:", error.message); }
+    setKataQrDataUrl("");
     setKataReceive({ running: false, ip: '', port: 3002, pin: '', url: '', matId: '1' });
     setShowKataQR(false);
     setNotification('📴 Đã tắt nhận bài quyền từ thiết bị ngoài');
@@ -582,7 +627,7 @@ function SecretaryPage() {
     if (!selectedCategory?.bracket) return null;
 
     // Deep clone bracket to allow mutation by the engine helper
-    const clonedBracket = JSON.parse(JSON.stringify(selectedCategory.bracket));
+    let clonedBracket = JSON.parse(JSON.stringify(selectedCategory.bracket));
 
     // Merge kata registrations vào bracket
     if (kataRegistrations && Object.keys(kataRegistrations).length > 0) {
@@ -603,6 +648,19 @@ function SecretaryPage() {
     });
 
     sortedResults.forEach((result) => {
+      if ((clonedBracket.auxiliaryMatches || []).some((match) => match.id === result.matchId)) {
+        if (result.winnerId) {
+          const auxiliary = updateAuxiliaryMatchResult({
+            bracket: clonedBracket,
+            matchId: result.matchId,
+            winnerId: result.winnerId,
+            score1: result.score1,
+            score2: result.score2,
+          });
+          if (auxiliary.ok) clonedBracket = auxiliary.bracketCopy;
+        }
+        return;
+      }
       if (result.disqualification && result.disqualifiedSlot) {
         // Apply disqualification
         disqualifyAthlete(
@@ -1019,7 +1077,7 @@ function SecretaryPage() {
               </>
             )}
             <button
-              onClick={kataReceive.running ? stopKataReceiveServer : startKataReceiveServer}
+              onClick={kataReceive.running ? stopKataReceiveServer : () => startKataReceiveServer(false)}
               style={{
                 background: kataReceive.running ? '#dc2626' : '#2563eb',
                 border: 'none', borderRadius: '6px', color: '#fff',
@@ -1048,12 +1106,10 @@ function SecretaryPage() {
               <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>
                 Mở camera quét QR hoặc nhập link trên cùng mạng Wi-Fi
               </p>
-              {/* QR via Google Charts API */}
               <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(kataReceive.url)}`}
+                src={kataQrDataUrl}
                 alt="QR Code"
                 style={{ width: 200, height: 200, background: '#fff', borderRadius: '8px', padding: 4 }}
-                onError={e => { e.target.style.display='none'; }}
               />
               <div style={{ margin: '14px 0 8px', fontSize: '13px', color: '#64748b' }}>hoặc mở link:</div>
               <div style={{
@@ -1073,6 +1129,10 @@ function SecretaryPage() {
                   {kataReceive.pin}
                 </span>
               </div>
+              <button
+                onClick={changeKataReceivePin}
+                style={{ background: '#b45309', border: 'none', borderRadius: '8px', color: '#fff', padding: '8px 14px', cursor: 'pointer', fontWeight: 700, marginRight: '8px' }}
+              >🔐 Đổi PIN</button>
               <button
                 onClick={() => setShowKataQR(false)}
                 style={{ background: '#475569', border: 'none', borderRadius: '8px', color: '#fff', padding: '8px 24px', cursor: 'pointer', fontWeight: 600 }}
@@ -1342,6 +1402,23 @@ function SecretaryPage() {
                           dragEnabled={false}
                           dimCompleted
                         />
+                        {(bracketWithScores?.auxiliaryMatches || []).length > 0 && (
+                          <section className="auxiliary-bronze-section">
+                            <h3>Trận phụ huy chương đồng / Repechage</h3>
+                            {bracketWithScores.auxiliaryMatches.map((match) => (
+                              <button
+                                type="button"
+                                key={match.id}
+                                className="auxiliary-bronze-match"
+                                disabled={match.operationalStatus !== "READY" || match.resultStatus === "UNDER_APPEAL"}
+                                onClick={() => handleSelectMatch(match)}
+                              >
+                                <strong>{match.matchCode}</strong>
+                                <span>{match.athlete1?.name || "Chưa xác định"} — {match.athlete2?.name || "Chưa xác định"}</span>
+                              </button>
+                            ))}
+                          </section>
+                        )}
                       </div>
 
                       {/* Medal Table */}
@@ -1352,7 +1429,7 @@ function SecretaryPage() {
                           const finalMatch = bracketWithScores.matches?.find(
                             (m) => m.round === maxRound && m.round > 0
                           );
-                          const champion = finalMatch?.winner;
+                          let champion = finalMatch?.winner;
 
                           const getLoser = (match) => {
                             if (!match?.winner) return null;
@@ -1363,7 +1440,7 @@ function SecretaryPage() {
                             return null;
                           };
 
-                          const silverMedalist = getLoser(finalMatch);
+                          let silverMedalist = getLoser(finalMatch);
                           const semiFinalRound =
                             bracketWithScores.numRounds - 1;
                           const semiFinalMatches =
@@ -1424,6 +1501,17 @@ function SecretaryPage() {
                                 }
                               });
                             }
+                          }
+
+                          const selected = selectCategoryMedalists({
+                            category: { ...selectedCategory, bracket: bracketWithScores },
+                            bracket: bracketWithScores,
+                          });
+                          if (selected.ok) {
+                            champion = selected.medals.gold;
+                            silverMedalist = selected.medals.silver;
+                            bronzeMedalists.splice(0, bronzeMedalists.length,
+                              ...[selected.medals.bronze1, selected.medals.bronze2].filter(Boolean));
                           }
 
                           return (

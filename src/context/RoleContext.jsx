@@ -11,6 +11,8 @@ import {
   dbSetSessionData,
 } from "../services/dbService";
 import { isTeamCategory } from "../utils/teamDraw";
+import { updateAuxiliaryMatchResult } from "../domain/bronzeIntegration.js";
+import { selectCategoryMedalists } from "../domain/bronzeMedalSelection.js";
 
 const RoleContext = createContext(null);
 
@@ -36,6 +38,12 @@ export const ROLES = {
   ADMIN: "admin",
   COACH: "coach",
   SECRETARY: "secretary",
+  DISPLAY: "display",
+};
+
+export const PERMISSIONS = {
+  DISPLAY_VIEW_ALL_TATAMIS: "display:view-all-tatamis",
+  DISPLAY_FULLSCREEN: "display:fullscreen",
 };
 
 /**
@@ -474,6 +482,17 @@ export function RoleProvider({ children }) {
         });
 
         sortedResults.forEach((result) => {
+          const auxiliaryMatch = (clonedBracket.auxiliaryMatches || []).find((m) => m.id === result.matchId);
+          if (auxiliaryMatch) {
+            let winnerId = result.winnerId;
+            if (!winnerId && result.winner === "athlete1") winnerId = auxiliaryMatch.athlete1?.id;
+            if (!winnerId && result.winner === "athlete2") winnerId = auxiliaryMatch.athlete2?.id;
+            if (winnerId) {
+              const updated = updateAuxiliaryMatchResult({ bracket: clonedBracket, matchId: result.matchId, winnerId, score1: result.score1, score2: result.score2 });
+              if (updated.ok) clonedBracket = updated.bracketCopy;
+            }
+            return;
+          }
           const match = clonedBracket.matches.find(
             (m) => m.id === result.matchId
           );
@@ -590,8 +609,8 @@ export function RoleProvider({ children }) {
           return null;
         };
 
-        const champion = finalMatch?.winner || null;
-        const silverMedalist = getLoser(finalMatch);
+        let champion = finalMatch?.winner || null;
+        let silverMedalist = getLoser(finalMatch);
 
         // Semi-final losers = bronze
         const semiFinalRound = numRounds - 1;
@@ -639,6 +658,14 @@ export function RoleProvider({ children }) {
               }
             });
           }
+        }
+
+        const selected = selectCategoryMedalists({ category: { ...cat, bracket: clonedBracket }, bracket: clonedBracket });
+        if (selected.ok) {
+          champion = selected.medals.gold;
+          silverMedalist = selected.medals.silver;
+          bronzeMedalists.splice(0, bronzeMedalists.length,
+            ...[selected.medals.bronze1, selected.medals.bronze2].filter(Boolean));
         }
 
         categoryMedals.push({

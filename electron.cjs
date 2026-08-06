@@ -7,6 +7,7 @@ const http = require("http");
 const os = require("os");
 const dbService = require("./database.cjs");
 const licenseVault = require("./licenseVault.cjs");
+const { createLiveStatusStore, isDisplayRequest, isWriteMethod } = require("./lanDisplayState.cjs");
 
 // Thiết lập ngôn ngữ mặc định của Chromium cho app để input date formating là vi-VN (dd/mm/yyyy)
 app.commandLine.appendSwitch('lang', 'vi-VN');
@@ -14,20 +15,22 @@ app.commandLine.appendSwitch('lang', 'vi-VN');
 // Biến giữ window chính
 let mainWindow = null;
 let lanServer = null;
-const lanLiveStatuses = new Map();
+const lanLiveStatusStore = createLiveStatusStore();
 const tvDisplayWindows = new Map();
-const lanLiveStatusClients = new Set();
+const lanLiveStatusClients = new Map();
 
 function sendLanLiveStatusEvent(res, eventName, payload) {
   res.write(`event: ${eventName}\n`);
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-function broadcastLanLiveStatuses() {
-  const payload = Array.from(lanLiveStatuses.values());
-  for (const client of lanLiveStatusClients) {
+function broadcastLanLiveStatuses(changedRow = null) {
+  for (const [client, tournamentId] of lanLiveStatusClients) {
     try {
-      sendLanLiveStatusEvent(client, "live-status", payload);
+      sendLanLiveStatusEvent(client, "live-status", lanLiveStatusStore.list(tournamentId));
+      if (changedRow && (!tournamentId || changedRow.tournament_id === tournamentId)) {
+        sendLanLiveStatusEvent(client, "tatami.state.changed", changedRow);
+      }
     } catch {
       lanLiveStatusClients.delete(client);
     }
@@ -675,7 +678,7 @@ ipcMain.handle("lan:getServerStatus", () => {
     running: lanServer !== null,
     ip: getLocalIp(),
     port: 3000,
-    liveStatuses: Array.from(lanLiveStatuses.values()),
+    liveStatuses: lanLiveStatusStore.list(),
   };
 });
 
@@ -733,9 +736,22 @@ ipcMain.handle("lan:startServer", (event) => {
         return;
       }
 
+      // DISPLAY is read-only. Keep this before all routes so future writes are denied by default.
+      if (isDisplayRequest(req, requestUrl) && isWriteMethod(req.method)) {
+        res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ success: false, error: "DISPLAY chỉ có quyền xem" }));
+        return;
+      }
+
       if (req.method === "GET" && pathname === "/api/live-status") {
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ success: true, data: Array.from(lanLiveStatuses.values()) }));
+        res.end(JSON.stringify({ success: true, data: lanLiveStatusStore.list(requestUrl.searchParams.get("tournamentId")) }));
+        return;
+      }
+
+      if (req.method === "GET" && pathname === "/api/display/snapshot") {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ success: true, data: lanLiveStatusStore.snapshot(requestUrl.searchParams.get("tournamentId")) }));
         return;
       }
 
@@ -751,7 +767,7 @@ ipcMain.handle("lan:startServer", (event) => {
         return;
       }
 
-      if (req.method === "GET" && /^\/tv\/[A-Za-z0-9_-]+$/.test(pathname)) {
+      if (req.method === "GET" && (pathname === "/display" || /^\/tv\/[A-Za-z0-9_-]+$/.test(pathname))) {
         // The TV route is a single dashboard showing every active mat.
         try {
           const html = fs.readFileSync(path.join(__dirname, "public", "lan-tv.html"), "utf8");
@@ -771,8 +787,9 @@ ipcMain.handle("lan:startServer", (event) => {
           "X-Accel-Buffering": "no",
         });
         res.write("retry: 1500\n\n");
-        lanLiveStatusClients.add(res);
-        sendLanLiveStatusEvent(res, "live-status", Array.from(lanLiveStatuses.values()));
+        const tournamentId = requestUrl.searchParams.get("tournamentId");
+        lanLiveStatusClients.set(res, tournamentId || "");
+        sendLanLiveStatusEvent(res, "live-status", lanLiveStatusStore.list(tournamentId));
         const heartbeatId = setInterval(() => res.write(": heartbeat\n\n"), 10000);
         req.on("close", () => {
           clearInterval(heartbeatId);
@@ -796,20 +813,8 @@ ipcMain.handle("lan:startServer", (event) => {
               if (!/^[A-Za-z0-9_-]{1,32}$/.test(matId) || !data.current?.name) {
                 throw new Error("Thiếu mã thảm hoặc nội dung đang thi đấu");
               }
-              const liveRow = {
-                tournament_id: String(data.tournamentId || ""),
-                tournament_name: String(data.tournamentName || ""),
-                mat_id: matId,
-                data: {
-                  current: data.current,
-                  next: data.next || null,
-                  matchCode: data.matchCode || null,
-                  roundName: data.roundName || null,
-                },
-                updated_at: new Date().toISOString(),
-              };
-              lanLiveStatuses.set(matId, liveRow);
-              broadcastLanLiveStatuses();
+              const liveRow = lanLiveStatusStore.upsert(data);
+              broadcastLanLiveStatuses(liveRow);
               if (mainWindow) mainWindow.webContents.send("lan:live-status", liveRow);
               res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
               res.end(JSON.stringify({ success: true, data: liveRow }));
@@ -851,9 +856,9 @@ ipcMain.handle("lan:stopServer", () => {
       if (!window.isDestroyed()) window.close();
     }
     tvDisplayWindows.clear();
-    for (const client of lanLiveStatusClients) client.end();
+    for (const client of lanLiveStatusClients.keys()) client.end();
     lanLiveStatusClients.clear();
-    lanLiveStatuses.clear();
+    lanLiveStatusStore.clear();
     lanServer.close();
     lanServer = null;
     return { success: true };

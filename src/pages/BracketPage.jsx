@@ -26,6 +26,9 @@ import Bracket from "../components/Bracket/Bracket";
 import CompetitionMatchReport from "../components/MatchReport/CompetitionMatchReport";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
+import { BRONZE_MODES, resolveBronzeMode } from "../domain/bronzeMode.js";
+import { selectCategoryMedalists } from "../domain/bronzeMedalSelection.js";
+import { updateAuxiliaryMatchResult } from "../domain/bronzeIntegration.js";
 import "./BracketPage.css";
 
 const WKF_KATA_LIST = [
@@ -207,6 +210,22 @@ export default function BracketPage() {
 
     const cleanup = listenForMatchResult((result) => {
       if (result && result.matchId && result.winnerId) {
+        const isAuxiliary = (category.bracket.auxiliaryMatches || []).some((match) => match.id === result.matchId);
+        if (isAuxiliary) {
+          const auxiliaryResult = updateAuxiliaryMatchResult({
+            bracket: category.bracket,
+            matchId: result.matchId,
+            winnerId: result.winnerId,
+            score1: result.score1 || 0,
+            score2: result.score2 || 0,
+          });
+          if (auxiliaryResult.ok) {
+            dispatch({ type: ACTIONS.UPDATE_CATEGORY, payload: { id: category.id, bracket: auxiliaryResult.bracketCopy } });
+          } else {
+            console.error("[BRONZE] Auxiliary scoreboard result rejected", auxiliaryResult);
+          }
+          return;
+        }
         const updatedBracket = updateMatchResult(
           category.bracket,
           result.matchId,
@@ -345,8 +364,16 @@ export default function BracketPage() {
       setExporting(false);
     }
   };
+  const handleAuxiliaryMatchClick = (match) => {
+    if (match.operationalStatus !== "READY" || !match.athlete1 || !match.athlete2 || match.resultStatus === "UNDER_APPEAL") return;
+    openScoreboard(
+      match, category.type, category.name, tournament.name,
+      "Tranh huy chương đồng", tournament.schedule?.[category.id] || null,
+      tournament.sponsorLogos || null
+    );
+  };
   const handleExportScoreSheet = async () => {
-    const matches = category.bracket.matches.filter(
+    const matches = [...category.bracket.matches, ...(category.bracket.auxiliaryMatches || [])].filter(
       (m) => !m.isBye && m.athlete1 && m.athlete2
     );
     setExporting(true);
@@ -512,7 +539,9 @@ export default function BracketPage() {
   const finalMatch = category.bracket.matches.find(
     (m) => m.round === category.bracket.numRounds
   );
-  const champion = finalMatch?.winner;
+  const bronzeMode = resolveBronzeMode(category);
+  const selectedMedals = selectCategoryMedalists({ category, bracket: category.bracket });
+  const champion = selectedMedals.ok ? selectedMedals.medals.gold : finalMatch?.winner;
 
   // Tìm người thua chung kết (Bạc)
   const getLoser = (match) => {
@@ -522,20 +551,20 @@ export default function BracketPage() {
     return null;
   };
 
-  const silverMedalist = getLoser(finalMatch);
+  const silverMedalist = selectedMedals.ok ? selectedMedals.medals.silver : getLoser(finalMatch);
 
   // Tìm 2 người thua bán kết (Đồng)
   const semiFinalRound = category.bracket.numRounds - 1;
   const semiFinalMatches = category.bracket.matches.filter(
     (m) => m.round === semiFinalRound && !m.isBye
   );
-  const bronzeMedalists = semiFinalMatches
-    .map((m) => getLoser(m))
-    .filter((a) => a !== null);
+  const bronzeMedalists = selectedMedals.ok
+    ? [selectedMedals.medals.bronze1, selectedMedals.medals.bronze2].filter(Boolean)
+    : [];
 
   // Nếu chỉ có ít hơn 2 bronze từ bán kết, tìm thêm từ tứ kết
   // Trường hợp: 1 trận bán kết chỉ có 1 VĐV (auto-advance do BYE vòng trước)
-  if (bronzeMedalists.length < 2 && semiFinalRound > 1) {
+  if (bronzeMode === BRONZE_MODES.DUAL_BRONZE && bronzeMedalists.length < 2 && semiFinalRound > 1) {
     const quarterRound = semiFinalRound - 1;
     const quarterFinals = category.bracket.matches.filter(
       (m) => m.round === quarterRound && !m.isBye && m.winner
@@ -670,6 +699,57 @@ export default function BracketPage() {
             onSwapAthletes={handleSwapAthletes}
             dragEnabled={dragEnabled}
           />
+          {bronzeMode !== BRONZE_MODES.DUAL_BRONZE && (
+            <section className="auxiliary-bronze-section">
+              <div className="auxiliary-bronze-heading">
+                <span className="auxiliary-bronze-heading-icon">🥉</span>
+                <div>
+                  <h3>{bronzeMode === BRONZE_MODES.WKF_REPECHAGE ? "WKF Repechage" : "Tranh huy chương đồng"}</h3>
+                  <small>{bronzeMode === BRONZE_MODES.WKF_REPECHAGE ? "Hai nhánh tranh huy chương đồng" : "Một trận quyết định huy chương đồng"}</small>
+                </div>
+              </div>
+              {!((category.bracket.auxiliaryMatches || []).length) && (
+                <p className="auxiliary-bronze-empty">{bronzeMode === BRONZE_MODES.WKF_REPECHAGE ? "Nhánh Repechage sẽ xuất hiện khi trận chính hoàn tất." : "Trận B1 sẽ xuất hiện sau khi hai bán kết hoàn tất."}</p>
+              )}
+              {(category.bracket.auxiliaryMatches || []).map((match) => (
+                <button
+                  key={match.id}
+                  type="button"
+                  className="auxiliary-bronze-match"
+                  disabled={match.operationalStatus !== "READY" || match.resultStatus === "UNDER_APPEAL"}
+                  onClick={() => handleAuxiliaryMatchClick(match)}
+                >
+                  <span className="auxiliary-match-header">
+                    <strong>{match.matchCode || "B1"}</strong>
+                    <span className={`auxiliary-match-status ${match.winner ? "is-complete" : (match.operationalStatus === "READY" ? "is-ready" : "is-locked")}`}>
+                      {match.winner ? "Đã hoàn tất" : (match.operationalStatus === "READY" ? "Sẵn sàng" : "Tạm khóa")}
+                    </span>
+                  </span>
+                  <span className={`auxiliary-athlete-row ${match.winner?.id === match.athlete1?.id ? "is-winner" : ""}`}>
+                    <span className="auxiliary-athlete-corner">AKA</span>
+                    <span className="auxiliary-athlete-name">{match.athlete1?.name || "Chưa xác định"}</span>
+                    {match.winner?.id === match.athlete1?.id && <span className="auxiliary-winner-mark">✓</span>}
+                  </span>
+                  <span className={`auxiliary-athlete-row is-blue ${match.winner?.id === match.athlete2?.id ? "is-winner" : ""}`}>
+                    <span className="auxiliary-athlete-corner">AO</span>
+                    <span className="auxiliary-athlete-name">{match.athlete2?.name || "Chưa xác định"}</span>
+                    {match.winner?.id === match.athlete2?.id && <span className="auxiliary-winner-mark">✓</span>}
+                  </span>
+                  <span className="auxiliary-match-footer">
+                    {match.operationalStatus === "SUSPENDED_SOURCE_INCOMPLETE"
+                      ? "Thiếu kết quả trận nguồn"
+                      : (match.resultStatus === "UNDER_APPEAL" ? "Đang khiếu nại" : (match.winner ? `Thắng: ${match.winner.name}` : "Nhấn để mở bảng điểm"))}
+                  </span>
+                </button>
+              ))}
+              {(category.bracket.directBronzeAthletes || []).map((item) => (
+                <div className="auxiliary-direct-bronze" key={`${item.side}-${item.sourceMatchId}`}>
+                  <span>🥉 HCĐ trực tiếp · Nhánh {item.side}</span>
+                  <strong>{item.athlete?.name || "Chưa xác định"}</strong>
+                </div>
+              ))}
+            </section>
+          )}
           {/* Medal Table - Always visible, auto-update */}
           <div className="medal-table-container">
             <table className="medal-table">

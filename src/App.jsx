@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import { HashRouter as Router, Routes, Route } from "react-router-dom";
+import { HashRouter as Router, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { TournamentProvider } from "./context/TournamentContext";
-import { RoleProvider } from "./context/RoleContext";
+import { RoleProvider, ROLES, useRole } from "./context/RoleContext";
 import { OnboardingProvider, useOnboarding } from "./context/OnboardingContext";
 import RoleSelectPage from "./pages/RoleSelectPage";
 import HomePage from "./pages/HomePage";
@@ -15,6 +15,7 @@ import SchedulePage from "./pages/SchedulePage";
 import AthletesPage from "./pages/AthletesPage";
 import CertificatePage from "./pages/CertificatePage";
 import RefereesPage from "./pages/RefereesPage";
+import DisplayPage from "./pages/DisplayPage";
 import SmartFileRouter from "./components/SmartFileRouter/SmartFileRouter";
 import OnboardingChecklist, { NavHintBanner } from "./components/OnboardingChecklist/OnboardingChecklist";
 import WelcomePopup from "./components/OnboardingChecklist/WelcomePopup";
@@ -35,6 +36,11 @@ import appIcon from "./assets/icon.png";
 import "./index.css";
 
 const LICENSE_RECHECK_INTERVAL_MS = 60 * 1000;
+
+function BlockDisplayRoutes() {
+  const { role } = useRole();
+  return role === ROLES.DISPLAY ? <Navigate to="/display" replace /> : <Outlet />;
+}
 
 // Inner shell that reads sidebar state to apply layout class
 function AppShell({ children }) {
@@ -96,6 +102,7 @@ function App() {
                   {/* Role Selection */}
                   <Route path="/" element={<RoleSelectPage />} />
 
+                  <Route element={<BlockDisplayRoutes />}>
                   {/* Admin Routes */}
                   <Route
                     path="/admin"
@@ -189,6 +196,8 @@ function App() {
                       </LicenseGuard>
                     }
                   />
+                  </Route>
+                  <Route path="/display" element={<DisplayPage />} />
                 </Routes>
 
                 <footer className="app-footer">

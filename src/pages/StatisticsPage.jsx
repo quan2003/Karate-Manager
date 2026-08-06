@@ -19,6 +19,7 @@ import appIcon from "../assets/icon.png";
 import excelLogo from "../assets/excel-logo.svg";
 import wordLogo from "../assets/word-logo.svg";
 import "./StatisticsPage.css";
+import { getComputedCategoryResults, getSavedResultWarnings } from "../domain/bronzeIntegration.js";
 
 export default function StatisticsPage() {
   const { id } = useParams();
@@ -422,9 +423,10 @@ export default function StatisticsPage() {
 
     // Auto-compute từ bracket nếu có
     const cat = tournament.categories.find((c) => c.id === categoryId);
-    let computed = null;
+    const selectedMedals = cat?.bracket ? getComputedCategoryResults(cat) : null;
+    let computed = selectedMedals?.ok ? selectedMedals.results : null;
 
-    if (cat?.bracket?.matches) {
+    if (cat?.bracket?.matches && computed === undefined) {
       const bracket = cat.bracket;
       const finalMatch = bracket.matches.find(
         (m) => m.nextMatchId === null && m.round > 0
@@ -511,6 +513,9 @@ export default function StatisticsPage() {
     // Nếu chỉ có 1 trong 2 → trả về cái có
     if (!saved) return computed;
     if (!computed) return saved;
+
+    const savedWarnings = getSavedResultWarnings(cat, saved);
+    if (savedWarnings.length) computed = { ...computed, _warnings: savedWarnings };
 
     // Merge: ưu tiên saved (nếu có giá trị), fallback sang computed
     const fields = [
@@ -6420,6 +6425,11 @@ export default function StatisticsPage() {
                   </div>
                   <div className="result-form-group">
                     <label>🥉 HCĐ (2)</label>
+                    {cat?.bronze_mode === "SINGLE_BRONZE" && (resultForm.third2?.trim() || resultForm.club3b?.trim()) && (
+                      <div className="alert alert-warning">
+                        SINGLE_BRONZE chỉ có một HCĐ. Dữ liệu HCĐ thứ hai đã lưu được giữ nguyên nhưng không đồng bộ với kết quả B1.
+                      </div>
+                    )}
                     <input
                       type="text"
                       className="input"

@@ -32,6 +32,12 @@ import { useToast } from "../components/common/Toast";
 import { useOnboarding } from "../context/OnboardingContext";
 import { publishTournament, unpublishTournament, fetchTournamentById } from "../services/supabaseService";
 import { downloadAthleteImportTemplate } from "../services/athleteTemplateService";
+import { BRONZE_MODES, resolveBronzeMode } from "../domain/bronzeMode.js";
+import {
+  BRONZE_MODE_CHANGE_STATUSES,
+  guardBronzeModeChange,
+  isSingleBronzeCoreEnabled,
+} from "../domain/bronzeIntegration.js";
 import appIcon from "../assets/icon.png";
 import {
   createSmartChildState,
@@ -46,6 +52,7 @@ const categoryNameCollator = new Intl.Collator("vi", {
   sensitivity: "base",
   numeric: true,
 });
+const enableSingleBronzeCore = isSingleBronzeCoreEnabled();
 
 const normalizeCategorySortText = (value = "") =>
   String(value)
@@ -208,6 +215,7 @@ export default function TournamentPage() {
       weightClass: "",
       isTeam: false,
       format: "single_elimination",
+      bronze_mode: tournament?.default_bronze_mode || BRONZE_MODES.DUAL_BRONZE,
     });
     setShowModal(true);
   };
@@ -222,6 +230,9 @@ export default function TournamentPage() {
       weightClass: category.weightClass || "",
       isTeam: Boolean(category.isTeam),
       format: category.format || "single_elimination",
+      ...(Object.prototype.hasOwnProperty.call(category, "bronze_mode")
+        ? { bronze_mode: category.bronze_mode }
+        : {}),
     });
     setShowModal(true);
   };
@@ -233,6 +244,7 @@ export default function TournamentPage() {
     weightClass: "",
     isTeam: false,
     format: "single_elimination",
+    bronze_mode: BRONZE_MODES.DUAL_BRONZE,
   });
 
   // Filters
@@ -506,37 +518,55 @@ export default function TournamentPage() {
     e.preventDefault();
     if (!formData.name.trim()) return;
 
-    if (editingId) {
+    const submit = () => {
       dispatch({
-        type: ACTIONS.UPDATE_CATEGORY,
-        payload: {
-          id: editingId,
-          ...formData,
-        },
+        type: editingId ? ACTIONS.UPDATE_CATEGORY : ACTIONS.ADD_CATEGORY,
+        payload: editingId
+          ? { id: editingId, ...formData }
+          : { tournamentId: tournament.id, ...formData },
       });
-      toast.success("Đã cập nhật hạng mục!");
-    } else {
-      dispatch({
-        type: ACTIONS.ADD_CATEGORY,
-        payload: {
-          tournamentId: tournament.id,
-          ...formData,
-        },
+      toast.success(editingId ? "Đã cập nhật hạng mục!" : "Đã thêm hạng mục mới!");
+      setFormData({
+        name: "", type: "kumite", gender: "male", ageGroup: "", weightClass: "",
+        isTeam: false, format: "single_elimination", bronze_mode: BRONZE_MODES.DUAL_BRONZE,
       });
-      toast.success("Đã thêm hạng mục mới!");
-    }
+      setEditingId(null);
+      setShowModal(false);
+    };
 
-    setFormData({
-      name: "",
-      type: "kumite",
-      gender: "male",
-      ageGroup: "",
-      weightClass: "",
-      isTeam: false,
-      format: "single_elimination",
-    });
-    setEditingId(null);
-    setShowModal(false);
+    if (editingId && Object.prototype.hasOwnProperty.call(formData, "bronze_mode")) {
+      const existing = tournament.categories.find((category) => category.id === editingId);
+      const guard = guardBronzeModeChange({
+        category: existing,
+        requestedMode: formData.bronze_mode,
+        categoryResults: tournament.categoryResults?.[editingId],
+        singleEnabled: enableSingleBronzeCore,
+      });
+      if (guard.status === BRONZE_MODE_CHANGE_STATUSES.NO_CHANGE) {
+        const { bronze_mode: _unchangedMode, ...otherFields } = formData;
+        dispatch({ type: ACTIONS.UPDATE_CATEGORY, payload: { id: editingId, ...otherFields } });
+        toast.success("Đã cập nhật hạng mục!");
+        setEditingId(null);
+        setShowModal(false);
+        return;
+      }
+      if (!guard.ok) {
+        toast.error("Không thể đổi chế độ HCĐ: " + guard.status);
+        return;
+      }
+      if (guard.status === BRONZE_MODE_CHANGE_STATUSES.CONFIRM_BRACKET_EXISTS) {
+        setConfirmDialog({
+          open: true,
+          message: "Nội dung đã có sơ đồ. Đổi chế độ HCĐ nhưng giữ nguyên cây trận chính?",
+          onConfirm: () => {
+            setConfirmDialog({ open: false, message: "", onConfirm: null });
+            submit();
+          },
+        });
+        return;
+      }
+    }
+    submit();
   };
   const handleDeleteCategory = (categoryId) => {
     setConfirmDialog({
@@ -869,6 +899,12 @@ export default function TournamentPage() {
 
     try {
       const { categories, errors } = await parseCategoriesExcel(file);
+
+      if (!enableSingleBronzeCore && categories.some((category) => category.bronze_mode === BRONZE_MODES.SINGLE_BRONZE)) {
+        alert("Không thể import SINGLE_BRONZE: tính năng đang tắt trong bản chạy này.");
+        e.target.value = "";
+        return;
+      }
 
       if (errors.length > 0) {
         alert("Có lỗi khi đọc file:\n" + errors.join("\n"));
@@ -2347,6 +2383,24 @@ export default function TournamentPage() {
                 </option>
                 <option value="repechage">Có vòng đấu vớt (Repechage)</option>
               </select>
+            </div>
+
+            <div className="input-group">
+              <label className="input-label">Chế độ huy chương đồng</label>
+              <select
+                className="input"
+                value={formData.bronze_mode ?? resolveBronzeMode(tournament.categories.find((category) => category.id === editingId))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, bronze_mode: e.target.value }))}
+              >
+                <option value={BRONZE_MODES.DUAL_BRONZE}>Hai HCĐ (không có trận tranh HCĐ)</option>
+                {enableSingleBronzeCore && (
+                  <option value={BRONZE_MODES.SINGLE_BRONZE}>Một HCĐ (trận B1)</option>
+                )}
+                <option value={BRONZE_MODES.WKF_REPECHAGE}>WKF Repechage (RA/RB)</option>
+              </select>
+              {!enableSingleBronzeCore && editingId && resolveBronzeMode(tournament.categories.find((category) => category.id === editingId)) === BRONZE_MODES.SINGLE_BRONZE && (
+                <small>SINGLE_BRONZE chưa được bật trong bản chạy này; dữ liệu hiện có được giữ nguyên.</small>
+              )}
             </div>
 
             <div className="modal-actions">

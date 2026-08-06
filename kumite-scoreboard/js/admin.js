@@ -727,8 +727,8 @@ function blueWins() {
   }
 }
 
-function createDefaultHanteiState(judgeCount = 5) {
-  const count = Math.min(5, Math.max(1, Number.parseInt(judgeCount, 10) || 5));
+function createDefaultHanteiState() {
+  const count = 5;
   return {
     status: "idle",
     judgeCount: count,
@@ -740,7 +740,7 @@ function createDefaultHanteiState(judgeCount = 5) {
 }
 
 function normalizeHanteiState(value) {
-  const normalized = createDefaultHanteiState(value?.judgeCount);
+  const normalized = createDefaultHanteiState();
   if (!value || typeof value !== "object") return normalized;
 
   normalized.status = ["idle", "open", "confirmed"].includes(value.status)
@@ -807,21 +807,19 @@ function openHantei() {
     return;
   }
 
-  const judgeCount = state.hantei?.judgeCount || 5;
-  state.hantei = createDefaultHanteiState(judgeCount);
+  state.hantei = createDefaultHanteiState();
   state.hantei.status = "open";
   stopTimer();
   saveState();
   renderHanteiAdmin();
 }
 
-function setHanteiJudgeCount(value) {
+function selectHanteiQuickScore(akaFlags) {
   if (state.hantei?.status !== "open") return;
-  const judgeCount = Math.min(5, Math.max(1, Number.parseInt(value, 10) || 5));
-  state.hantei.judgeCount = judgeCount;
+  const akaCount = Math.min(4, Math.max(0, Number.parseInt(akaFlags, 10) || 0));
   state.hantei.votes = Array.from(
-    { length: judgeCount },
-    (_, index) => state.hantei.votes[index] || null
+    { length: 5 },
+    (_, index) => index < 4 ? (index < akaCount ? "aka" : "ao") : null
   );
   const counts = getHanteiCounts();
   state.hantei.akaFlags = counts.aka;
@@ -831,8 +829,10 @@ function setHanteiJudgeCount(value) {
 }
 
 function selectHanteiVote(index, side) {
-  if (state.hantei?.status !== "open" || index < 0 || index >= state.hantei.judgeCount) return;
-  state.hantei.votes[index] = state.hantei.votes[index] === side ? null : side;
+  if (state.hantei?.status !== "open" || index !== 4) return;
+  const assistantCounts = getHanteiCounts(state.hantei.votes.slice(0, 4));
+  if (assistantCounts.aka !== 2 || assistantCounts.ao !== 2) return;
+  state.hantei.votes[4] = side;
   const counts = getHanteiCounts();
   state.hantei.akaFlags = counts.aka;
   state.hantei.aoFlags = counts.ao;
@@ -842,7 +842,7 @@ function selectHanteiVote(index, side) {
 
 function clearHanteiVotes() {
   if (state.hantei?.status !== "open") return;
-  state.hantei.votes = Array(state.hantei.judgeCount).fill(null);
+  state.hantei.votes = Array(5).fill(null);
   state.hantei.akaFlags = 0;
   state.hantei.aoFlags = 0;
   saveState();
@@ -851,7 +851,7 @@ function clearHanteiVotes() {
 
 function cancelHantei() {
   if (state.hantei?.status !== "open") return;
-  state.hantei = createDefaultHanteiState(state.hantei.judgeCount);
+  state.hantei = createDefaultHanteiState();
   saveState();
   renderHanteiAdmin();
 }
@@ -859,14 +859,16 @@ function cancelHantei() {
 function confirmHanteiResult() {
   if (state.hantei?.status !== "open") return;
   const counts = getHanteiCounts();
-  const selectedCount = counts.aka + counts.ao;
+  const assistantCounts = getHanteiCounts(state.hantei.votes.slice(0, 4));
+  const assistantSelectedCount = assistantCounts.aka + assistantCounts.ao;
+  const needsChiefJudge = assistantCounts.aka === 2 && assistantCounts.ao === 2;
 
-  if (selectedCount !== state.hantei.judgeCount) {
-    alert("Vui l\u00f2ng nh\u1eadp \u0111\u1ee7 l\u1ef1a ch\u1ecdn c\u1ee7a c\u00e1c tr\u1ecdng t\u00e0i \u0111ang c\u1ea5u h\u00ecnh.");
+  if (assistantSelectedCount !== 4) {
+    alert("Vui l\u00f2ng ch\u1ecdn t\u1ef7 s\u1ed1 c\u1ee7a 4 tr\u1ecdng t\u00e0i ph\u1ee5.");
     return;
   }
-  if (counts.aka === counts.ao) {
-    alert("Ch\u01b0a th\u1ec3 x\u00e1c nh\u1eadn HANTEI v\u00ec s\u1ed1 c\u1edd c\u1ee7a AKA v\u00e0 AO \u0111ang b\u1eb1ng nhau.");
+  if (needsChiefJudge && !state.hantei.votes[4]) {
+    alert("T\u1ef7 s\u1ed1 4 tr\u1ecdng t\u00e0i ph\u1ee5 \u0111ang h\u00f2a 2\u20132. Vui l\u00f2ng ch\u1ecdn quy\u1ebft \u0111\u1ecbnh c\u1ee7a tr\u1ecdng t\u00e0i ch\u00ednh.");
     return;
   }
 
@@ -925,39 +927,49 @@ function renderHanteiAdmin() {
   document.getElementById("hanteiAoScore").textContent = state.aoScore;
   document.getElementById("hanteiScoreAka").textContent = state.akaScore;
   document.getElementById("hanteiScoreAo").textContent = state.aoScore;
-  document.getElementById("hanteiJudgeCount").value = String(hantei.judgeCount);
-
   const counts = getHanteiCounts(hantei.votes);
   document.getElementById("hanteiAkaFlags").textContent = counts.aka;
   document.getElementById("hanteiAoFlags").textContent = counts.ao;
 
   const list = document.getElementById("hanteiVoteList");
   list.innerHTML = "";
-  hantei.votes.forEach((vote, index) => {
-    const judge = document.createElement("div");
-    judge.className = "hantei-judge";
+  const assistantCounts = getHanteiCounts(hantei.votes.slice(0, 4));
+  const selectedQuickScore = assistantCounts.aka + assistantCounts.ao === 4
+    ? assistantCounts.aka
+    : null;
+  const quickScores = document.createElement("div");
+  quickScores.className = "hantei-quick-scores";
+  [4, 3, 2, 1, 0].forEach((akaFlags) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "hantei-quick-score" + (selectedQuickScore === akaFlags ? " selected" : "");
+    button.innerHTML = `<span class="aka-count">${akaFlags}</span><small>&ndash;</small><span class="ao-count">${4 - akaFlags}</span>`;
+    button.setAttribute("aria-label", `AKA ${akaFlags}, AO ${4 - akaFlags}`);
+    button.setAttribute("aria-pressed", String(selectedQuickScore === akaFlags));
+    button.onclick = () => selectHanteiQuickScore(akaFlags);
+    quickScores.appendChild(button);
+  });
+  list.appendChild(quickScores);
 
-    const label = document.createElement("span");
-    label.className = "hantei-judge-label";
-    label.textContent = hantei.judgeCount === 5 && index === 4
-      ? "Tr\u1ecdng t\u00e0i ch\u00ednh"
-      : "Tr\u1ecdng t\u00e0i " + (index + 1);
-
+  if (selectedQuickScore === 2) {
+    const chief = document.createElement("div");
+    chief.className = "hantei-chief-choice";
+    const label = document.createElement("strong");
+    label.textContent = "H\u00d2A 2\u20132 \u2022 TR\u1eccNG T\u00c0I CH\u00cdNH QUY\u1ebeT \u0110\u1ecaNH";
     const options = document.createElement("div");
     options.className = "hantei-judge-options";
     ["aka", "ao"].forEach((side) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "hantei-vote " + side + (vote === side ? " selected" : "");
+      button.className = "hantei-vote " + side + (hantei.votes[4] === side ? " selected" : "");
       button.textContent = side.toUpperCase();
-      button.setAttribute("aria-pressed", String(vote === side));
-      button.onclick = () => selectHanteiVote(index, side);
+      button.setAttribute("aria-pressed", String(hantei.votes[4] === side));
+      button.onclick = () => selectHanteiVote(4, side);
       options.appendChild(button);
     });
-
-    judge.append(label, options);
-    list.appendChild(judge);
-  });
+    chief.append(label, options);
+    list.appendChild(chief);
+  }
 
 }
 // Penalty functions

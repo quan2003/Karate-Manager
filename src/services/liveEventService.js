@@ -2,6 +2,7 @@ import {
   updateMatchResult as applyMatchResultToBracket,
   disqualifyAthlete,
 } from "../utils/drawEngine.js";
+import { updateAuxiliaryMatchResult } from "../domain/bronzeIntegration.js";
 
 const LIVE_TIMEOUT_MS = 3000;
 
@@ -27,7 +28,9 @@ function participantName(participant) {
 }
 
 function getCategoryMatches(category) {
-  return category?.bracket?.matches || category?.matches || [];
+  return category?.bracket
+    ? [...(category.bracket.matches || []), ...(category.bracket.auxiliaryMatches || [])]
+    : category?.matches || [];
 }
 
 function getResolvedCategoryMatches(category, matchResults = []) {
@@ -57,7 +60,21 @@ function getResolvedCategoryMatches(category, matchResults = []) {
       );
     }
   });
-  return bracket.matches;
+  (bracket.auxiliaryMatches || [])
+    .map((match) => ({ match, result: resultById.get(match.id) }))
+    .filter(({ result }) => result?.winnerId)
+    .sort((left, right) => Number(left.match.sequence) - Number(right.match.sequence))
+    .forEach(({ match, result }) => {
+      const updated = updateAuxiliaryMatchResult({
+        bracket,
+        matchId: match.id,
+        winnerId: result.winnerId,
+        score1: result.score1,
+        score2: result.score2,
+      });
+      if (updated.ok) bracket = updated.bracketCopy;
+    });
+  return [...bracket.matches, ...(bracket.auxiliaryMatches || [])];
 }
 
 function getResultMap(matchResults = []) {
@@ -243,11 +260,15 @@ export function getCategoryLiveQueue(matchData, currentCategory, options = {}) {
   const next = nextEntry
     ? makeQueueEntry(nextEntry.category, nextEntry.match, schedule[nextEntry.category.id])
     : null;
+  const waitingMatches = currentIndex >= 0
+    ? pendingEntries.slice(currentIndex + 2).map((entry) => makeQueueEntry(entry.category, entry.match, schedule[entry.category.id]))
+    : [];
 
   return {
     matId,
     current,
     next,
+    waitingMatches,
   };
 }
 
@@ -269,6 +290,7 @@ export async function publishLiveStatus(adminIp, matchData, currentCategory, ext
         matId: queue.matId,
         current: queue.current,
         next: queue.next,
+        waitingMatches: queue.waitingMatches,
         matchCode: queue.current?.matchCode || extra.matchCode || null,
         roundName: extra.roundName || null,
       }),

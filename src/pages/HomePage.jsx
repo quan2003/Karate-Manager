@@ -21,7 +21,11 @@ import DateTimeInput from "../components/common/DateTimeInput";
 import BackupManager from "../components/BackupManager/BackupManager";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
+import { BRONZE_MODES } from "../domain/bronzeMode.js";
+import { isSingleBronzeCoreEnabled } from "../domain/bronzeIntegration.js";
 import "./HomePage.css";
+
+const enableSingleBronzeCore = isSingleBronzeCoreEnabled();
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -47,6 +51,8 @@ export default function HomePage() {
     startDate: new Date().toISOString().split("T")[0],
     endDate: new Date().toISOString().split("T")[0],
     location: "",
+    default_bronze_mode: BRONZE_MODES.DUAL_BRONZE,
+    defaultEligibilityPolicy: { version: 1 },
   });
 
   // KRT Form Data
@@ -75,6 +81,8 @@ export default function HomePage() {
       startDate: new Date().toISOString().split("T")[0],
       endDate: new Date().toISOString().split("T")[0],
       location: "",
+      default_bronze_mode: BRONZE_MODES.DUAL_BRONZE,
+      defaultEligibilityPolicy: { version: 1 },
     });
     setEditingTournament(null);
   };
@@ -93,6 +101,12 @@ export default function HomePage() {
           tournament.date ||
           new Date().toISOString().split("T")[0],
         location: tournament.location || "",
+        ...(Object.prototype.hasOwnProperty.call(tournament, "default_bronze_mode")
+          ? { default_bronze_mode: tournament.default_bronze_mode }
+          : {}),
+        ...(Object.prototype.hasOwnProperty.call(tournament, "defaultEligibilityPolicy")
+          ? { defaultEligibilityPolicy: tournament.defaultEligibilityPolicy }
+          : {}),
       });
     } else {
       resetForm();
@@ -829,6 +843,45 @@ export default function HomePage() {
                 placeholder="VD: Nhà thi đấu Quốc gia"
               />
             </div>
+            <div className="input-group">
+              <label className="input-label">Chế độ huy chương đồng</label>
+              <select
+                className="input"
+                value={formData.default_bronze_mode ?? BRONZE_MODES.DUAL_BRONZE}
+                onChange={(e) => setFormData((prev) => ({ ...prev, default_bronze_mode: e.target.value }))}
+              >
+                <option value={BRONZE_MODES.DUAL_BRONZE}>Hai HCĐ — không có trận tranh HCĐ</option>
+                {enableSingleBronzeCore && (
+                  <option value={BRONZE_MODES.SINGLE_BRONZE}>Một HCĐ — có trận B1</option>
+                )}
+                <option value={BRONZE_MODES.WKF_REPECHAGE}>WKF Repechage — hai nhánh RA/RB</option>
+              </select>
+              <small>Hạng mục tạo mới hoặc import không ghi chế độ riêng sẽ kế thừa lựa chọn này.</small>
+            </div>
+            {(formData.default_bronze_mode ?? BRONZE_MODES.DUAL_BRONZE) === BRONZE_MODES.WKF_REPECHAGE && (
+              <div className="form-row">
+                {[['withdrawal_during_match', 'Bỏ cuộc trong trận'], ['forfeit', 'Xử thua']].map(([key, label]) => (
+                  <div className="input-group" key={key}>
+                    <label className="input-label">{label}</label>
+                    <select
+                      className="input"
+                      value={formData.defaultEligibilityPolicy?.[key] || "NEEDS_VERIFICATION"}
+                      onChange={(e) => setFormData((prev) => ({
+                        ...prev,
+                        defaultEligibilityPolicy: {
+                          ...(prev.defaultEligibilityPolicy || { version: 1 }),
+                          [key]: e.target.value === "NEEDS_VERIFICATION" ? undefined : e.target.value,
+                        },
+                      }))}
+                    >
+                      <option value="NEEDS_VERIFICATION">Cần xác minh</option>
+                      <option value="ELIGIBLE">Đủ điều kiện Repechage</option>
+                      <option value="INELIGIBLE">Không đủ điều kiện</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="modal-actions">
               <button
                 type="button"

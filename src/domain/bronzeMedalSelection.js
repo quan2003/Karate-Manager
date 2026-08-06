@@ -125,11 +125,41 @@ export function selectSingleBronzeMedalists({ categoryId, bracket }) {
   return ready(BRONZE_MODES.SINGLE_BRONZE, final.gold, final.silver, outcome.winner, null, { finalMatchId: final.finalMatch.id, bronzeMatchIds: [match.id] });
 }
 
+export function selectWkfRepechageMedalists({ bracket }) {
+  const final = getFinalResult(bracket);
+  if (!final.ok) return final;
+  const direct = Array.isArray(bracket?.directBronzeAthletes) ? bracket.directBronzeAthletes : [];
+  const auxiliary = Array.isArray(bracket?.auxiliaryMatches) ? bracket.auxiliaryMatches : [];
+  const bronzes = [];
+  const sourceIds = [];
+  for (const side of ["A", "B"]) {
+    const directForSide = direct.find((item) => item?.side === side && athleteId(item?.athlete));
+    if (directForSide) {
+      bronzes.push(directForSide.athlete);
+      sourceIds.push(directForSide.sourceMatchId || null);
+      continue;
+    }
+    const branch = auxiliary
+      .filter((match) => match?.repechageSide === side && match?.stageType === "REPECHAGE")
+      .sort((left, right) => Number(right.sequence) - Number(left.sequence));
+    if (!branch.length) return fail(MEDAL_SELECTION_STATUSES.NOT_READY, { reason: "REPECHAGE_BRANCH_NOT_READY", side });
+    const last = branch[0];
+    if (last.resultStatus === "UNDER_APPEAL") return fail(MEDAL_SELECTION_STATUSES.LOCKED_UNDER_APPEAL, { blockingMatchIds: [last.id] });
+    if (!last.winner) return fail(MEDAL_SELECTION_STATUSES.NOT_READY, { reason: "REPECHAGE_FINAL_PENDING", side });
+    const outcome = getMatchLoser(last);
+    if (!outcome.ok) return outcome;
+    bronzes.push(outcome.winner);
+    sourceIds.push(last.id);
+  }
+  return ready(BRONZE_MODES.WKF_REPECHAGE, final.gold, final.silver, bronzes[0], bronzes[1], { finalMatchId: final.finalMatch.id, bronzeMatchIds: sourceIds });
+}
+
 export function selectCategoryMedalists({ category, bracket }) {
   let mode;
   try { mode = resolveBronzeMode(category); }
   catch (error) { return fail(MEDAL_SELECTION_STATUSES.INVALID_RESULT, { reason: "INVALID_BRONZE_MODE", message: error.message }); }
   if (mode === BRONZE_MODES.DUAL_BRONZE) return selectDualBronzeMedalists({ bracket });
   if (mode === BRONZE_MODES.SINGLE_BRONZE) return selectSingleBronzeMedalists({ categoryId: category?.id, bracket });
+  if (mode === BRONZE_MODES.WKF_REPECHAGE) return selectWkfRepechageMedalists({ bracket });
   return fail(MEDAL_SELECTION_STATUSES.UNSUPPORTED_IN_PHASE_3, { mode });
 }

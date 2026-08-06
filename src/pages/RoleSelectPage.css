@@ -201,6 +201,9 @@
   box-shadow: 0 10px 24px rgba(16, 185, 129, 0.24);
 }
 
+.display-icon { background: linear-gradient(135deg, #0ea5e9, #2563eb); box-shadow: 0 10px 24px rgba(37, 99, 235, .24); }
+.display-btn { background: linear-gradient(135deg, #0ea5e9, #2563eb); color: #fff; }
+
 .role-card:hover .role-icon {
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.22));
   transform: scale(1.08);

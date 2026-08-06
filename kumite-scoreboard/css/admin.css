@@ -906,10 +906,48 @@ body {
 .hantei-toolbar span { color: #aeb5ca; font-size: 13px; }
 
 .hantei-vote-list {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(110px, 1fr));
-  gap: 8px;
+  display: block;
   padding: 0 22px 14px;
+}
+
+.hantei-quick-scores {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(90px, 1fr));
+  gap: 10px;
+}
+
+.hantei-quick-score {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 58px;
+  color: white;
+  background: #20263b;
+  border: 2px solid #515a75;
+  border-radius: 9px;
+  font-size: 25px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.hantei-quick-score:hover { border-color: #e8aa0b; background: #292f46; }
+.hantei-quick-score.selected { border-color: #ffc329; background: #4b390c; box-shadow: 0 0 0 2px rgba(255, 195, 41, 0.18); }
+.hantei-quick-score .aka-count { color: #ff7180; }
+.hantei-quick-score .ao-count { color: #66b5ff; }
+.hantei-quick-score small { color: #cbd1e3; font-size: 17px; }
+
+.hantei-chief-choice {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(260px, 1fr);
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 12px;
+  color: #ffd35d;
+  background: #25200f;
+  border: 1px solid #8c6b19;
+  border-radius: 9px;
 }
 
 .hantei-judge {
@@ -976,7 +1014,9 @@ body {
 @media (max-width: 760px) {
   .hantei-competitors { grid-template-columns: 1fr 1fr; }
   .hantei-score-summary { grid-column: 1 / -1; grid-row: 2; }
-  .hantei-vote-list { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
+  .hantei-quick-scores { grid-template-columns: repeat(5, minmax(55px, 1fr)); gap: 5px; }
+  .hantei-quick-score { min-height: 50px; gap: 4px; font-size: 20px; }
+  .hantei-chief-choice { grid-template-columns: 1fr; }
   .hantei-dialog-actions { grid-template-columns: 1fr; }
   .hantei-toolbar { flex-wrap: wrap; }
 }

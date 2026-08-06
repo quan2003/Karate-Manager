@@ -289,13 +289,11 @@ export function createSingleBronzePlan({ categoryId, bracket }) {
     blockingMatchIds: uniqueSorted(directAppeals.map(([match]) => match.id)),
     blockingSides: uniqueSorted(directAppeals.map(([, side]) => side)),
   });
-  const split = splitFinalistBranches(bracket);
-  if (!split.ok) return split;
-  const outcomeA = getValidMatchOutcome(split.branchA.semiFinalMatch), outcomeB = getValidMatchOutcome(split.branchB.semiFinalMatch);
+  const outcomeA = getValidMatchOutcome(validated.sideA), outcomeB = getValidMatchOutcome(validated.sideB);
   const blocking = [outcomeA, outcomeB].filter((x) => !x.ok && x.status === "UNDER_APPEAL").map((x) => x.matchId);
   if (blocking.length) return failure("LOCKED_UNDER_APPEAL", { blockingMatchIds: uniqueSorted(blocking), blockingSides: [!outcomeA.ok ? "A" : null, !outcomeB.ok ? "B" : null].filter(Boolean) });
   if (!outcomeA.ok || !outcomeB.ok || !outcomeA.loser || !outcomeB.loser) return failure("NOT_READY", { diagnostics: [outcomeA, outcomeB] });
-  const desired = auxiliaryMatch({ categoryId, mode: BRONZE_MODES.SINGLE_BRONZE, side: null, sequence: 1, matchCode: "B1", stageType: AUXILIARY_STAGE_TYPES.BRONZE, athlete1: outcomeA.loser, athlete2: outcomeB.loser, athlete1Source: { type: SLOT_SOURCE_TYPES.LOSER_OF_MAIN_MATCH, matchId: split.branchA.semiFinalMatch.id }, athlete2Source: { type: SLOT_SOURCE_TYPES.LOSER_OF_MAIN_MATCH, matchId: split.branchB.semiFinalMatch.id }, policyVersion: null });
+  const desired = auxiliaryMatch({ categoryId, mode: BRONZE_MODES.SINGLE_BRONZE, side: null, sequence: 1, matchCode: "B1", stageType: AUXILIARY_STAGE_TYPES.BRONZE, athlete1: outcomeA.loser, athlete2: outcomeB.loser, athlete1Source: { type: SLOT_SOURCE_TYPES.LOSER_OF_MAIN_MATCH, matchId: validated.sideA.id }, athlete2Source: { type: SLOT_SOURCE_TYPES.LOSER_OF_MAIN_MATCH, matchId: validated.sideB.id }, policyVersion: null });
   return { ok: true, mode: BRONZE_MODES.SINGLE_BRONZE, desiredMatches: [desired], directBronzeAthletes: [] };
 }
 

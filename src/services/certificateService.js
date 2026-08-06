@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { getAppBaseUrl } from "./pdfService";
 import { getTeamsFromAthletes } from "../utils/teamDraw";
+import { getComputedCategoryResults } from "../domain/bronzeIntegration.js";
 
 /**
  * Certificate Service
@@ -19,6 +20,11 @@ function computeBracketResults(cat) {
   const bracket = cat?.bracket;
   if (!bracket?.matches) return null;
 
+  const selected = getComputedCategoryResults(cat);
+  if (selected.ok) return selected.results;
+  return null;
+
+  /* Legacy reference retained for compatibility audit; selector above is authoritative. */
   const finalMatch = bracket.matches.find(
     (m) => m.round === bracket.numRounds
   );

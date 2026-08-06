@@ -63,6 +63,8 @@ export function createKmatchData(tournament, categories, settings = {}, targetRo
         id: cat.id,
         name: cat.name,
         type: cat.type || "kumite",
+        bronze_mode: cat.bronze_mode,
+        eligibilityPolicy: cat.eligibilityPolicy || null,
         athletes: cat.athletes || [],
         bracket,
         matches: extractMatchesFromBracket(bracket) || [],
@@ -114,6 +116,18 @@ function createCleanKmatchBracket(bracket) {
     return cleanMatch;
   });
 
+  cleanBracket.auxiliaryMatches = (cleanBracket.auxiliaryMatches || []).map((match) => {
+    const cleanMatch = { ...match, score1: null, score2: null, winner: null, resultStatus: null };
+    for (const slot of [1, 2]) {
+      if (cleanMatch[`athlete${slot}Source`]?.type === "WINNER_OF_AUXILIARY_MATCH") {
+        cleanMatch[`athlete${slot}`] = null;
+      }
+    }
+    const ready = cleanMatch.athlete1 && cleanMatch.athlete2;
+    cleanMatch.operationalStatus = ready ? "READY" : "SUSPENDED_SOURCE_INCOMPLETE";
+    return cleanMatch;
+  });
+
   cleanBracket.matches.forEach((match) => {
     if (match.isBye && match.round === 1) {
       const byeWinner = match.athlete1 || match.athlete2;
@@ -146,10 +160,13 @@ function extractMatchesFromBracket(bracket) {
 
   // Support for new flat structure (drawEngine.js)
   if (bracket.matches && Array.isArray(bracket.matches)) {
-    return bracket.matches.map((match) => ({
+    return [...bracket.matches, ...(bracket.auxiliaryMatches || [])].map((match) => ({
       id: match.id,
       round: match.round,
       matchNumber: match.matchNumber,
+      matchCode: match.matchCode,
+      stageType: match.stageType || null,
+      operationalStatus: match.operationalStatus || null,
       athlete1: match.athlete1,
       athlete2: match.athlete2,
       winner: match.winner,

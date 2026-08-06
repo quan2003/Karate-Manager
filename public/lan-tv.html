@@ -35,7 +35,7 @@
 </head>
 <body>
   <main class="screen">
-    <header><div class="brand-lockup"><img class="brand-logo" src="/assets/ksport-logo.png" alt="Logo K-SPORT"><div class="brand">K-SPORT LIVE</div></div><div class="summary" id="summary">ĐANG KẾT NỐI</div></header>
+    <header><div class="brand-lockup"><img class="brand-logo" src="/assets/ksport-logo.png" alt="Logo K-SPORT"><div class="brand">K-SPORT LIVE</div></div><button class="page-button" id="fullscreen" type="button" aria-label="Toàn màn hình" title="Toàn màn hình">⛶</button><div class="summary" id="summary">ĐANG KẾT NỐI</div></header>
     <section class="mats" id="mats" aria-live="polite"><div class="waiting"><strong>Đang chờ dữ liệu các thảm...</strong><span>Các máy Thư ký sẽ tự động xuất hiện tại đây</span></div></section>
     <footer>
       <div id="connection"><span class="status-dot"></span><span id="status">Đang kết nối máy Admin</span></div>
@@ -58,6 +58,8 @@
     let currentPage = 0;
     let lastPageChange = Date.now();
     let streamConnected = false;
+    const tournamentId = new URLSearchParams(location.search).get('tournamentId') || '';
+    const tournamentQuery = tournamentId ? `?tournamentId=${encodeURIComponent(tournamentId)}` : '';
 
     function text(value) {
       return String(value == null ? '' : value).normalize('NFC')
@@ -149,6 +151,7 @@
       const data = row.data || {};
       const current = data.current || {};
       const next = data.next || {};
+      const waiting = Array.isArray(data.waitingMatches) ? data.waitingMatches : [];
       const currentTitle = current.name || 'Đang chờ Thư ký cập nhật...';
       const nextTitle = next.name || 'Không còn trận tiếp theo';
       const currentParticipantsMarkup = participantMarkup(current, 'current-participants');
@@ -167,7 +170,7 @@
           ${currentParticipantsMarkup}
           <div class="meta" title="${text(meta)}">${text(meta)}</div>
         </div>
-        <div class="nextbox ${next.name ? '' : 'empty'}"><div class="label">Nội dung tiếp theo</div><div class="next-title ${next.name ? '' : 'empty-text'}" title="${text(nextTitle)}">${text(nextTitle)}</div>${nextParticipantsMarkup}</div>`;
+        <div class="nextbox ${next.name ? '' : 'empty'}"><div class="label">Nội dung tiếp theo</div><div class="next-title ${next.name ? '' : 'empty-text'}" title="${text(nextTitle)}">${text(nextTitle)}</div>${nextParticipantsMarkup}${waiting.length ? `<div class="meta" title="${text(waiting.map(item => item.name).join(' • '))}">Đang chờ: ${text(waiting.slice(0, 3).map(item => item.name).join(' • '))}${waiting.length > 3 ? ` • +${waiting.length - 3}` : ''}</div>` : ''}</div>`;
     }
 
     function animateReorder(previousPositions) {
@@ -243,20 +246,41 @@
       render();
     }
 
+    function snapshotToRows(snapshot) {
+      return (snapshot?.tatamis || []).map(tatami => ({
+        tournament_id: snapshot.tournamentId,
+        tournament_name: tatami.tournamentName || '',
+        mat_id: tatami.tatamiId,
+        version: tatami.version,
+        updated_at: tatami.updatedAt,
+        data: { current: tatami.currentMatch, next: tatami.nextMatch, waitingMatches: tatami.waitingMatches, matchCode: tatami.matchCode, roundName: tatami.roundName }
+      }));
+    }
+
+    function applyTatamiChange(row) {
+      if (!row || (tournamentId && row.tournament_id !== tournamentId)) return;
+      const index = rows.findIndex(item => String(item.mat_id) === String(row.mat_id) && item.tournament_id === row.tournament_id);
+      if (index >= 0 && Number(row.version || 0) <= Number(rows[index].version || 0)) return;
+      const nextRows = [...rows];
+      if (index >= 0) nextRows[index] = row; else nextRows.push(row);
+      applyRows(nextRows);
+    }
+
     async function refresh() {
       try {
-        const response = await fetch('/api/live-status', { cache: 'no-store' });
+        const response = await fetch(`/api/display/snapshot${tournamentQuery}`, { cache: 'no-store', headers: { 'X-K-Sport-Role': 'display' } });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const result = await response.json();
-        applyRows(result.data || []);
+        applyRows(snapshotToRows(result.data));
         if (!streamConnected) setConnection(true, 'Đã kết nối máy Admin • chế độ dự phòng');
       } catch { if (!streamConnected) setConnection(false, 'Mất kết nối máy Admin — đang thử lại'); }
     }
 
     function connectStream() {
-      const stream = new EventSource('/api/live-status/events');
-      stream.addEventListener('open', () => { streamConnected = true; setConnection(true, 'Đồng bộ trực tiếp với máy Admin'); });
-      stream.addEventListener('live-status', event => { try { applyRows(JSON.parse(event.data)); } catch { /* chờ sự kiện kế tiếp */ } });
+      const stream = new EventSource(`/api/live-status/events${tournamentQuery}`);
+      stream.addEventListener('open', () => { streamConnected = true; setConnection(true, 'Đồng bộ trực tiếp với máy Admin'); refresh(); });
+      stream.addEventListener('live-status', event => { if (!rows.length) try { applyRows(JSON.parse(event.data)); } catch { /* snapshot/reconnect sẽ khôi phục */ } });
+      stream.addEventListener('tatami.state.changed', event => { try { applyTatamiChange(JSON.parse(event.data)); } catch { /* snapshot khi reconnect sẽ khôi phục */ } });
       stream.addEventListener('error', () => { streamConnected = false; setConnection(false, 'Đang kết nối lại máy Admin...'); });
     }
 
@@ -271,6 +295,9 @@
 
     document.getElementById('prev-page').addEventListener('click', () => setPage(currentPage - 1));
     document.getElementById('next-page').addEventListener('click', () => setPage(currentPage + 1));
+    document.getElementById('fullscreen').addEventListener('click', async () => {
+      try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); else await document.exitFullscreen(); } catch { /* trình duyệt có thể chặn fullscreen */ }
+    });
     window.addEventListener('resize', () => { currentPage = 0; render(); });
     setInterval(() => { document.getElementById('clock').textContent = new Date().toLocaleString('vi-VN'); }, 1000);
     setInterval(render, 3000);

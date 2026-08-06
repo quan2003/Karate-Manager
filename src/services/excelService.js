@@ -639,9 +639,14 @@ export function parseCategoriesExcel(file) {
             .toLowerCase();
           const ageGroup = String(row[4] || "").trim();
           const weightClass = String(row[5] || "").trim();
+          const bronzeModeRaw = String(row[6] || "").trim().toUpperCase();
 
           if (!name) {
             errors.push(`Dòng ${i + 1}: Thiếu tên hạng mục`);
+            continue;
+          }
+          if (bronzeModeRaw && !["DUAL_BRONZE", "SINGLE_BRONZE", "WKF_REPECHAGE"].includes(bronzeModeRaw)) {
+            errors.push(`Dòng ${i + 1}: Chế độ HCĐ phải là DUAL_BRONZE, SINGLE_BRONZE hoặc WKF_REPECHAGE`);
             continue;
           }
 
@@ -685,6 +690,7 @@ export function parseCategoriesExcel(file) {
             ageGroup,
             weightClass: type === "kumite" ? weightClass : "",
             format: "single_elimination",
+            ...(bronzeModeRaw ? { bronze_mode: bronzeModeRaw } : {}),
           });
         }
 
@@ -725,6 +731,7 @@ export function generateCategoriesTemplate() {
       "Giới tính",
       "Lứa tuổi",
       "Hạng cân",
+      "Chế độ HCĐ",
     ],
     // KATA cá nhân
     ["Kata cá nhân Nam (6-8 tuổi)", "Kata", "Cá nhân", "Nam", "6-8 tuổi", ""],

@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { isTrialLicense, getCurrentLicense } from "./licenseService";
+import { BRONZE_MODES, resolveBronzeMode } from "../domain/bronzeMode.js";
 
 /**
  * PDF Export Service - Client-side
@@ -1342,13 +1343,27 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
   }
   html += `</div></div>`; // end rounds & bracket-area
 
+  if ((bracket.auxiliaryMatches || []).length || (bracket.directBronzeAthletes || []).length) {
+    html += `<div style="margin:12px 0;padding:10px;border:1px solid #cbd5e1;border-radius:8px;">`;
+    html += `<div style="font-weight:700;margin-bottom:6px;">TRẬN PHỤ HUY CHƯƠNG ĐỒNG / REPECHAGE</div>`;
+    (bracket.auxiliaryMatches || []).forEach((match) => {
+      html += `<div style="display:flex;gap:12px;padding:4px 0;"><strong>${match.matchCode || ""}</strong><span>${match.athlete1?.name || "Chưa xác định"} - ${match.athlete2?.name || "Chưa xác định"}</span></div>`;
+    });
+    (bracket.directBronzeAthletes || []).forEach((item) => {
+      html += `<div style="padding:4px 0;"><strong>HCĐ trực tiếp nhánh ${item.side || ""}:</strong> ${item.athlete?.name || "Chưa xác định"}</div>`;
+    });
+    html += `</div>`;
+  }
+
   // Medal Table
   html += `<div class="pdf-medal-table">`;
   html += `<div class="pdf-medal-header">KẾT QUẢ</div>`;
   html += `<div class="pdf-medal-row"><span class="pdf-medal-label">1.</span><span class="pdf-medal-name">...................................</span></div>`;
   html += `<div class="pdf-medal-row"><span class="pdf-medal-label">2.</span><span class="pdf-medal-name">...................................</span></div>`;
   html += `<div class="pdf-medal-row"><span class="pdf-medal-label">3.</span><span class="pdf-medal-name">...................................</span></div>`;
-  html += `<div class="pdf-medal-row"><span class="pdf-medal-label">3.</span><span class="pdf-medal-name">...................................</span></div>`;
+  if (resolveBronzeMode(category) !== BRONZE_MODES.SINGLE_BRONZE) {
+    html += `<div class="pdf-medal-row"><span class="pdf-medal-label">3.</span><span class="pdf-medal-name">...................................</span></div>`;
+  }
   html += `</div>`;
 
   html += `</div>`; // end content

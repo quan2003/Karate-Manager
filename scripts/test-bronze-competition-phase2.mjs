@@ -287,6 +287,14 @@ test("SINGLE creates exactly B1", () => {
   const plan = createSingleBronzePlan({ categoryId: fourAthleteFixture.categoryId, bracket: fourAthleteFixture.bracket });
   equal(plan.desiredMatches.length, 1); equal(plan.desiredMatches[0].matchCode, "B1"); equal(plan.desiredMatches[0].stageType, AUXILIARY_STAGE_TYPES.BRONZE);
 });
+test("SINGLE creates B1 before the final is completed", () => {
+  const bracket = clone(fourAthleteFixture.bracket);
+  const finalMatch = bracket.matches.find((match) => match.nextMatchId === null);
+  finalMatch.winner = null;
+  finalMatch.resultStatus = null;
+  const plan = createSingleBronzePlan({ categoryId: fourAthleteFixture.categoryId, bracket });
+  equal(plan.ok, true); equal(plan.desiredMatches.length, 1); equal(plan.desiredMatches[0].matchCode, "B1");
+});
 test("SINGLE B1 sources are semifinal losers", () => {
   const plan = createSingleBronzePlan({ categoryId: eightAthleteFixture.categoryId, bracket: eightAthleteFixture.bracket });
   equal(plan.desiredMatches[0].athlete1Source.type, SLOT_SOURCE_TYPES.LOSER_OF_MAIN_MATCH); equal(plan.desiredMatches[0].athlete2Source.type, SLOT_SOURCE_TYPES.LOSER_OF_MAIN_MATCH);
