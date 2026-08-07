@@ -316,7 +316,7 @@ body.horizontal-layout .timer-content > .event-title {
   border: 0;
   min-width: 16vw;
   padding: 1.35vh 2.6vw;
-  font-size: clamp(2rem, 3vw, 3.9rem);
+  font-size: clamp(calc(2rem * var(--font-scale)), calc(3vw * var(--font-scale)), calc(3.9rem * var(--font-scale)));
   line-height: 0.95;
   text-align: center;
 }
@@ -450,7 +450,7 @@ body.vertical-layout .ao-section .competitor-content {
 
 body.vertical-layout .competitor-name {
   color: #fff;
-  font-size: clamp(1.75rem, 2.9vw, 4rem);
+  font-size: clamp(calc(1.75rem * var(--font-scale)), calc(2.9vw * var(--font-scale)), calc(4rem * var(--font-scale)));
   line-height: 1.08;
   width: 100%;
   max-width: 100%;
@@ -462,7 +462,7 @@ body.vertical-layout .competitor-name {
 
 body.vertical-layout .competitor-unit {
   color: rgba(255, 255, 255, 0.78);
-  font-size: clamp(0.9rem, 1.55vw, 2rem);
+  font-size: clamp(calc(0.9rem * var(--font-scale)), calc(1.55vw * var(--font-scale)), calc(2rem * var(--font-scale)));
   margin: 1.5vh 0 0;
   width: 100%;
   max-width: 100%;
@@ -519,7 +519,7 @@ body.vertical-layout .penalty-btn[id*="C3"] {
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.035);
   color: rgba(255, 255, 255, 0.72);
-  font-size: clamp(1rem, 1.35vw, 1.75rem);
+  font-size: clamp(calc(1rem * var(--font-scale)), calc(1.35vw * var(--font-scale)), calc(1.75rem * var(--font-scale)));
   font-weight: 700;
   transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease,
     box-shadow 0.18s ease;
@@ -568,11 +568,11 @@ body.vertical-layout .ao-section .score-container {
 }
 
 body.vertical-layout .score-display {
-  min-width: clamp(110px, 13vw, 250px);
+  min-width: clamp(calc(110px * var(--font-scale)), calc(13vw * var(--font-scale)), calc(250px * var(--font-scale)));
   padding: 0.5vh 1.2vw 1vh;
   border-radius: 14px;
   color: #fff;
-  font-size: clamp(6rem, 14vw, 17rem);
+  font-size: clamp(calc(6rem * var(--font-scale)), calc(14vw * var(--font-scale)), calc(17rem * var(--font-scale)));
   line-height: 0.92;
   text-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
 }
@@ -642,7 +642,7 @@ body.vertical-layout .country-badge {
   align-items: center;
   gap: 0.45vh;
   color: #fff;
-  font-size: clamp(1rem, 1.6vw, 2rem);
+  font-size: clamp(calc(1rem * var(--font-scale)), calc(1.6vw * var(--font-scale)), calc(2rem * var(--font-scale)));
   font-weight: 800;
   letter-spacing: 0.08em;
 }
@@ -671,7 +671,7 @@ body.vertical-layout .country-flag {
 }
 
 body.vertical-layout .country-code {
-  font-size: clamp(1rem, 1.45vw, 1.9rem);
+  font-size: clamp(calc(1rem * var(--font-scale)), calc(1.45vw * var(--font-scale)), calc(1.9rem * var(--font-scale)));
   line-height: 1;
 }
 
@@ -709,7 +709,7 @@ body.vertical-layout .category-title {
   background: linear-gradient(180deg, #202226 0%, #0c0d10 100%);
   border: 1px solid #ffd000;
   color: #ffd000;
-  font-size: clamp(0.95rem, 1.25vw, 1.65rem);
+  font-size: clamp(calc(0.95rem * var(--font-scale)), calc(1.25vw * var(--font-scale)), calc(1.65rem * var(--font-scale)));
   font-weight: 800;
   letter-spacing: 0.06em;
   line-height: 1;
@@ -737,7 +737,7 @@ body.vertical-layout .timer-content > .event-title {
   align-self: center;
   min-width: 16vw;
   padding: 1.35vh 2.6vw;
-  font-size: clamp(2rem, 3vw, 3.9rem);
+  font-size: clamp(calc(2rem * var(--font-scale)), calc(3vw * var(--font-scale)), calc(3.9rem * var(--font-scale)));
   line-height: 0.95;
   text-align: center;
   white-space: nowrap;
@@ -781,13 +781,13 @@ body.vertical-layout .timer-content.individual-mode > .timer-display {
 }
 
 body.vertical-layout .timer-main {
-  font-size: clamp(5rem, 9.25vw, 11.5rem);
+  font-size: clamp(calc(5rem * var(--font-scale)), calc(9.25vw * var(--font-scale)), calc(11.5rem * var(--font-scale)));
   line-height: 0.9;
 }
 
 body.vertical-layout .timer-decimal {
   color: #ffd700;
-  font-size: clamp(1.8rem, 2.8vw, 3.5rem);
+  font-size: clamp(calc(1.8rem * var(--font-scale)), calc(2.8vw * var(--font-scale)), calc(3.5rem * var(--font-scale)));
 }
 
 body.vertical-layout .match-meta {
@@ -801,7 +801,7 @@ body.vertical-layout .match-meta {
   width: min(28vw, 500px);
   padding-right: 1vw;
   color: rgba(255, 255, 255, 0.72);
-  font-size: clamp(0.75rem, 1.2vw, 1.5rem);
+  font-size: clamp(calc(0.75rem * var(--font-scale)), calc(1.2vw * var(--font-scale)), calc(1.5rem * var(--font-scale)));
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -810,7 +810,7 @@ body.vertical-layout .match-mode {
   margin-top: 0.35vh;
   color: #fff;
   font-weight: 700;
-  font-size: clamp(1.2rem, 1.85vw, 2.5rem);
+  font-size: clamp(calc(1.2rem * var(--font-scale)), calc(1.85vw * var(--font-scale)), calc(2.5rem * var(--font-scale)));
   line-height: 1.18;
 }
 
