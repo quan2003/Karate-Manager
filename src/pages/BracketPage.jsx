@@ -448,6 +448,15 @@ export default function BracketPage() {
               type: ACTIONS.UPDATE_CATEGORY,
               payload: { id: category.id, bracket: updatedBracket },
             });
+            const nextCategoryResults = { ...(tournament?.categoryResults || {}) };
+            delete nextCategoryResults[category.id];
+            dispatch({
+              type: ACTIONS.UPDATE_TOURNAMENT,
+              payload: {
+                id: tournament.id,
+                categoryResults: nextCategoryResults,
+              },
+            });
           },
           onCancel: () => setDialog(null),
         });

@@ -1101,6 +1101,16 @@ export function TournamentProvider({ children }) {
       const cleanup = window.electronAPI.receive("lan:receive-result", (data) => {
         console.log("Received match result via LAN:", data);
         
+        // Old Secretary builds could publish medal summaries immediately from
+        // restored local results. Reject them at the Admin boundary.
+        if (
+          data.syncType === 'category-medals' &&
+          (data.syncProtocol !== 2 || data.confirmedInCurrentRun !== true || !data.exportId)
+        ) {
+          console.warn('Rejected unverified category-medals payload from an old Secretary session.');
+          return;
+        }
+
         // Use tournamentId from payload if provided, fallback to current
         const targetTournamentId = data.tournamentId || state.currentTournament?.id;
         

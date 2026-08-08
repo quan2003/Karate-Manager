@@ -157,6 +157,7 @@ function SecretaryPage() {
     role,
     matchData,
     matchResults,
+    matchResultsRevision,
     scoringEnabled,
     canScore,
     loadMatchData,
@@ -578,6 +579,14 @@ function SecretaryPage() {
   useEffect(() => {
     if (!matchData?.tournamentId) return;
 
+    // Restored SQLite results are useful for continuing interrupted work, but
+    // opening/restoring a session must never broadcast them automatically.
+    // Arm auto-medal sync only after the secretary changes a result now.
+    if (matchResultsRevision === 0) {
+      setAutoMedalStatus({ synced: 0, complete: 0 });
+      return;
+    }
+
     const medals = getMatchExportData()?.categoryMedals || [];
     const completeMedals = medals.filter(
       (item) => item.gold && item.silver && item.bronze1 && item.bronze2
@@ -608,9 +617,12 @@ function SecretaryPage() {
 
           const result = await sendCategoryMedals(adminIp, 3000, {
             tournamentId: matchData.tournamentId,
+            exportId: matchData.exportId,
             categoryId: item.categoryId,
             categoryName: item.categoryName,
             medals: medalsPayload,
+            syncProtocol: 2,
+            confirmedInCurrentRun: true,
             syncedAt: new Date().toISOString(),
           });
           if (result.success) {
@@ -621,7 +633,7 @@ function SecretaryPage() {
       }
       setAutoMedalStatus({ synced, complete: completeMedals.length });
     });
-  }, [adminIp, getMatchExportData, matchData, matchResults]);
+  }, [adminIp, getMatchExportData, matchData, matchResults, matchResultsRevision]);
   // Prepare bracket with live scores
   const bracketWithScores = useMemo(() => {
     if (!selectedCategory?.bracket) return null;

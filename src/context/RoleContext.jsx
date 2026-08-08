@@ -16,8 +16,24 @@ import { selectCategoryMedalists } from "../domain/bronzeMedalSelection.js";
 
 const RoleContext = createContext(null);
 
-const getMatchSessionId = (data) =>
-  data?.exportId || data?.exportSessionId || data?.matchSessionId || data?.tournamentId;
+const getMatchSessionId = (data) => {
+  const explicitId = data?.exportId || data?.exportSessionId || data?.matchSessionId;
+  if (explicitId) return explicitId;
+
+  // Legacy .kmatch files used tournamentId directly, so every export of the
+  // same tournament shared one result cache. Include immutable export data to
+  // isolate those files and deliberately avoid loading the old shared cache.
+  const categoryKey = (data?.categories || [])
+    .map((category) => category?.id || category?.name || 'unknown')
+    .join('|');
+  const seed = `${data?.tournamentId || 'unknown'}|${data?.createdAt || 'legacy'}|${categoryKey}`;
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `legacy_${data?.tournamentId || 'unknown'}_${(hash >>> 0).toString(36)}`;
+};
 
 /**
  * Trạng thái thời gian nhập liệu
@@ -62,6 +78,7 @@ export function RoleProvider({ children }) {
   // Secretary state
   const [matchData, setMatchData] = useState(null);
   const [matchResults, setMatchResults] = useState([]);
+  const [matchResultsRevision, setMatchResultsRevision] = useState(0);
   const [scoringEnabled, setScoringEnabled] = useState(false);
   const [isRestored, setIsRestored] = useState(false);
 
@@ -130,12 +147,19 @@ export function RoleProvider({ children }) {
     async (data) => {
       const matchSessionId = getMatchSessionId(data);
       setMatchData(data);
+      setMatchResultsRevision(0);
       setScoringEnabled(data.scoringEnabled || false);
 
       // Load kết quả từ SQLite nếu có
       const savedResults = await dbGetSessionData(matchSessionId, 'match_results');
       if (savedResults) {
-        try { setMatchResults(JSON.parse(savedResults)); } catch { setMatchResults([]); }
+        try {
+          const restoredResults = JSON.parse(savedResults).map((result) => {
+            const { _confirmedInCurrentRun, ...restored } = result;
+            return restored;
+          });
+          setMatchResults(restoredResults);
+        } catch { setMatchResults([]); }
       } else {
         setMatchResults([]);
       }
@@ -389,13 +413,13 @@ export function RoleProvider({ children }) {
         if (existing >= 0) {
           updated = prev.map((r, i) =>
             i === existing
-              ? { ...r, ...result, updatedAt: new Date().toISOString() }
+              ? { ...r, ...result, _confirmedInCurrentRun: true, updatedAt: new Date().toISOString() }
               : r
           );
         } else {
           updated = [
             ...prev,
-            { matchId, ...result, createdAt: new Date().toISOString() },
+            { matchId, ...result, _confirmedInCurrentRun: true, createdAt: new Date().toISOString() },
           ];
         }
         if (matchData) {
@@ -403,6 +427,7 @@ export function RoleProvider({ children }) {
         }
         return updated;
       });
+      setMatchResultsRevision((revision) => revision + 1);
 
       return { success: true };
     },
@@ -420,6 +445,7 @@ export function RoleProvider({ children }) {
         }
         return updated;
       });
+      setMatchResultsRevision((revision) => revision + 1);
       return { success: true };
     },
     [matchData]
@@ -661,11 +687,44 @@ export function RoleProvider({ children }) {
         }
 
         const selected = selectCategoryMedalists({ category: { ...cat, bracket: clonedBracket }, bracket: clonedBracket });
-        if (selected.ok) {
+
+        // Existing bracket winners are not proof that this secretary scored the match.
+        // Publish medals only after all deciding matches have saved local results.
+        const categoryMatches = [
+          ...clonedBracket.matches,
+          ...(clonedBracket.auxiliaryMatches || []),
+        ];
+        const categoryMatchIds = new Set(categoryMatches.map((match) => match.id));
+        const savedResultIds = new Set(
+          matchResults
+            .filter((result) => result._confirmedInCurrentRun === true && categoryMatchIds.has(result.matchId) && (
+              result.winnerId || result.winner || result.disqualification
+            ))
+            .map((result) => result.matchId)
+        );
+        const isRecordedDecision = (matchId) => {
+          if (!matchId) return false;
+          if (savedResultIds.has(matchId)) return true;
+          return categoryMatches.find((item) => item.id === matchId)?.isBye === true;
+        };
+        const decidingMatchIds = selected.ok
+          ? [selected.sources?.finalMatchId, ...(selected.sources?.bronzeMatchIds || [])]
+              .filter(Boolean)
+          : [];
+        const hasOfficialDecisions =
+          selected.ok &&
+          decidingMatchIds.length > 0 &&
+          decidingMatchIds.every(isRecordedDecision);
+
+        if (hasOfficialDecisions) {
           champion = selected.medals.gold;
           silverMedalist = selected.medals.silver;
           bronzeMedalists.splice(0, bronzeMedalists.length,
             ...[selected.medals.bronze1, selected.medals.bronze2].filter(Boolean));
+        } else {
+          champion = null;
+          silverMedalist = null;
+          bronzeMedalists.splice(0, bronzeMedalists.length);
         }
 
         categoryMedals.push({
@@ -893,7 +952,7 @@ export function RoleProvider({ children }) {
     setAdditionalCoaches([]);
     setMatchData(null);
     setMatchResults([]);
-    setMatchResults([]);
+    setMatchResultsRevision(0);
     setScoringEnabled(false);
     dbSetSessionData('system', 'last_role', null);
   }, []);
@@ -956,6 +1015,7 @@ export function RoleProvider({ children }) {
     // Secretary State
     matchData,
     matchResults,
+    matchResultsRevision,
     scoringEnabled,
     isRestored,
     canScore,
