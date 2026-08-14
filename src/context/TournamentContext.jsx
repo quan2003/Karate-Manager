@@ -3,7 +3,7 @@ import { createContext, useContext, useReducer, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { createAutoBackup } from "../services/backupService";
 import { dbGetTournaments, dbSaveTournaments, runMigrationIfNeeded } from "../services/dbService";
-import { updateMatchResult } from "../utils/drawEngine";
+import { disqualifyAthlete, updateMatchResult } from "../utils/drawEngine";
 import {
   DEFAULT_BRONZE_MODE,
   resolveBronzeMode,
@@ -954,7 +954,10 @@ function tournamentReducer(state, action) {
       break;
     }
     case ACTIONS.SYNC_MATCH_RESULT: {
-      const { matchId, matchCode, score1, score2, winnerId, tournamentId } = action.payload;
+      const {
+        matchId, matchCode, categoryId, score1, score2, winnerId, tournamentId,
+        disqualification, disqualifiedSlot, disqualifiedReason,
+      } = action.payload;
       
       console.log(`[SYNC] Processing match ${matchId} (${matchCode || 'N/A'}) for tournament ${tournamentId}`);
 
@@ -964,8 +967,16 @@ function tournamentReducer(state, action) {
           if (t.id !== tournamentId) return t;
 
           let found = false;
+          const matchCodeCandidates = matchCode
+            ? t.categories.flatMap((category) =>
+                (category.bracket?.matches || [])
+                  .filter((match) => match.matchCode === matchCode)
+                  .map((match) => ({ categoryId: category.id, match }))
+              )
+            : [];
           const updatedCategories = t.categories.map((c) => {
             if (!c.bracket?.matches) return c;
+            if (categoryId && c.id !== categoryId) return c;
 
             const auxiliaryMatch = (c.bracket.auxiliaryMatches || []).find((m) => m.id === matchId);
             if (auxiliaryMatch) {
@@ -980,7 +991,7 @@ function tournamentReducer(state, action) {
             
             // 2. Fallback: Try finding by matchCode if available (e.g., "M6")
             // This handles cases where ID might have changed but structure is same
-            if (!match && matchCode) {
+            if (!match && matchCode && matchCodeCandidates.length === 1) {
               match = c.bracket.matches.find((m) => m.matchCode === matchCode);
               if (match) {
                 console.log(`[SYNC] Match found by matchCode: ${matchCode}`);
@@ -994,13 +1005,14 @@ function tournamentReducer(state, action) {
             found = true;
             const targetMatchId = match.id; // Use the actual ID in the bracket
             
-            const updatedBracket = updateMatchResult(
-              c.bracket,
-              targetMatchId,
-              score1,
-              score2,
-              winnerId
-            );
+            const updatedBracket = disqualification && disqualifiedSlot
+              ? disqualifyAthlete(
+                  JSON.parse(JSON.stringify(c.bracket)),
+                  targetMatchId,
+                  disqualifiedSlot,
+                  disqualifiedReason || "KIKEN"
+                )
+              : updateMatchResult(c.bracket, targetMatchId, score1, score2, winnerId);
             return { ...c, bracket: updatedBracket };
           });
 

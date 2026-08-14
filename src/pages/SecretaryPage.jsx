@@ -431,14 +431,24 @@ function SecretaryPage() {
   }, [role, navigate]);
 
   // Helper to find match by ID (for winner determination)
-  const getMatchById = useCallback((matchId) => {
+  const getMatchInfoById = useCallback((matchId) => {
     if (!matchData?.categories) return null;
     for (const cat of matchData.categories) {
-      const match = cat.matches?.find((m) => m.id === matchId);
-      if (match) return match;
+      const matches = [
+        ...(cat.bracket?.matches || []),
+        ...(cat.bracket?.auxiliaryMatches || []),
+        ...(cat.matches || []),
+      ];
+      const match = matches.find((m) => m.id === matchId);
+      if (match) return { match, category: cat };
     }
     return null;
   }, [matchData]);
+
+  const getMatchById = useCallback(
+    (matchId) => getMatchInfoById(matchId)?.match || null,
+    [getMatchInfoById]
+  );
 
   // Listen for match results from scoreboard
   useEffect(() => {
@@ -472,6 +482,7 @@ function SecretaryPage() {
             ...result,
             match,
             matchCode: match.matchCode,
+            categoryId: selectedCategory?.id || result.categoryId || null,
             winner,
             categoryName: selectedCategory?.name,
             tournamentName: matchData?.tournamentName,
@@ -495,6 +506,7 @@ function SecretaryPage() {
     getMatchById,
     matchData?.tournamentId,
     matchData?.tournamentName,
+    selectedCategory?.id,
     selectedCategory?.name,
     updateMatchResult,
   ]);
@@ -588,9 +600,11 @@ function SecretaryPage() {
     }
 
     const medals = getMatchExportData()?.categoryMedals || [];
-    const completeMedals = medals.filter(
-      (item) => item.gold && item.silver && item.bronze1 && item.bronze2
-    );
+    const completeMedals = medals.filter((item) => {
+      const category = matchData.categories?.find((cat) => cat.id === item.categoryId);
+      const needsSecondBronze = category?.bronze_mode !== "SINGLE_BRONZE";
+      return item.gold && item.silver && item.bronze1 && (!needsSecondBronze || item.bronze2);
+    });
     const storagePrefix = `lan_medals_${matchData.exportId || matchData.tournamentId}_`;
     const alreadySynced = completeMedals.filter((item) => {
       const fingerprint = JSON.stringify({
@@ -866,7 +880,8 @@ function SecretaryPage() {
         matchData.tournamentName,
         roundName,
         matchData.schedule?.[selectedCategory.id] || null,
-        matchData.sponsorLogos || null
+        matchData.sponsorLogos || null,
+        selectedCategory.id
       );
       publishCategoryLive(selectedCategory, {
         currentMatch: match,
@@ -961,11 +976,10 @@ function SecretaryPage() {
                   localStorage.setItem("adminIp", adminIp);
                   
                   const syncData = {
-                    matchId: finishedMatch.matchId,
-                    matchCode: finishedMatch.matchCode,
-                    score1: finishedMatch.score1,
-                    score2: finishedMatch.score2,
-                    winnerId: finishedMatch.winnerId,
+                    ...finishedMatch,
+                    match: undefined,
+                    winner: undefined,
+                    categoryId: finishedMatch.categoryId || selectedCategory?.id || null,
                     tournamentId: finishedMatch.tournamentId || matchData?.tournamentId
                   };
                   
@@ -1545,11 +1559,12 @@ function SecretaryPage() {
                                           setSyncing(true);
                                           let count = 0;
                                           for (const result of matchResults) {
-                                            const match = getMatchById(result.matchId);
-                                            if (match) {
+                                            const info = getMatchInfoById(result.matchId);
+                                            if (info) {
                                               await sendMatchResult(adminIp, 3000, {
                                                 ...result,
-                                                matchCode: match.matchCode,
+                                                matchCode: info.match.matchCode,
+                                                categoryId: info.category.id,
                                                 tournamentId: matchData?.tournamentId
                                               });
                                               count++;
@@ -1689,10 +1704,11 @@ function SecretaryPage() {
                     setSyncing(true);
                     let successCount = 0;
                     for (const result of matchResults) {
-                      const match = getMatchById(result.matchId);
+                      const info = getMatchInfoById(result.matchId);
                       const res = await sendMatchResult(adminIp, 3000, {
                         ...result,
-                        matchCode: match?.matchCode,
+                        matchCode: info?.match.matchCode,
+                        categoryId: info?.category.id,
                         tournamentId: matchData?.tournamentId
                       });
                       if (res.success) successCount++;

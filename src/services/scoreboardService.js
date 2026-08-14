@@ -14,7 +14,7 @@ const MATCH_RESULT_KEY = 'match_result';
  * @param {string} tournamentName - Tên giải đấu
  * @param {string} roundName - Tên vòng đấu (vd: "Bán kết")
  */
-export function openScoreboard(match, categoryType, categoryName, tournamentName, roundName, scheduleInfo = null, sponsorLogos = null) {
+export function openScoreboard(match, categoryType, categoryName, tournamentName, roundName, scheduleInfo = null, sponsorLogos = null, categoryId = null) {
   // Always send an explicit logo configuration for the current tournament.
   // An empty sponsor list tells the scoreboard to show the K-SPORT default
   // instead of reusing logos left in another scoreboard session.
@@ -26,6 +26,7 @@ export function openScoreboard(match, categoryType, categoryName, tournamentName
   // Chuẩn bị data để gửi sang scoreboard
   const pendingMatch = {
     matchId: match.id,
+    categoryId,
     categoryType,
     categoryName,
     tournamentName,

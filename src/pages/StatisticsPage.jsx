@@ -8,7 +8,7 @@ import {
 import Modal from "../components/common/Modal";
 import { useToast } from "../components/common/Toast";
 import * as XLSX from "xlsx";
-import { updateMatchResult as applyMatchResult } from "../utils/drawEngine";
+import { updateMatchResult as applyMatchResult, getSeedAssignments, rebuildBracketFromSeeds } from "../utils/drawEngine";
 import { getTeamSizeForCategory, getTeamsFromAthletes } from "../utils/teamDraw";
 import { calculateClubFeeSummary } from "../utils/feeCalculation";
 import { getEstimatedMatchCount } from "../services/scheduleService";
@@ -588,6 +588,18 @@ export default function StatisticsPage() {
     setShowResultModal(cat.id);
   };
 
+  // Xóa toàn bộ kết quả bracket của một nội dung (giữ bốc thăm, giữ categoryResults)
+  const handleResetCategoryBracket = (cat) => {
+    if (!cat?.bracket) return;
+    if (!window.confirm(`Xóa toàn bộ kết quả bracket của "${cat.name}"?\nSơ đồ bốc thăm giữ nguyên, chỉ xóa điểm số và người thắng.\nKết quả nhập tay (nếu có) vẫn được giữ nguyên.`)) return;
+    const seeds = getSeedAssignments(cat.bracket);
+    const updatedBracket = rebuildBracketFromSeeds(cat.bracket, seeds);
+    dispatch({
+      type: ACTIONS.UPDATE_CATEGORY,
+      payload: { id: cat.id, bracket: updatedBracket },
+    });
+  };
+
   // ===== EXPORT RESULTS TO EXCEL =====
   const handleExportResults = () => {
     const cats = getFilteredCategories();
@@ -689,10 +701,14 @@ export default function StatisticsPage() {
     const normalize = (value) => String(value || "").trim().toLowerCase();
     const teamKey = normalize(teamName);
     const bracketTeams = [];
+    const splitClubs = new Set();
     (cat.bracket?.matches || []).forEach((match) => {
       [match.athlete1, match.athlete2, match.winner].forEach((participant) => {
         if (participant?.isTeam && participant.members?.length) {
           bracketTeams.push(participant);
+        }
+        if (participant?.isTeam && participant.teamNumber) {
+          splitClubs.add(participant.club || participant.name);
         }
       });
     });
@@ -700,9 +716,11 @@ export default function StatisticsPage() {
     const generatedTeams = getTeamsFromAthletes(
       cat.athletes || [],
       cat,
-      tournament
+      tournament,
+      { splitClubs: Array.from(splitClubs) }
     );
-    const exactTeam = [...bracketTeams, ...generatedTeams].find(
+    // Prefer current registrations over the bracket's older lineup snapshot.
+    const exactTeam = [...generatedTeams, ...bracketTeams].find(
       (team) => normalize(team.name) === teamKey
     );
     if (exactTeam) return exactTeam.members || [];
@@ -5547,6 +5565,21 @@ export default function StatisticsPage() {
                             >
                               {result ? "✏️ Sửa" : "➕ Nhập"}
                             </button>
+                            {result?._fromBracket && (
+                              <button
+                                className="btn btn-sm"
+                                style={{
+                                  background: "#fef2f2",
+                                  color: "#dc2626",
+                                  border: "1px solid #fca5a5",
+                                  fontSize: "11px",
+                                }}
+                                onClick={() => handleResetCategoryBracket(cat)}
+                                title="Xóa kết quả test còn sót - giữ nguyên bốc thăm"
+                              >
+                                🗑️
+                              </button>
+                            )}
                             {result && (
                               <button
                                 className="btn btn-sm"

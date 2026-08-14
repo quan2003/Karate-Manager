@@ -6,7 +6,7 @@ import {
   ACTIONS,
 } from "../context/TournamentContext";
 import { generateBracket } from "../utils/drawEngine";
-import { getTeamCountFromAthletes, getTeamsFromAthletes, isTeamCategory as isTeamCategoryMeta } from "../utils/teamDraw";
+import { getTeamFormationSize, getTeamsFromAthletes, isTeamCategory as isTeamCategoryMeta } from "../utils/teamDraw";
 import AthleteForm from "../components/AthleteForm/AthleteForm";
 import AthleteList from "../components/AthleteList/AthleteList";
 import Modal from "../components/common/Modal";
@@ -33,6 +33,7 @@ export default function CategoryPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAthlete, setEditingAthlete] = useState(null);
   const [showDrawConfirm, setShowDrawConfirm] = useState(false);
+  const [splitTeamClubs, setSplitTeamClubs] = useState([]);
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
     message: "",
@@ -263,7 +264,7 @@ export default function CategoryPage() {
       let drawEntries;
       if (isTeamCategory) {
         // For team categories: group athletes by club
-        drawEntries = getTeamsFromAthletes(category.athletes, category, tournament);
+        drawEntries = teamEntries;
         if (drawEntries.length < 2) {
           setDrawError('Cần ít nhất 2 đội để bốc thăm đồng đội!');
           return;
@@ -289,7 +290,7 @@ export default function CategoryPage() {
       // Start countdown loading animation
       setDrawCountdown(5);
       const displayNames = isTeamCategory
-        ? getTeamsFromAthletes(category.athletes, category, tournament).map(t => t.name)
+        ? teamEntries.map(t => t.name)
         : category.athletes.map((a) => a.name);
 
       // Shuffle names rapidly
@@ -320,11 +321,25 @@ export default function CategoryPage() {
     }
   };
 
-  const teamCount = isTeamCategory
-    ? getTeamCountFromAthletes(category.athletes, category, tournament)
+  const teamSize = isTeamCategory
+    ? getTeamFormationSize()
     : 0;
+  const teamClubCounts = isTeamCategory
+    ? Array.from(category.athletes.reduce((clubs, athlete) => {
+        const club = String(athlete.club || "Không CLB").trim().replace(/\s+/g, " ");
+        clubs.set(club, (clubs.get(club) || 0) + 1);
+        return clubs;
+      }, new Map()), ([club, count]) => ({ club, count }))
+    : [];
+  const splittableClubs = teamClubCounts.filter(({ count }) => count >= teamSize * 2);
+  const teamEntries = isTeamCategory
+    ? getTeamsFromAthletes(category.athletes, category, tournament, {
+        splitClubs: splitTeamClubs,
+      })
+    : [];
+  const teamCount = teamEntries.length;
   const canDraw = isTeamCategory
-    ? teamCount >= 3
+    ? teamCount >= 2
     : category.athletes.length >= 3;
   const allSameClub = (() => {
     if (category.athletes.length < 3) return false;
@@ -415,7 +430,7 @@ export default function CategoryPage() {
                   clearHint();
                   if (!canDraw) {
                     if (isTeamCategory) {
-                      toast.warning("Nội dung đồng đội cần ít nhất 3 đội để bốc thăm!");
+                      toast.warning("Nội dung đồng đội cần ít nhất 2 đội để bốc thăm!");
                     } else {
                       toast.warning("Cần ít nhất 3 VĐV để bốc thăm!");
                     }
@@ -425,6 +440,7 @@ export default function CategoryPage() {
                     toast.warning(`Tất cả ${category.athletes.length} VĐV đều cùng CLB "${category.athletes[0]?.club}". Cần ít nhất 2 CLB khác nhau.`);
                     return;
                   }
+                  setSplitTeamClubs([]);
                   setShowDrawConfirm(true);
                 }}
                 disabled={!canDraw}
@@ -450,6 +466,7 @@ export default function CategoryPage() {
                       message: "",
                       onConfirm: null,
                     });
+                    setSplitTeamClubs([]);
                     setShowDrawConfirm(true);
                   },
                 });
@@ -582,12 +599,47 @@ export default function CategoryPage() {
               </div>
             )}
 
+            {isTeamCategory && splittableClubs.length > 0 && (
+              <div className="team-split-options">
+                <strong>Tùy chọn chia đội</strong>
+                {splittableClubs.map(({ club, count }) => {
+                  const splitCount = Math.floor(count / teamSize);
+                  return (
+                    <label key={club}>
+                      <input
+                        type="checkbox"
+                        checked={splitTeamClubs.includes(club)}
+                        onChange={(event) => setSplitTeamClubs((current) =>
+                          event.target.checked
+                            ? [...current, club]
+                            : current.filter((name) => name !== club)
+                        )}
+                      />
+                      Chia {club} ({count} VĐV) thành {splitCount} đội
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            {isTeamCategory && teamEntries.length > 0 && (
+              <div className="team-draw-preview">
+                <h3>Danh sách đội sẽ bốc thăm</h3>
+                {teamEntries.map((team) => (
+                  <div className="team-draw-preview-item" key={team.id}>
+                    <strong>{team.name}</strong>
+                    <span>{team.members.map((member) => member.name).join(" • ")}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <p className="draw-note">
               {isTeamCategory ? (
                 <>
                   ⚠️ Bốc thăm đồng đội:
-                  <br />• Các VĐV cùng CLB sẽ được ghép thành 1 đội
-                  <br />• Tên đội = Tên CLB (Đơn vị)
+                  <br />• Mỗi CLB đủ tối thiểu số VĐV quy định được tính là 1 đội
+                  <br />• Chỉ chia CLB thành nhiều đội khi bạn chọn xác nhận ở trên
                   <br />• Sơ đồ sẽ hiển thị tên CLB thay vì tên cá nhân
                 </>
               ) : (

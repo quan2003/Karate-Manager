@@ -72,19 +72,27 @@ export function getTeamSizeForCategory(category = {}, tournament = {}) {
   return Math.max(1, Math.floor(teamSize));
 }
 
+export function getTeamFormationSize() {
+  return 3;
+}
+
 function getClubGroupingKey(value) {
   return normalizeText(value || "Khong CLB");
 }
 
-function splitMembersIntoFullTeams(members, targetSize) {
+function splitMembersIntoTeams(members, targetSize) {
+  const teamCount = Math.floor(members.length / targetSize);
+  if (teamCount < 2) return [members];
+
   const teams = [];
-  const fullTeamCount = Math.floor(members.length / targetSize);
-
-  for (let index = 0; index < fullTeamCount; index += 1) {
-    const start = index * targetSize;
-    teams.push(members.slice(start, start + targetSize));
+  let offset = 0;
+  for (let index = 0; index < teamCount; index += 1) {
+    const remainingMembers = members.length - offset;
+    const remainingTeams = teamCount - index;
+    const size = Math.ceil(remainingMembers / remainingTeams);
+    teams.push(members.slice(offset, offset + size));
+    offset += size;
   }
-
   return teams;
 }
 
@@ -92,9 +100,10 @@ export function isTeamCategory(category = {}) {
   return getCategoryCompetitionType(category) === "team";
 }
 
-export function getTeamsFromAthletes(athletes = [], category = {}, tournament = {}) {
-  const targetSize = getTeamSizeForCategory(category, tournament);
+export function getTeamsFromAthletes(athletes = [], category = {}, tournament = {}, options = {}) {
+  const targetSize = getTeamFormationSize();
   const clubMap = new Map();
+  const splitClubKeys = new Set((options.splitClubs || []).map(getClubGroupingKey));
 
   athletes.forEach((athlete) => {
     const clubName = String(athlete.club || "Khong CLB").trim().replace(/\s+/g, " ");
@@ -104,8 +113,11 @@ export function getTeamsFromAthletes(athletes = [], category = {}, tournament = 
   });
 
   const teams = [];
-  clubMap.forEach(({ clubName, members }) => {
-    const memberGroups = splitMembersIntoFullTeams(members, targetSize);
+  clubMap.forEach(({ clubName, members }, groupingKey) => {
+    if (members.length < targetSize) return;
+    const memberGroups = splitClubKeys.has(groupingKey)
+      ? splitMembersIntoTeams(members, targetSize)
+      : [members];
     memberGroups.forEach((teamMembers, index) => {
       const teamNumber = index + 1;
       const idMembers = teamMembers.map((member) => member.id || member.name).join("_");
@@ -149,8 +161,19 @@ function membersMatch(currentMembers = [], nextMembers = []) {
 export function syncTeamBracketMembers(bracket, athletes = [], category = {}, tournament = {}) {
   if (!bracket?.isTeamBracket || !Array.isArray(bracket.matches)) return bracket;
 
+  const splitClubs = new Set();
+  bracket.matches.forEach((match) => {
+    [match.athlete1, match.athlete2, match.winner].forEach((participant) => {
+      if (participant?.isTeam && participant.teamNumber) {
+        splitClubs.add(participant.club || participant.name);
+      }
+    });
+  });
+
   const teamsByClub = new Map();
-  getTeamsFromAthletes(athletes, category, tournament).forEach((team) => {
+  getTeamsFromAthletes(athletes, category, tournament, {
+    splitClubs: Array.from(splitClubs),
+  }).forEach((team) => {
     const clubKey = getClubKey(team.club || team.name);
     if (!teamsByClub.has(clubKey)) teamsByClub.set(clubKey, []);
     teamsByClub.get(clubKey).push(team);

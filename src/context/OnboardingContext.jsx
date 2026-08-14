@@ -240,7 +240,10 @@ export function OnboardingProvider({ children }) {
   const [completedSteps, setCompletedSteps] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : {};
+      const parsed = saved ? JSON.parse(saved) : null;
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed
+        : {};
     } catch { return {}; }
   });
 
@@ -335,7 +338,10 @@ export function OnboardingProvider({ children }) {
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCompletedSteps(prev => {
-      const next = { ...prev };
+      const previousSteps = prev && typeof prev === "object" && !Array.isArray(prev)
+        ? prev
+        : {};
+      const next = { ...previousSteps };
       
       const hasTournament = tournaments.length > 0;
       if (hasTournament) next.create_tournament = true;
@@ -391,8 +397,8 @@ export function OnboardingProvider({ children }) {
       }
 
       // Only update if changed
-      const changed = Object.keys(next).length !== Object.keys(prev).length ||
-                      Object.keys(next).some(k => next[k] !== prev[k]);
+      const changed = Object.keys(next).length !== Object.keys(previousSteps).length ||
+                      Object.keys(next).some(k => next[k] !== previousSteps[k]);
       return changed ? next : prev;
     });
   }, [tournaments]);
@@ -418,7 +424,10 @@ export function OnboardingProvider({ children }) {
 
   const markStepUndone = useCallback((stepId) => {
     setCompletedSteps(prev => {
-      const next = { ...prev };
+      const previousSteps = prev && typeof prev === "object" && !Array.isArray(prev)
+        ? prev
+        : {};
+      const next = { ...previousSteps };
       delete next[stepId];
       return next;
     });

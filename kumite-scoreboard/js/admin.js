@@ -1910,6 +1910,7 @@ function finishTeamMatch(autoSubmit = false) {
 
   const result = {
     matchId: pendingMatchData.matchId,
+    categoryId: pendingMatchData.categoryId || null,
     winnerId: winnerId,
     score1: state.teamMode.akaWins,
     score2: state.teamMode.aoWins,
@@ -1988,6 +1989,7 @@ function finishMatch(autoSubmit = false) {
   
   const result = {
     matchId: pendingMatchData.matchId,
+    categoryId: pendingMatchData.categoryId || null,
     winnerId: winnerId,
     score1: state.akaScore,
     score2: state.aoScore,

@@ -397,9 +397,9 @@ export default function TournamentPage() {
       const bracket = cat.bracket;
       const maxRound = Math.max(...bracket.matches.map(m => m.round || 0));
       const finalMatch = bracket.matches.find(
-        (m) => m.round === maxRound && (m.round > 0 || m.isBye)
+        (m) => m.round === maxRound && !m.isBye
       );
-      if (finalMatch?.winner) return true;
+      if (finalMatch?.winner && finalMatch.athlete1 && finalMatch.athlete2) return true;
     }
     return false;
   };
@@ -610,7 +610,7 @@ export default function TournamentPage() {
 
   const isMedalEligibleCategory = (cat) =>
     isTeamCategoryMeta(cat)
-      ? getTeamCountFromAthletes(cat.athletes || [], cat, tournament) >= 3
+      ? getTeamCountFromAthletes(cat.athletes || [], cat, tournament) >= 2
       : (cat.athletes?.length || 0) >= 3;
 
   const getEstimatedMedals = (categories = tournament.categories) => {
@@ -1155,8 +1155,8 @@ export default function TournamentPage() {
       if (isTeamCategory) {
         // Team category: group by club
         const teams = getTeamsFromAthletes(cat.athletes || [], cat, tournament);
-        if (teams.length < 3) {
-          results.skipped.push({ name: cat.name, reason: `Chỉ có ${teams.length} đội (cần ≥ 3 đội)` });
+        if (teams.length < 2) {
+          results.skipped.push({ name: cat.name, reason: `Chỉ có ${teams.length} đội (cần ≥ 2 đội)` });
           continue;
         }
         try {
@@ -2207,7 +2207,7 @@ export default function TournamentPage() {
                 <div className="category-stats">
                   <span>{category.athletes?.length || 0} VĐV</span>
                   {category.bracket && (() => {
-                    const nonByeMatches = category.bracket.matches?.filter(m => !m.isBye) || [];
+                    const nonByeMatches = category.bracket.matches?.filter(m => !m.isBye && m.athlete1 && m.athlete2) || [];
                     const completedMatches = nonByeMatches.filter(m => m.winner);
                     const total = nonByeMatches.length;
                     const completed = completedMatches.length;

@@ -337,7 +337,8 @@ export default function BracketPage() {
         tournament.name,
         getRoundName(match),
         scheduleInfo,
-        sponsorLogos
+        sponsorLogos,
+        category.id
       );
     }
   };
@@ -369,7 +370,8 @@ export default function BracketPage() {
     openScoreboard(
       match, category.type, category.name, tournament.name,
       "Tranh huy chương đồng", tournament.schedule?.[category.id] || null,
-      tournament.sponsorLogos || null
+      tournament.sponsorLogos || null,
+      category.id
     );
   };
   const handleExportScoreSheet = async () => {

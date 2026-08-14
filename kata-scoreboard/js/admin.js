@@ -2043,6 +2043,7 @@ function finishMatch() {
 
   const result = {
     matchId: pendingMatchData.matchId,
+    categoryId: pendingMatchData.categoryId || null,
     winnerId: winnerId,
     score1: state.aka.score,
     score2: state.ao.score,
