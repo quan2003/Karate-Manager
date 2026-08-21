@@ -1166,7 +1166,7 @@ export default function TournamentPage() {
             type: ACTIONS.SET_BRACKET,
             payload: { categoryId: cat.id, bracket },
           });
-          results.success.push({ name: cat.name, athletes: `${teams.length} đội` });
+          results.success.push({ categoryId: cat.id, id: cat.id, name: cat.name, athletes: `${teams.length} đội` });
         } catch (error) {
           results.failed.push({ name: cat.name, error: error.message });
         }
@@ -1189,7 +1189,7 @@ export default function TournamentPage() {
             type: ACTIONS.SET_BRACKET,
             payload: { categoryId: cat.id, bracket },
           });
-          results.success.push({ name: cat.name, athletes: athleteCount });
+          results.success.push({ categoryId: cat.id, id: cat.id, name: cat.name, athletes: athleteCount });
         } catch (error) {
           results.failed.push({ name: cat.name, error: error.message });
         }
@@ -1207,6 +1207,24 @@ export default function TournamentPage() {
     setBulkDrawing(false);
     setBulkDrawResults(results);
     toast.success(`Đã bốc thăm ${results.success.length}/${cats.length} nội dung`);
+  };
+
+  const handleReviewBulkDrawCategory = (categoryIdOrObject) => {
+    let targetCatId = typeof categoryIdOrObject === "string" ? categoryIdOrObject : categoryIdOrObject?.categoryId || categoryIdOrObject?.id;
+    if (!targetCatId && categoryIdOrObject?.name) {
+      const found = tournament?.categories?.find(c => c.name === categoryIdOrObject.name);
+      if (found) targetCatId = found.id;
+    }
+
+    if (!targetCatId) {
+      toast.error("Không tìm thấy nội dung để review!");
+      return;
+    }
+
+    setShowBulkDrawModal(false);
+    navigate(`/bracket/${targetCatId}`, {
+      state: { ...location.state, reviewSigma: true, reviewSource: "bulk-draw" },
+    });
   };
 
   const bulkDrawableCategories = tournament.categories.filter(canBulkDrawCategory);
@@ -2847,16 +2865,84 @@ export default function TournamentPage() {
               </>
             ) : (
               <>
-                <h3 style={{color:'#16a34a',marginBottom:'12px'}}>✅ Kết quả bốc thăm</h3>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'12px',gap:'12px',flexWrap:'wrap'}}>
+                  <h3 style={{color:'#16a34a',margin:0,fontSize:'18px'}}>✅ Kết quả bốc thăm</h3>
+                  {bulkDrawResults.success.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => handleReviewBulkDrawCategory(bulkDrawResults.success[0])}
+                      style={{
+                        background:'linear-gradient(135deg,#6366f1,#4f46e5)',
+                        border:'none',fontSize:'13px',fontWeight:700,padding:'8px 16px',
+                        display:'inline-flex',alignItems:'center',gap:'6px',borderRadius:'8px',
+                        boxShadow:'0 3px 10px rgba(99,102,241,0.25)',cursor:'pointer'
+                      }}
+                    >
+                      📊 Kiểm tra tất cả sơ đồ ({bulkDrawResults.success.length}) →
+                    </button>
+                  )}
+                </div>
 
                 {bulkDrawResults.success.length > 0 && (
-                  <div style={{marginBottom:'12px'}}>
-                    <h4 style={{color:'#16a34a',fontSize:'13px',marginBottom:'6px'}}>✅ Thành công ({bulkDrawResults.success.length})</h4>
-                    {bulkDrawResults.success.map((r, i) => (
-                      <div key={i} style={{padding:'4px 8px',fontSize:'12px',color:'#334155'}}>
-                        • {r.name} ({r.athletes} VĐV)
-                      </div>
-                    ))}
+                  <div style={{marginBottom:'16px'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'6px'}}>
+                      <h4 style={{color:'#16a34a',fontSize:'14px',fontWeight:700,margin:0}}>
+                        ✅ Thành công ({bulkDrawResults.success.length} nội dung)
+                      </h4>
+                    </div>
+                    <p style={{fontSize:'12px',color:'#475569',margin:'0 0 10px',lineHeight:1.4}}>
+                      👇 Chọn một nội dung bên dưới để xem sơ đồ, hoặc bấm <strong>"Kiểm tra tất cả sơ đồ"</strong> để duyệt lần lượt; bạn có thể <strong>kéo-thả hoán đổi VĐV</strong> hoặc <strong>bốc lại</strong>:
+                    </p>
+                    <div style={{display:'flex',flexDirection:'column',gap:'6px',maxHeight:'42vh',overflowY:'auto',paddingRight:'4px'}}>
+                      {bulkDrawResults.success.map((r, i) => (
+                        <button
+                          key={r.categoryId || r.id || i}
+                          type="button"
+                          onClick={() => handleReviewBulkDrawCategory(r)}
+                          style={{
+                            width:'100%', display:'flex', alignItems:'center', gap:'10px', textAlign:'left',
+                            padding:'10px 12px', borderRadius:'8px', cursor:'pointer',
+                            background:'#ffffff', border:'1px solid #cbd5e1',
+                            boxShadow:'0 1px 3px rgba(0,0,0,0.05)', transition:'all 0.15s ease-in-out'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = '#6366f1';
+                            e.currentTarget.style.background = '#f5f3ff';
+                            e.currentTarget.style.transform = 'translateY(-1px)';
+                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.15)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = '#cbd5e1';
+                            e.currentTarget.style.background = '#ffffff';
+                            e.currentTarget.style.transform = 'none';
+                            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+                          }}
+                          title={`Xem sơ đồ thi đấu: ${r.name}`}
+                        >
+                          <span style={{
+                            display:'inline-flex',alignItems:'center',justifyContent:'center',
+                            width:'22px',height:'22px',borderRadius:'50%',background:'#dcfce7',color:'#16a34a',
+                            fontWeight:700,fontSize:'12px',flexShrink:0
+                          }}>✓</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:600,fontSize:'13px',color:'#1e293b',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                              {r.name}
+                            </div>
+                            <div style={{fontSize:'11px',color:'#64748b'}}>
+                              {r.athletes}{typeof r.athletes === "number" ? " VĐV" : ""} • Đã tạo sơ đồ thi đấu
+                            </div>
+                          </div>
+                          <span style={{
+                            fontSize:'12px',fontWeight:700,color:'#4f46e5',background:'#eef2ff',
+                            padding:'4px 10px',borderRadius:'6px',border:'1px solid #c7d2fe',
+                            display:'inline-flex',alignItems:'center',gap:'4px',flexShrink:0
+                          }}>
+                            📊 Xem sơ đồ →
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -2882,8 +2968,25 @@ export default function TournamentPage() {
                   </div>
                 )}
 
-                <div className="modal-actions" style={{marginTop:'16px'}}>
-                  <button className="btn btn-primary" onClick={() => setShowBulkDrawModal(false)}>Đóng</button>
+                <div className="modal-actions" style={{marginTop:'16px',display:'flex',gap:'10px',flexWrap:'wrap',justifyContent:'flex-end'}}>
+                  {bulkDrawResults.success.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          setShowBulkDrawModal(false);
+                          const drawnCats = tournament.categories.filter(c => c.bracket);
+                          setCategoriesToExport(drawnCats);
+                          setShowExportPDFModal(true);
+                        }}
+                      >
+                        📄 Xuất PDF tất cả ({bulkDrawResults.success.length} sơ đồ)
+                      </button>
+
+                    </>
+                  )}
+                  <button className="btn btn-secondary" onClick={() => setShowBulkDrawModal(false)}>Đóng</button>
                 </div>
               </>
             )}

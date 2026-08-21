@@ -14,7 +14,7 @@
         GIẢI KARATE-DO SINH VIÊN TRƯỜNG ĐẠI HỌC CNTT VÀ TT VIỆT-HÀN MỞ RỘNG LẦN
         THỨ I - 2025
       </div>
-      <div class="category-title" id="categoryTitle">PENALTY</div>
+      <div class="category-title" id="categoryTitle"></div>
     </div>
     <!-- AKA (Red) Section -->
     <div class="competitor-section aka-section">
@@ -23,8 +23,8 @@
         <span class="country-code">VIE</span>
       </div>
       <div class="competitor-content">
-        <div class="competitor-name aka-name" id="akaName">AKA</div>
-        <div class="competitor-unit aka-unit" id="akaUnit">ĐƠN VỊ</div>
+        <div class="competitor-name aka-name" id="akaName"></div>
+        <div class="competitor-unit aka-unit" id="akaUnit"></div>
         <div class="penalty-row">
           <span class="warning-label aka-warning" id="akaWarningLabel">WARNING</span>
           <div class="penalty-buttons">
@@ -38,7 +38,7 @@
       </div>
       <div class="score-container">
         <span class="senshu-indicator aka-senshu" id="akaSenshuIndicator"
-          >o</span
+          >Senshu</span
         >
         <div class="score-display aka-score" id="akaScore">0</div>
       </div>
@@ -50,8 +50,8 @@
         <span class="country-code">VIE</span>
       </div>
       <div class="competitor-content">
-        <div class="competitor-name ao-name" id="aoName">AO</div>
-        <div class="competitor-unit ao-unit" id="aoUnit">ĐƠN VỊ</div>
+        <div class="competitor-name ao-name" id="aoName"></div>
+        <div class="competitor-unit ao-unit" id="aoUnit"></div>
         <div class="penalty-row">
           <span class="warning-label ao-warning" id="aoWarningLabel">WARNING</span>
           <div class="penalty-buttons">
@@ -149,6 +149,16 @@
         <em id="displayHanteiNotice">HANTEI &ndash; &#272;ANG CH&#7900; NH&#7852;P C&#7900;</em>
       </footer>
     </div>
+    <!-- Medical Time Overlay -->
+    <div class="medical-display-overlay" id="medicalDisplay" aria-live="polite">
+      <div class="medical-display-card">
+        <div class="medical-display-timer" id="medicalDisplayTimerBox">
+          <span class="medical-display-main" id="medicalDisplayMain">03:00</span>
+          <span class="medical-display-decimal" id="medicalDisplayDecimal">.0</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Fullscreen Score/Warning Overlay -->
     <div class="fullscreen-overlay" id="fullscreenOverlay">
       <div class="fullscreen-content">

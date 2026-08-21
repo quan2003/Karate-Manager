@@ -6,13 +6,13 @@ let state = {
   mode: "individual", // 'individual' or 'team'
   displayLayout: "horizontal", // 'horizontal' or 'vertical'
   swapPositions: false,
-  category: "PENALTY",
+  category: "",
   tournamentTitle:
     "GIẢI KARATE-DO SINH VIÊN TRƯỜNG ĐẠI HỌC CNTT VÀ TT VIỆT-HÀN MỞ RỘNG LẦN THỨ I - 2025", // Tournament title
   eventTitle: "Thảm 1", // Event title
   sponsorText: "NHÀ TÀI TRỢ", // Sponsor text
-  akaName: "AKA",
-  aoName: "AO",
+  akaName: "",
+  aoName: "",
   akaScore: 0,
   aoScore: 0,
   akaPenalties: { C1: false, C2: false, C3: false, HC: false, H: false },
@@ -35,6 +35,8 @@ let state = {
   },
   fontScale: 100, // Font scale percentage
   winnerFlash: null, // 'aka', 'ao', or null
+  proposedWinner: null,
+  forcedEndBeepAt: 0,
   hantei: {
     status: "idle",
     judgeCount: 5,
@@ -55,6 +57,9 @@ let state = {
   },
 };
 
+const kumiteStateChannel = typeof BroadcastChannel === "function"
+  ? new BroadcastChannel("kumite-scoreboard-state") : null;
+
 // Load state from localStorage
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
@@ -62,6 +67,9 @@ function loadState() {
     const parsedState = JSON.parse(saved);
     state = { ...state, ...parsedState };
     state.timer = { ...state.timer, ...parsedState.timer, hasStarted: parsedState.timer?.hasStarted === true };
+    if (parsedState.medicalTimer) {
+      state.medicalTimer = { ...state.medicalTimer, ...parsedState.medicalTimer };
+    }
   }
   updateDisplay();
 }
@@ -82,7 +90,7 @@ function updateDisplay() {
       "GIẢI KARATE-DO SINH VIÊN TRƯỜNG ĐẠI HỌC CNTT VÀ TT VIỆT-HÀN MỞ RỘNG LẦN THỨ I - 2025";
   } // Update category
   document.getElementById("categoryTitle").textContent =
-    state.displayLayout === "vertical" ? "WARNING" : state.category;
+    state.displayLayout === "vertical" ? "WARNING" : (state.category || "KUMITE");
   // Update event title
   const eventTitle = document.getElementById("eventTitle");
   if (eventTitle) {
@@ -188,7 +196,8 @@ function updateDisplay() {
 
   // Update names - Split into Name and Unit
   const updateCompetitorName = (side) => {
-    const fullName = state[`${side}Name`] || "";
+    const defaultLabel = side === "aka" ? "AKA" : "AO";
+    const fullName = (state[`${side}Name`] || "").trim() || defaultLabel;
     const nameEl = document.getElementById(`${side}Name`);
     const unitEl = document.getElementById(`${side}Unit`);
     
@@ -222,24 +231,34 @@ function updateDisplay() {
   // Update winner flash animation
   const akaName = document.getElementById("akaName");
   const aoName = document.getElementById("aoName");
+  const akaUnit = document.getElementById("akaUnit");
+  const aoUnit = document.getElementById("aoUnit");
   const akaScore = document.getElementById("akaScore");
   const aoScore = document.getElementById("aoScore");
   const akaScoreContainer = akaScore.parentElement;
   const aoScoreContainer = aoScore.parentElement;
 
-  if (state.winnerFlash === "aka") {
+  const highlightedWinner = state.winnerFlash || state.proposedWinner;
+
+  if (highlightedWinner === "aka") {
     akaName.classList.add("winner-flash");
+    akaUnit?.classList.add("winner-flash");
     akaScoreContainer.classList.add("winner-flash");
     aoName.classList.remove("winner-flash");
+    aoUnit?.classList.remove("winner-flash");
     aoScoreContainer.classList.remove("winner-flash");
-  } else if (state.winnerFlash === "ao") {
+  } else if (highlightedWinner === "ao") {
     aoName.classList.add("winner-flash");
+    aoUnit?.classList.add("winner-flash");
     aoScoreContainer.classList.add("winner-flash");
     akaName.classList.remove("winner-flash");
+    akaUnit?.classList.remove("winner-flash");
     akaScoreContainer.classList.remove("winner-flash");
   } else {
     akaName.classList.remove("winner-flash");
     aoName.classList.remove("winner-flash");
+    akaUnit?.classList.remove("winner-flash");
+    aoUnit?.classList.remove("winner-flash");
     akaScoreContainer.classList.remove("winner-flash");
     aoScoreContainer.classList.remove("winner-flash");
   }
@@ -258,7 +277,68 @@ function updateDisplay() {
     const scale = state.fontScale / 100;
     document.documentElement.style.setProperty("--font-scale", scale);
   }
+
+  // Render Medical Display Overlay if active
+  renderMedicalDisplay();
+
   renderHanteiDisplay();
+}
+
+// Render Medical Timer Overlay on Audience Display
+function renderMedicalDisplay() {
+  const overlay = document.getElementById("medicalDisplay");
+  if (!overlay) return;
+
+  const med = state.medicalTimer;
+  const isOpen = med && med.isOpen === true;
+  const isRest = med?.kind === "rest";
+
+  overlay.classList.toggle("show", isOpen);
+  overlay.classList.toggle("rest-mode", isRest);
+  overlay.style.display = isOpen ? "flex" : "none";
+  if (!isOpen) return;
+
+  const minutes = String(med.minutes || 0).padStart(2, "0");
+  const seconds = String(med.seconds || 0).padStart(2, "0");
+  const deciseconds = med.deciseconds || 0;
+
+  const categoryEl = document.getElementById("medicalDisplayCategory");
+  const akaEl = document.getElementById("medicalDisplayAkaName");
+  const aoEl = document.getElementById("medicalDisplayAoName");
+  if (categoryEl) categoryEl.textContent = med.category || state.category || "KUMITE";
+  if (akaEl) akaEl.textContent = med.akaName || state.akaName || "AKA";
+  if (aoEl) aoEl.textContent = med.aoName || state.aoName || "AO";
+
+  const mainEl = document.getElementById("medicalDisplayMain");
+  const decEl = document.getElementById("medicalDisplayDecimal");
+  if (mainEl) mainEl.textContent = `${minutes}:${seconds}`;
+  if (decEl) decEl.textContent = `.${deciseconds}`;
+
+  const box = document.getElementById("medicalDisplayTimerBox");
+  const notice = document.getElementById("medicalDisplayNotice");
+
+  const totalSec = (med.minutes || 0) * 60 + (med.seconds || 0);
+
+  if (box) {
+    box.classList.remove("med-warning-30", "med-warning-10", "med-expired");
+    if (med.expired || (totalSec === 0 && deciseconds === 0)) {
+      box.classList.add("med-expired");
+    } else if (totalSec <= 10) {
+      box.classList.add("med-warning-10");
+    } else if (totalSec <= 30) {
+      box.classList.add("med-warning-30");
+    }
+  }
+
+  if (notice) {
+    if (med.expired) {
+      notice.textContent = "⚠️ THỜI GIAN CỨU THƯƠNG ĐÃ HẾT (3 PHÚT)";
+    } else if (!med.isRunning) {
+      notice.textContent = "⏸ TẠM DỪNG CỨU THƯƠNG";
+    } else {
+      notice.textContent = "👨‍⚕️ CỨU THƯƠNG – MEDICAL TIME";
+    }
+  }
 }
 
 function getDisplayHanteiState() {
@@ -393,6 +473,7 @@ function updatePenaltyButtons(competitor, penalties) {
 const kumiteBeepSource = "sounds/beep-2.wav";
 let finalBeepPlayed = false;
 let warning15sPlayed = false; // Track if 15s warning beep has played
+let lastForcedEndBeepAt = 0;
 
 // Play the supplied WAV sequentially so repeated alerts never overlap.
 function playKumiteBeep(repeatCount = 1) {
@@ -444,6 +525,15 @@ function updateTimerDisplay() {
     finalBeepPlayed = true;
   } else if (totalSeconds > 0) {
     finalBeepPlayed = false;
+  }
+
+  const forcedEndBeepAt = Number(state.forcedEndBeepAt) || 0;
+  if (
+    forcedEndBeepAt > lastForcedEndBeepAt &&
+    Date.now() - forcedEndBeepAt < 5000
+  ) {
+    lastForcedEndBeepAt = forcedEndBeepAt;
+    playKumiteBeep(3);
   }
 
   // Apply one color to the complete timer, including the decimal digit.
@@ -536,7 +626,7 @@ function showFullscreenDisplay(displayData) {
     // Create senshu box
     const content = overlay.querySelector(".fullscreen-content");
     content.innerHTML = `
-      <div class="fullscreen-senshu-box">S</div>
+      <div class="fullscreen-senshu-box"><span>S</span></div>
       <div class="fullscreen-action">SENSHU</div>
     `;
   } else {
@@ -584,6 +674,9 @@ setInterval(function () {
     const newState = JSON.parse(saved);
     state = { ...state, ...newState };
     state.timer = { ...state.timer, ...newState.timer, hasStarted: newState.timer?.hasStarted === true };
+    if (newState.medicalTimer) {
+      state.medicalTimer = { ...state.medicalTimer, ...newState.medicalTimer };
+    }
     updateDisplay();
 
     // Check for fullscreen display trigger
@@ -597,7 +690,27 @@ setInterval(function () {
   }
 }, 50);
 
+// Listen for storage events across windows
+window.addEventListener("storage", function (e) {
+  if (e.key === STORAGE_KEY) {
+    loadState();
+  }
+});
+
 // Initialize
+if (kumiteStateChannel) {
+  kumiteStateChannel.addEventListener("message", function (event) {
+    try {
+      const newState = JSON.parse(event.data);
+      state = { ...state, ...newState };
+      state.timer = { ...state.timer, ...newState.timer, hasStarted: newState.timer?.hasStarted === true };
+      updateDisplay();
+    } catch (error) {
+      console.error("Kumite state sync failed:", error);
+    }
+  });
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   loadState();
   lastStateString = localStorage.getItem(STORAGE_KEY) || "";

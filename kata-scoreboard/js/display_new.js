@@ -73,16 +73,20 @@ function updateDisplay() {
   const bottomData = isSwapped ? state.aka : state.ao;
 
   // AKA
-  if (document.getElementById("akaAthlete")) document.getElementById("akaAthlete").textContent = topData.athlete || "";
-  if (document.getElementById("akaUnit")) document.getElementById("akaUnit").textContent = (state.contentType === "individual" ? topData.unit : topData.team) || "";
+  if (document.getElementById("akaAthlete")) document.getElementById("akaAthlete").textContent =
+    (state.contentType === "team" ? (topData.team || topData.unit) : topData.athlete) || "";
+  if (document.getElementById("akaUnit")) document.getElementById("akaUnit").textContent =
+    state.contentType === "individual" ? (topData.unit || "") : "";
   if (document.getElementById("akaScore")) document.getElementById("akaScore").textContent = topData.score || "0";
   if (state.scoringStarted) document.getElementById("akaScore").classList.remove("hidden");
   else document.getElementById("akaScore").classList.add("hidden");
   if (document.getElementById("akaKataDisplay")) document.getElementById("akaKataDisplay").textContent = (topData.kataName || "").toUpperCase();
 
   // AO
-  if (document.getElementById("aoAthlete")) document.getElementById("aoAthlete").textContent = bottomData.athlete || "";
-  if (document.getElementById("aoUnit")) document.getElementById("aoUnit").textContent = (state.contentType === "individual" ? bottomData.unit : bottomData.team) || "";
+  if (document.getElementById("aoAthlete")) document.getElementById("aoAthlete").textContent =
+    (state.contentType === "team" ? (bottomData.team || bottomData.unit) : bottomData.athlete) || "";
+  if (document.getElementById("aoUnit")) document.getElementById("aoUnit").textContent =
+    state.contentType === "individual" ? (bottomData.unit || "") : "";
   if (document.getElementById("aoScore")) document.getElementById("aoScore").textContent = bottomData.score || "0";
   if (state.scoringStarted) document.getElementById("aoScore").classList.remove("hidden");
   else document.getElementById("aoScore").classList.add("hidden");
@@ -142,8 +146,9 @@ function showWinnerAnnouncement(data, side) {
   const kataEl = document.getElementById("winnerKata");
   const headerEl = document.getElementById("winnerHeader");
   
-  if (nameEl) nameEl.textContent = data.athlete || "";
-  if (unitEl) unitEl.textContent = (state.contentType === "individual" ? data.unit : data.team) || "";
+  if (nameEl) nameEl.textContent =
+    (state.contentType === "team" ? (data.team || data.unit) : data.athlete) || "";
+  if (unitEl) unitEl.textContent = state.contentType === "individual" ? (data.unit || "") : "";
   if (kataEl) kataEl.textContent = (data.kataName || "").toUpperCase();
   if (headerEl) {
     headerEl.className = "winner-header " + side;

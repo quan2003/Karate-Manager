@@ -6,11 +6,15 @@ let state = {
   mode: "individual", // 'individual' or 'team'
   displayLayout: "horizontal", // 'horizontal' or 'vertical'
   swapPositions: false,
-  category: "PENALTY",
+  category: "KUMITE",
   akaName: "AKA",
   aoName: "AO",
   akaScore: 0,
   aoScore: 0,
+  techniqueCounts: {
+    aka: { ippon: 0, wazaari: 0, yuko: 0 },
+    ao: { ippon: 0, wazaari: 0, yuko: 0 },
+  },
   akaPenalties: { C1: false, C2: false, C3: false, HC: false, H: false },
   aoPenalties: { C1: false, C2: false, C3: false, HC: false, H: false },
   akaSenshu: false,
@@ -31,6 +35,8 @@ let state = {
   },
   fontScale: 100, // Font scale percentage
   winnerFlash: null, // 'aka', 'ao', or null
+  proposedWinner: null, // flashes while the secretary confirmation popup is open
+  forcedEndBeepAt: 0,
   hantei: {
     status: "idle",
     judgeCount: 5,
@@ -56,11 +62,26 @@ let state = {
     aoWins: 0,
     roundHistory: [], // Array of round results
   },
+  medicalTimer: {
+    isOpen: false,
+    minutes: 3,
+    seconds: 0,
+    deciseconds: 0,
+    isRunning: false,
+    hasStarted: false,
+    expired: false,
+  },
 };
 
 let timerInterval = null;
+let medicalTimerInterval = null;
+const kumiteStateChannel = typeof BroadcastChannel === "function"
+  ? new BroadcastChannel("kumite-scoreboard-state") : null;
 let displayWindow = null;
 let athletes = []; // Array to store athletes data from CSV
+let registeredTeamAthletes = { aka: [], ao: [] };
+let activeWinProposal = null;
+const dismissedWinProposals = new Set();
 
 // Point values
 const POINT_VALUES = {
@@ -368,8 +389,15 @@ function loadState() {
   if (saved) {
     const parsedState = JSON.parse(saved);
     state = { ...state, ...parsedState };
+    state.proposedWinner = null;
     state.timer = { ...state.timer, ...parsedState.timer, hasStarted: parsedState.timer?.hasStarted === true };
     state.hantei = normalizeHanteiState(parsedState.hantei);
+    if (parsedState.medicalTimer) {
+      state.medicalTimer = { ...state.medicalTimer, ...parsedState.medicalTimer };
+      if (state.medicalTimer.isOpen && state.medicalTimer.isRunning) {
+        runMedicalTimerInterval();
+      }
+    }
   }
   updateUI();
   updatePreview();
@@ -377,7 +405,9 @@ function loadState() {
 
 // Save state to localStorage
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const serializedState = JSON.stringify(state);
+  localStorage.setItem(STORAGE_KEY, serializedState);
+  if (kumiteStateChannel) kumiteStateChannel.postMessage(serializedState);
   window.dispatchEvent(new Event("storage"));
   updatePreview();
 }
@@ -401,6 +431,8 @@ function updateUI() {
   if (state.mode === "team") {
     updateTeamModeDisplay();
   }
+  const teamAthleteSelectors = document.getElementById("teamAthleteSelectors");
+  if (teamAthleteSelectors) teamAthleteSelectors.hidden = state.mode !== "team";
 
   // Các trường thông tin trận có thể không xuất hiện trên giao diện rút gọn.
   const redNameInput = document.getElementById("redName");
@@ -411,17 +443,21 @@ function updateUI() {
   if (categoryInput) categoryInput.value = state.category;
 
   // Update penalties
-  ["C1", "C2", "C3", "HC", "H"].forEach((penalty) => {
-    const akaCheck = document.getElementById(`aka${penalty}`);
-    if (akaCheck) akaCheck.checked = state.akaPenalties[penalty];
-    
-    const aoCheck = document.getElementById(`ao${penalty}`);
-    if (aoCheck) aoCheck.checked = state.aoPenalties[penalty];
+  const penaltyKeys = ["C1", "C2", "C3", "HC", "H"];
+  ["aka", "ao"].forEach((side) => {
+    document.querySelectorAll(`.penalty-cell.penalty-${side}`).forEach((button, index) => {
+      const isActive = state[`${side}Penalties`][penaltyKeys[index]] === true;
+      button.classList.toggle("active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
   });
 
-  // Update seconds input
-  const totalSeconds = state.timer.minutes * 60 + state.timer.seconds;
-  document.getElementById("secondsInput").value = totalSeconds;
+  // Update seconds input (preserve decimal formatting and avoid overwriting while user is focused/typing)
+  const secondsInput = document.getElementById("secondsInput");
+  if (secondsInput && document.activeElement !== secondsInput) {
+    const totalSec = (state.timer.minutes * 60 + state.timer.seconds) + ((state.timer.deciseconds || 0) / 10);
+    secondsInput.value = formatSecondsValue(totalSec);
+  }
 
   // Update error names
   document.getElementById("errorC1").value = state.errorNames.C1;
@@ -445,6 +481,7 @@ function updateUI() {
       state.displayLayout === "vertical" ? "vertical" : "horizontal";
   }
   const swapPositionsBtn = document.getElementById("swapPositionsBtn");
+  document.body.classList.toggle("positions-swapped", state.swapPositions === true);
   if (swapPositionsBtn) {
     const isSwapped = state.swapPositions === true;
     swapPositionsBtn.classList.toggle("active", isSwapped);
@@ -477,10 +514,14 @@ function updateUI() {
   }
 
   // Update start/stop button
-  document.getElementById("startStopBtn").textContent = state.timer.isRunning
-    ? "Stop"
-    : "Start";
+  if (document.getElementById("startStopBtn")) {
+    document.getElementById("startStopBtn").textContent = state.timer.isRunning
+      ? "Stop"
+      : "Start";
+  }
+
   renderHanteiAdmin();
+  renderMedicalAdmin();
 }
 
 // Update preview display
@@ -489,9 +530,9 @@ function updatePreview() {
   if (miniDisplay) {
     miniDisplay.classList.toggle("positions-swapped", state.swapPositions === true);
   }
-  document.getElementById("previewCategory").textContent = state.category;
-  document.getElementById("previewAkaName").textContent = state.akaName;
-  document.getElementById("previewAoName").textContent = state.aoName;
+  document.getElementById("previewCategory").textContent = state.category || "KUMITE";
+  document.getElementById("previewAkaName").textContent = state.akaName || "AKA";
+  document.getElementById("previewAoName").textContent = state.aoName || "AO";
   document.getElementById("previewAkaScore").textContent = state.akaScore;
   document.getElementById("previewAoScore").textContent = state.aoScore;
 
@@ -577,6 +618,16 @@ function startTimer() {
       state.timer.deciseconds = 9;
     } else {
       stopTimer();
+      maybeProposeWinner("timer-ended");
+      return;
+    }
+    if (
+      state.timer.minutes === 0 &&
+      state.timer.seconds === 0 &&
+      state.timer.deciseconds === 0
+    ) {
+      stopTimer();
+      maybeProposeWinner("timer-ended");
       return;
     }
     // Save directly to localStorage without dispatching event each time
@@ -597,39 +648,88 @@ function stopTimer() {
   saveState();
 }
 
+function parseSecondsValue(value) {
+  const normalized = String(value ?? "").trim().replace(",", ".");
+  if (!/^\d*(?:\.\d*)?$/.test(normalized) || normalized === "" || normalized === ".") {
+    return null;
+  }
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : null;
+}
+
+function formatSecondsValue(value) {
+  const tenths = Math.max(0, Math.round((Number(value) || 0) * 10));
+  return tenths % 10 === 0 ? String(tenths / 10) : (tenths / 10).toFixed(1);
+}
+
+function applySecondsValue(totalSeconds) {
+  const totalTenths = Math.max(0, Math.round(totalSeconds * 10));
+  state.timer.minutes = Math.floor(totalTenths / 600);
+  state.timer.seconds = Math.floor((totalTenths % 600) / 10);
+  state.timer.deciseconds = totalTenths % 10;
+  state.timer.hasStarted = false;
+}
+
+function handleSecondsInput(event) {
+  if (state.timer.isRunning) return;
+  const parsed = parseSecondsValue(event.target.value);
+  if (parsed === null) return;
+  applySecondsValue(parsed);
+  saveState();
+  updatePreview();
+}
+
+function commitSecondsInput() {
+  const input = document.getElementById("secondsInput");
+  const parsed = parseSecondsValue(input?.value);
+  const totalSeconds = parsed === null ? 180 : parsed;
+  if (input) input.value = formatSecondsValue(totalSeconds);
+  if (!state.timer.isRunning) {
+    applySecondsValue(totalSeconds);
+    saveState();
+    updatePreview();
+  }
+}
+
+function handleSecondsKeyDown(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    commitSecondsInput();
+    event.target.blur();
+  }
+}
+
 function resetTimer() {
   stopTimer();
-  const totalSeconds =
-    parseInt(document.getElementById("secondsInput").value) || 180;
-  state.timer.minutes = Math.floor(totalSeconds / 60);
-  state.timer.seconds = totalSeconds % 60;
-  state.timer.deciseconds = 0;
-  state.timer.hasStarted = false;
+  const input = document.getElementById("secondsInput");
+  const totalSeconds = parseSecondsValue(input?.value);
+  applySecondsValue(totalSeconds === null ? 180 : totalSeconds);
+  if (input) input.value = formatSecondsValue(totalSeconds === null ? 180 : totalSeconds);
   saveState();
+  updatePreview();
 }
 
 function adjustSeconds(amount) {
   const input = document.getElementById("secondsInput");
-  let value = parseInt(input.value) || 180;
-  value = Math.max(0, value + amount);
-  input.value = value;
+  const parsed = parseSecondsValue(input?.value);
+  const value = Math.max(0, (parsed === null ? 180 : parsed) + amount);
+  input.value = formatSecondsValue(value);
 
   if (!state.timer.isRunning) {
-    state.timer.minutes = Math.floor(value / 60);
-    state.timer.seconds = value % 60;
-    state.timer.deciseconds = 0;
+    applySecondsValue(value);
     saveState();
+    updatePreview();
   }
 }
 
 function setSeconds() {
-  const totalSeconds =
-    parseInt(document.getElementById("secondsInput").value) || 180;
+  const input = document.getElementById("secondsInput");
+  const totalSeconds = parseSecondsValue(input?.value);
   if (!state.timer.isRunning) {
-    state.timer.minutes = Math.floor(totalSeconds / 60);
-    state.timer.seconds = totalSeconds % 60;
-    state.timer.deciseconds = 0;
+    applySecondsValue(totalSeconds === null ? 180 : totalSeconds);
+    if (input) input.value = formatSecondsValue(totalSeconds === null ? 180 : totalSeconds);
     saveState();
+    updatePreview();
   }
 }
 
@@ -656,6 +756,20 @@ function setTimerSpeed(speed) {
 }
 
 // Score functions
+function ensureTechniqueCounts() {
+  const empty = () => ({ ippon: 0, wazaari: 0, yuko: 0 });
+  state.techniqueCounts = state.techniqueCounts || {};
+  state.techniqueCounts.aka = { ...empty(), ...state.techniqueCounts.aka };
+  state.techniqueCounts.ao = { ...empty(), ...state.techniqueCounts.ao };
+  return state.techniqueCounts;
+}
+
+function formatTechniqueSummary(side) {
+  const counts = ensureTechniqueCounts()[side];
+  const total = side === 'aka' ? state.akaScore : state.aoScore;
+  return `IPPON:${counts.ippon} WAZA-ARI:${counts.wazaari} YUKO:${counts.yuko} TOTAL:${total}`;
+}
+
 function addPoint(competitor, type) {
   if (type === "senshu") {
     if (competitor === "aka") {
@@ -679,33 +793,286 @@ function addPoint(competitor, type) {
     }
   } else {
     const points = POINT_VALUES[type];
+    ensureTechniqueCounts()[competitor][type] += 1;
     const typeName = type === 'wazaari' ? 'Waza-ari' : type.charAt(0).toUpperCase() + type.slice(1);
     if (competitor === "aka") {
       state.akaScore += points;
-      addMatchLog('point', 'aka', `+${typeName} (+${points}đ)`);
+      addMatchLog('point', 'aka', formatTechniqueSummary('aka'));
     } else {
       state.aoScore += points;
-      addMatchLog('point', 'ao', `+${typeName} (+${points}đ)`);
+      addMatchLog('point', 'ao', formatTechniqueSummary('ao'));
     }
     triggerFullscreenDisplay(competitor, type, points);
   }
   saveState();
+  if (type !== "senshu") maybeProposeWinner("live");
 }
 
 function removePoint(competitor, type) {
   const points = POINT_VALUES[type];
-  const typeName = type === 'wazaari' ? 'Waza-ari' : type.charAt(0).toUpperCase() + type.slice(1);
+  const counts = ensureTechniqueCounts()[competitor];
+  if (!counts[type]) return;
+  counts[type] -= 1;
   if (competitor === "aka") {
     state.akaScore = Math.max(0, state.akaScore - points);
-    addMatchLog('remove', 'aka', `-${typeName} (-${points}đ)`);
+    addMatchLog('remove', 'aka', formatTechniqueSummary('aka'));
   } else {
     state.aoScore = Math.max(0, state.aoScore - points);
-    addMatchLog('remove', 'ao', `-${typeName} (-${points}đ)`);
+    addMatchLog('remove', 'ao', formatTechniqueSummary('ao'));
   }
   saveState();
 }
 
+function countPenaltiesForWin(side) {
+  const penalties = side === "aka" ? state.akaPenalties : state.aoPenalties;
+  return Object.values(penalties || {}).filter(Boolean).length;
+}
+
+function compareTechniquesForWin() {
+  const counts = ensureTechniqueCounts();
+  for (const technique of ["ippon", "wazaari", "yuko"]) {
+    const diff = (counts.aka[technique] || 0) - (counts.ao[technique] || 0);
+    if (diff !== 0) return diff > 0 ? "aka" : "ao";
+  }
+  return null;
+}
+
+function buildLiveWinProposal() {
+  const diff = state.akaScore - state.aoScore;
+  if (Math.abs(diff) >= 8) {
+    return {
+      winner: diff > 0 ? "aka" : "ao",
+      code: "eight-point-gap",
+      reason: `C\u00e1ch bi\u1ec7t ${Math.abs(diff)} \u0111i\u1ec3m (lu\u1eadt c\u00e1ch bi\u1ec7t 8 \u0111i\u1ec3m).`,
+    };
+  }
+  const akaFaults = countPenaltiesForWin("aka");
+  const aoFaults = countPenaltiesForWin("ao");
+  if (akaFaults >= 5 || aoFaults >= 5) {
+    const loser = akaFaults >= 5 ? "aka" : "ao";
+    return {
+      winner: loser === "aka" ? "ao" : "aka",
+      code: "five-penalties",
+      reason: `${loser.toUpperCase()} \u0111\u00e3 nh\u1eadn \u0111\u1ee7 5 l\u1ed7i.`,
+    };
+  }
+  return null;
+}
+
+function buildEndTimeWinProposal() {
+  const live = buildLiveWinProposal();
+  if (live) return live;
+  const diff = state.akaScore - state.aoScore;
+  if (diff !== 0) {
+    return {
+      winner: diff > 0 ? "aka" : "ao",
+      code: "time-score",
+      reason: `H\u1ebft th\u1eddi gian, d\u1eabn \u0111i\u1ec3m ${state.akaScore} - ${state.aoScore}.`,
+    };
+  }
+  if (state.akaSenshu !== state.aoSenshu) {
+    const winner = state.akaSenshu ? "aka" : "ao";
+    return { winner, code: "senshu", reason: `H\u00f2a \u0111i\u1ec3m, ${winner.toUpperCase()} c\u00f3 Senshu.` };
+  }
+  const winner = compareTechniquesForWin();
+  if (!winner) return null;
+  const c = ensureTechniqueCounts();
+  return {
+    winner,
+    code: "higher-technique",
+    reason: `H\u00f2a \u0111i\u1ec3m, x\u00e9t Ippon -> Waza-ari -> Yuko. AKA: ${c.aka.ippon}/${c.aka.wazaari}/${c.aka.yuko}; AO: ${c.ao.ippon}/${c.ao.wazaari}/${c.ao.yuko}.`,
+  };
+}
+
+function winProposalSignature(p) {
+  const c = ensureTechniqueCounts();
+  return [state.matchId || "local", state.mode === "team" ? state.teamMode.currentRound : 0,
+    p.code, p.winner, state.akaScore, state.aoScore,
+    countPenaltiesForWin("aka"), countPenaltiesForWin("ao"),
+    c.aka.ippon, c.aka.wazaari, c.aka.yuko,
+    c.ao.ippon, c.ao.wazaari, c.ao.yuko,
+    Number(state.akaSenshu), Number(state.aoSenshu)].join("|");
+}
+
+/* Disabled malformed draft produced by the Windows patch transport.
+function countPenalties(side) {
+  const penalties = side === aka ? state.akaPenalties : state.aoPenalties;
+  return Object.values(penalties || {}).filter(Boolean).length;
+}
+
+function compareScoringTechniques() {
+  const counts = ensureTechniqueCounts();
+  for (const technique of [ippon, wazaari, yuko]) {
+    const difference = (counts.aka[technique] || 0) - (counts.ao[technique] || 0);
+    if (difference !== 0) return difference > 0 ? aka : ao;
+  }
+  return null;
+}
+
+function getWinProposal(trigger) {
+  const difference = state.akaScore - state.aoScore;
+  const akaFaults = countPenalties(aka);
+  const aoFaults = countPenalties(ao);
+  if (Math.abs(difference) >= 8) {
+    return {
+      winner: difference > 0 ? aka : ao,
+      code: eight-point-gap,
+      reason: `C�ch bj��y��y�t ${Math.abs(difference)}!i�w^~)�wm (lu�w^~)�ut c�ch bj��y��y�t 8 �w^~)�uk�u���Cm).`,
+    };
+  }
+  if (akaFaults >= 5 || aoFaults >= 5) {
+    const loser = akaFaults >= 5 ? aka : ao;
+    return {
+      winner: loser === aka ? ao : aka,
+      code: five-penalties,
+      reason: `${loser.toUpperCase()}!� nj��y��y�n!�u���g 5 n��y��y�i.`,
+    };
+  }
+  return getEndTimeWinProposal(trigger, difference);
+}
+
+function getEndTimeWinProposal(trigger, difference) {
+  if (trigger !== timer-ended) return null;
+  if (difference !== 0) {
+    return {
+      winner: difference > 0 ? aka : ao,
+      code: time-score,
+      reason: \`H\u1ebft th\u1eddi gian, d\u1eabn \u0111i\u1ec3m \${state.akaScore} - \${state.aoScore}.\`,
+    };
+  }
+  if (state.akaSenshu !== state.aoSenshu) {
+    const winner = state.akaSenshu ? aka : ao;
+    return { winner, code: senshu, reason: \`H\u00f2a \u0111i\u1ec3m, \${winner.toUpperCase()} c\u00f3 Senshu.\` };
+  }
+  const winner = compareScoringTechniques();
+  if (!winner) return null;
+  const c = ensureTechniqueCounts();
+  return {
+    winner,
+    code: higher-technique,
+    reason: \`H\u00f2a \u0111i\u1ec3m, x\u00e9t \u0111\u00f2n cao h\u01a1n theo Ippon -> Waza-ari -> Yuko. AKA: \${c.aka.ippon}/\${c.aka.wazaari}/\${c.aka.yuko}; AO: \${c.ao.ippon}/\${c.ao.wazaari}/\${c.ao.yuko}.\`,
+  };
+}
+
+function proposalSignature(proposal) {
+  const c = ensureTechniqueCounts();
+  return [
+    state.matchId || local,
+    state.mode === team ? state.teamMode.currentRound : 0,
+    proposal.code, proposal.winner, state.akaScore, state.aoScore,
+    countPenalties(aka), countPenalties(ao),
+    c.aka.ippon, c.aka.wazaari, c.aka.yuko,
+    c.ao.ippon, c.ao.wazaari, c.ao.yuko,
+    Number(state.akaSenshu), Number(state.aoSenshu),
+  ].join(|);
+}
+
+function maybeProposeWinner(trigger) {
+  if (state.winnerFlash) return;
+  const proposal = getWinProposal(trigger);
+  if (!proposal) return;
+  proposal.signature = proposalSignature(proposal);
+  if (dismissedWinProposals.has(proposal.signature)) return;
+  activeWinProposal = proposal;
+
+  const side = proposal.winner.toUpperCase();
+  const name = proposal.winner === aka ? state.akaName : state.aoName;
+  document.getElementById(winProposalSide).textContent = side;
+  document.getElementById(winProposalName).textContent = name || side;
+  document.getElementById(winProposalReason).textContent = proposal.reason;
+  document.getElementById(winProposalOverlay).classList.add(show);
+}
+
+function closeWinProposal(rememberRejection = false) {
+  if (rememberRejection && activeWinProposal) {
+    dismissedWinProposals.add(activeWinProposal.signature);
+    addMatchLog(system, ", \`Admin t\u1eeb ch\u1ed1i \u0111\u1ec1 xu\u1ea5t \${activeWinProposal.winner.toUpperCase()} th\u1eafng. H\u00e3y ch\u1ecdn Red Wins ho\u1eb7c Blue Wins.\`);
+  }
+  document.getElementById(winProposalOverlay)?.classList.remove(show);
+  activeWinProposal = null;
+}
+
+function rejectWinProposal() {
+  closeWinProposal(true);
+}
+
+function acceptWinProposal() {
+  if (!activeWinProposal) return;
+  const proposal = activeWinProposal;
+  closeWinProposal(false);
+  state.winnerFlash = proposal.winner;
+  addMatchLog(win, proposal.winner, \`\${proposal.winner.toUpperCase()} TH\u1eaeNG - \${proposal.reason}\`);
+  saveState();
+
+  if (state.mode === team) {
+    setTimeout(() => finishRound(), 350);
+  } else if (pendingMatchData || state.matchId) {
+    setTimeout(() => finishMatch(true), 350);
+  }
+}
+
+*/
+function maybeProposeWinner(trigger) {
+  if (state.winnerFlash || activeWinProposal) return;
+  const proposal = trigger === "timer-ended"
+    ? buildEndTimeWinProposal()
+    : buildLiveWinProposal();
+  if (!proposal) return;
+  proposal.signature = winProposalSignature(proposal);
+  if (dismissedWinProposals.has(proposal.signature)) return;
+
+  if (proposal.code === "eight-point-gap") {
+    const hasTimeRemaining =
+      state.timer.minutes > 0 ||
+      state.timer.seconds > 0 ||
+      state.timer.deciseconds > 0;
+    if (hasTimeRemaining) {
+      if (state.timer.isRunning) stopTimer();
+      state.forcedEndBeepAt = Date.now();
+    }
+  }
+
+  activeWinProposal = proposal;
+  state.proposedWinner = proposal.winner;
+  saveState();
+  const side = proposal.winner.toUpperCase();
+  const name = proposal.winner === "aka" ? state.akaName : state.aoName;
+  document.getElementById("winProposalSide").textContent = side;
+  document.getElementById("winProposalName").textContent = name || side;
+  document.getElementById("winProposalReason").textContent = proposal.reason;
+  document.getElementById("winProposalOverlay").classList.add("show");
+}
+
+function closeWinProposal(rememberRejection = false) {
+  if (rememberRejection && activeWinProposal) {
+    dismissedWinProposals.add(activeWinProposal.signature);
+    addMatchLog("system", "", `Th\u01b0 k\u00fd t\u1eeb ch\u1ed1i \u0111\u1ec1 xu\u1ea5t ${activeWinProposal.winner.toUpperCase()} th\u1eafng. H\u00e3y ch\u1ecdn Red Wins ho\u1eb7c Blue Wins.`);
+  }
+  document.getElementById("winProposalOverlay")?.classList.remove("show");
+  activeWinProposal = null;
+  state.proposedWinner = null;
+  saveState();
+}
+
+function rejectWinProposal() {
+  closeWinProposal(true);
+}
+
+function acceptWinProposal() {
+  if (!activeWinProposal) return;
+  const proposal = activeWinProposal;
+  closeWinProposal(false);
+  state.winnerFlash = proposal.winner;
+  state.proposedWinner = null;
+  addMatchLog("win", proposal.winner, `${proposal.winner.toUpperCase()} TH\u1eaeNG - ${proposal.reason}`);
+  saveState();
+  if (state.mode === "team") setTimeout(() => finishRound(), 1500);
+  else if (pendingMatchData || state.matchId) setTimeout(() => finishMatch(true), 1500);
+}
+
 function redWins() {
+  // Automatic win rules use the same manual winner state after admin approval.
+  closeWinProposal(false);
   state.winnerFlash = "aka";
   addMatchLog('win', 'aka', '🏆 AKA THẮNG');
   saveState();
@@ -717,6 +1084,7 @@ function redWins() {
 }
 
 function blueWins() {
+  closeWinProposal(false);
   state.winnerFlash = "ao";
   addMatchLog('win', 'ao', '🏆 AO THẮNG');
   saveState();
@@ -992,17 +1360,19 @@ function togglePenalty(competitor, type) {
     }
   }
   saveState();
+  updateUI();
+  maybeProposeWinner("live");
 }
 
 // Update functions
 function updateNames() {
-  state.akaName = document.getElementById("redName").value || "AKA";
-  state.aoName = document.getElementById("blueName").value || "AO";
+  state.akaName = document.getElementById("redName") ? document.getElementById("redName").value : "";
+  state.aoName = document.getElementById("blueName") ? document.getElementById("blueName").value : "";
   saveState();
 }
 
 function updateCategory() {
-  state.category = document.getElementById("category").value || "PENALTY";
+  state.category = document.getElementById("category") ? document.getElementById("category").value : "";
   saveState();
 }
 
@@ -1076,6 +1446,10 @@ function triggerFullscreenDisplay(
 function resetAll() {
   state.akaScore = 0;
   state.aoScore = 0;
+  state.techniqueCounts = {
+    aka: { ippon: 0, wazaari: 0, yuko: 0 },
+    ao: { ippon: 0, wazaari: 0, yuko: 0 },
+  };
   state.akaPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
   state.aoPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
   state.akaSenshu = false;
@@ -1093,6 +1467,9 @@ function resetAll() {
     initializeTeamMode();
   }
 
+  // Preserve the current match history before clearing the on-screen panel.
+  persistMatchLogSnapshot(state.matchId);
+
   // Clear event log for next match
   clearMatchLog();
 
@@ -1106,11 +1483,15 @@ function resetAllSettings() {
     mode: "individual",
     displayLayout: "horizontal",
     swapPositions: false,
-    category: "PENALTY",
-    akaName: "AKA",
-    aoName: "AO",
+    category: "",
+    akaName: "",
+    aoName: "",
     akaScore: 0,
     aoScore: 0,
+    techniqueCounts: {
+      aka: { ippon: 0, wazaari: 0, yuko: 0 },
+      ao: { ippon: 0, wazaari: 0, yuko: 0 },
+    },
     akaPenalties: { C1: false, C2: false, C3: false, HC: false, H: false },
     aoPenalties: { C1: false, C2: false, C3: false, HC: false, H: false },
     akaSenshu: false,
@@ -1263,6 +1644,10 @@ function selectAthlete(side) {
   // Tự động reset điểm và lỗi khi chọn VĐV mới để tránh dính dữ liệu trận cũ
   state.akaScore = 0;
   state.aoScore = 0;
+  state.techniqueCounts = {
+    aka: { ippon: 0, wazaari: 0, yuko: 0 },
+    ao: { ippon: 0, wazaari: 0, yuko: 0 },
+  };
   state.akaPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
   state.aoPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
   state.akaSenshu = false;
@@ -1272,6 +1657,40 @@ function selectAthlete(side) {
   resetTimer();
 
   updateNames();
+}
+
+function populateRegisteredTeamAthletes() {
+  ["aka", "ao"].forEach((side) => {
+    const select = document.getElementById(side === "aka" ? "teamAkaAthleteSelect" : "teamAoAthleteSelect");
+    const search = document.getElementById(side === "aka" ? "teamAkaAthleteSearch" : "teamAoAthleteSearch");
+    if (!select) return;
+    const sideLabel = side === "aka" ? "đỏ" : "xanh";
+    select.innerHTML = `<option value="">-- Chọn VĐV ${sideLabel} --</option>`;
+    if (select.options[0]) {
+      select.options[0].textContent += " [" + registeredTeamAthletes[side].length + " VDV]";
+    }
+    const query = removeVietnameseAccents(search?.value || "").toLowerCase().trim();
+    registeredTeamAthletes[side].forEach((athlete, index) => {
+      const target = removeVietnameseAccents((athlete.name || "") + " " + (athlete.unit || "")).toLowerCase();
+      if (query && !target.includes(query)) return;
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = athlete.unit ? athlete.name + " - " + athlete.unit : athlete.name;
+      select.appendChild(option);
+    });
+  });
+}
+
+function selectRegisteredTeamAthlete(side) {
+  if (state.mode !== "team") return;
+  const select = document.getElementById(side === "aka" ? "teamAkaAthleteSelect" : "teamAoAthleteSelect");
+  if (!select || select.value === "") return;
+  const athlete = registeredTeamAthletes[side][Number(select.value)];
+  if (!athlete) return;
+  state[`${side}Name`] = athlete.unit ? `${athlete.name} - ${athlete.unit}` : athlete.name;
+  resetScoresOnly();
+  saveState();
+  updateUI();
 }
 
 // End Match and Save Result to Medals
@@ -1507,6 +1926,16 @@ function finishRound() {
     return;
   }
 
+  if (!state.winnerFlash) {
+    const proposal = buildEndTimeWinProposal();
+    if (proposal) {
+      maybeProposeWinner("timer-ended");
+      return;
+    }
+    alert("Kh\u00f4ng th\u1ec3 t\u1ef1 x\u00e1c \u0111\u1ecbnh ng\u01b0\u1eddi th\u1eafng round. Th\u01b0 k\u00fd ph\u1ea3i ch\u1ecdn Red Wins ho\u1eb7c Blue Wins.");
+    return;
+  }
+
   // Determine round winner
   let roundWinner = "";
   if (state.winnerFlash === "aka") {
@@ -1612,8 +2041,14 @@ function finishRound() {
 
 // Reset scores only (for next round in team mode)
 function resetScoresOnly() {
+  closeWinProposal(false);
+  dismissedWinProposals.clear();
   state.akaScore = 0;
   state.aoScore = 0;
+  state.techniqueCounts = {
+    aka: { ippon: 0, wazaari: 0, yuko: 0 },
+    ao: { ippon: 0, wazaari: 0, yuko: 0 },
+  };
   state.akaPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
   state.aoPenalties = { C1: false, C2: false, C3: false, HC: false, H: false };
   state.akaSenshu = false;
@@ -1666,6 +2101,7 @@ const MATCH_RESULT_KEY = 'match_result';
 
 // Biến lưu thông tin trận đấu từ bracket
 let pendingMatchData = null;
+let lastLoadedMatchTimestamp = 0;
 
 /**
  * Kiểm tra và load VĐV từ sơ đồ thi đấu (bracket)
@@ -1681,6 +2117,8 @@ function checkForPendingMatch() {
       
       // Chỉ load nếu là trận kumite
       if (pendingMatchData.categoryType === 'kumite') {
+        if (Number(pendingMatchData.timestamp) <= lastLoadedMatchTimestamp) return;
+        lastLoadedMatchTimestamp = Number(pendingMatchData.timestamp) || Date.now();
         loadPendingMatch();
       }
     }
@@ -1689,10 +2127,20 @@ function checkForPendingMatch() {
   }
 }
 
+window.addEventListener('message', function (event) {
+  if (event.data?.type !== 'LOAD_SCOREBOARD_MATCH' || !event.data.match) return;
+  if (event.data.match.categoryType !== 'kumite') return;
+  if (Number(event.data.match.timestamp) <= lastLoadedMatchTimestamp) return;
+  lastLoadedMatchTimestamp = Number(event.data.match.timestamp) || Date.now();
+  pendingMatchData = event.data.match;
+  localStorage.removeItem(PENDING_MATCH_KEY);
+  loadPendingMatch();
+});
+
 /**
  * Load thông tin VĐV từ pending match vào scoreboard
  */
-function loadPendingMatch() {
+async function loadPendingMatch() {
   if (!pendingMatchData) {
     alert('Không có trận đấu nào đang chờ!');
     return;
@@ -1701,6 +2149,62 @@ function loadPendingMatch() {
   const isTeam = pendingMatchData.categoryName && 
                  (pendingMatchData.categoryName.toLowerCase().includes('đồng đội') || 
                   pendingMatchData.categoryName.toLowerCase().includes('hỗn hợp'));
+
+  registeredTeamAthletes = { aka: [], ao: [] };
+  if (isTeam) {
+    const normalizeClub = (value) => String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toUpperCase();
+    const resolveTeamMembers = (team, side) => {
+      const directRoster = pendingMatchData.teamRosters?.[side];
+      if (Array.isArray(directRoster) && directRoster.length) return directRoster;
+      const nested = Array.isArray(team?.members) ? team.members : [];
+      if (nested.length) return nested;
+      const teamKeys = new Set([
+        normalizeClub(team?.name),
+        normalizeClub(team?.club),
+      ].filter(Boolean));
+      const categoryAthletes = (Array.isArray(pendingMatchData.categoryAthletes)
+        ? pendingMatchData.categoryAthletes
+        : []);
+      const teamId = String(team?.id || "").toLowerCase().replace(/-/g, "_");
+      const idMembers = categoryAthletes.filter((athlete) => {
+        const athleteId = String(athlete?.id || "").toLowerCase().replace(/-/g, "_");
+        return athleteId.length > 8 && teamId.includes(athleteId);
+      });
+      if (idMembers.length) return idMembers;
+      const canonicalClub = (value) => normalizeClub(value)
+        .replace(/\b(CLB|NDK|KARATE|KARATEDO|KARATE DO|VO DUONG)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const canonicalTeams = [...teamKeys].map(canonicalClub).filter(Boolean);
+      const clubMembers = categoryAthletes.filter((athlete) => {
+        const club = canonicalClub(athlete?.club);
+        return canonicalTeams.some((key) =>
+          club === key ||
+          (key.length >= 4 && club.includes(key)) ||
+          (club.length >= 4 && key.includes(club))
+        );
+      });
+      return clubMembers.length ? clubMembers : categoryAthletes;
+    };
+    const normalizeMembers = (team, side) => resolveTeamMembers(team, side)
+      .map((member) => ({
+        name: String(member?.name || member?.fullName || "").trim().toUpperCase(),
+        unit: String(member?.club || team?.name || team?.club || "").trim().toUpperCase(),
+      }))
+      .filter((member) => member.name);
+    registeredTeamAthletes.aka = normalizeMembers(pendingMatchData.athlete1, "aka");
+    registeredTeamAthletes.ao = normalizeMembers(pendingMatchData.athlete2, "ao");
+    populateRegisteredTeamAthletes();
+    setTimeout(populateRegisteredTeamAthletes, 0);
+    setTimeout(populateRegisteredTeamAthletes, 300);
+  }
 
   // Prepare names
   let akaName = "AKA";
@@ -1756,11 +2260,15 @@ function loadPendingMatch() {
   state = {
     mode: isTeam ? "team" : "individual",
     displayLayout: currentDisplayLayout === "vertical" ? "vertical" : "horizontal",
-    category: pendingMatchData.categoryName || "PENALTY",
+    category: pendingMatchData.categoryName || "",
     akaName: akaName,
     aoName: aoName,
     akaScore: 0,
     aoScore: 0,
+    techniqueCounts: {
+      aka: { ippon: 0, wazaari: 0, yuko: 0 },
+      ao: { ippon: 0, wazaari: 0, yuko: 0 },
+    },
     akaPenalties: { C1: false, C2: false, C3: false, HC: false, H: false },
     aoPenalties: { C1: false, C2: false, C3: false, HC: false, H: false },
     akaSenshu: false,
@@ -1793,6 +2301,15 @@ function loadPendingMatch() {
     matchId: pendingMatchData.matchId || null,
     matchRound: pendingMatchData.roundName || "",
     timerSpeed: 1,
+    medicalTimer: {
+      isOpen: false,
+      minutes: 3,
+      seconds: 0,
+      deciseconds: 0,
+      isRunning: false,
+      hasStarted: false,
+      expired: false,
+    },
     teamMode: isTeam ? {
       currentRound: 1,
       maxRounds: 5,
@@ -1817,6 +2334,15 @@ function loadPendingMatch() {
     }
   }
 
+  // Start restoring SQLite history before any secondary UI work.  A failure
+  // in an unrelated widget must never prevent the match log from loading.
+  const earlyMatchId = state.matchId;
+  if (earlyMatchId) {
+    restoreMatchLogForMatch(earlyMatchId).catch((error) => {
+      console.error("Khong the khoi phuc log som:", error);
+    });
+  }
+
   // Update UI components that are not bound directly to state in updateUI
   if (document.getElementById('redName')) document.getElementById('redName').value = akaName;
   if (document.getElementById('blueName')) document.getElementById('blueName').value = aoName;
@@ -1834,33 +2360,29 @@ function loadPendingMatch() {
   saveState();
   updateUI();
   updatePreview();
+  populateRegisteredTeamAthletes();
   
   console.log('✅ Đã load VĐV từ sơ đồ thi đấu:', pendingMatchData);
   
-  // Clear log for fresh match OR fetch old log
-  clearMatchLog();
-  if (pendingMatchData.hasWinner || pendingMatchData.score1 || pendingMatchData.score2) {
-    addMatchLog('system', '', `📋 (Đã xong) Tỉ số cũ: ${state.akaScore}-${state.aoScore}. Xem lại/Sửa điểm.`);
-    // Tải logs từ server (nếu mạng kết nối)
-    if (state.matchId) {
-      try {
-        const key = `kumite_log_${state.matchId}`;
-        const existing = localStorage.getItem(key);
-        if (existing) {
-          const events = JSON.parse(existing);
-          if (events && events.length > 0) {
-            clearMatchLog();
-            addMatchLog('system', '', `📋 (Đã xong) Đã tải lịch sử ${events.length} sự kiện.`);
-            events.forEach(e => {
-               const entry = { ...e };
-               MATCH_LOG_ENTRIES.unshift(entry);
-               renderMatchLogUI(entry);
-            });
-          }
+  // Always restore history by matchId, including unfinished matches.
+  const loadedMatchId = state.matchId;
+  const restoredEvents = await restoreMatchLogForMatch(loadedMatchId);
+  /* Legacy localStorage log restore disabled.
+    const key = `kumite_log_${state.matchId}`;
+    try {
+      if (!restoredEvents.length && window.electronAPI?.db?.getSessionData) {
+        const sqliteValue = await window.electronAPI.db.getSessionData('GLOBAL', `match_log_${state.matchId}`);
+        if (sqliteValue) {
+          restoredEvents = JSON.parse(sqliteValue) || [];
         }
-      } catch(err) { console.log(err); }
+      }
+    } catch (error) {
+      console.error('Không thể tải lịch sử trận đấu:', error);
     }
-  } else {
+  }
+
+  */
+  if (!restoredEvents.length) {
     addMatchLog('system', '', `📋 Trận mới: ${akaName} vs ${aoName}`);
   }
 }
@@ -1920,6 +2442,7 @@ function finishTeamMatch(autoSubmit = false) {
       ? { akaFlags: state.hantei.akaFlags, aoFlags: state.hantei.aoFlags } : undefined,
   };
 
+  persistMatchLogSnapshot(result.matchId);
   localStorage.setItem(MATCH_RESULT_KEY, JSON.stringify(result));
 
   if (window.opener) {
@@ -1940,6 +2463,16 @@ function finishTeamMatch(autoSubmit = false) {
 function finishMatch(autoSubmit = false) {
   if (state.mode === "team") {
     return finishTeamMatch(autoSubmit);
+  }
+
+  if (!autoSubmit && !state.winnerFlash && (pendingMatchData || state.matchId)) {
+    const proposal = buildEndTimeWinProposal();
+    if (proposal) {
+      maybeProposeWinner("timer-ended");
+      return;
+    }
+    alert("Kh\u00f4ng th\u1ec3 t\u1ef1 x\u00e1c \u0111\u1ecbnh ng\u01b0\u1eddi th\u1eafng. Th\u01b0 k\u00fd ph\u1ea3i ch\u1ecdn Red Wins ho\u1eb7c Blue Wins.");
+    return;
   }
 
   // If no actively pending match data from bracket load, but we do have a matchId in state, 
@@ -1999,6 +2532,7 @@ function finishMatch(autoSubmit = false) {
       ? { akaFlags: state.hantei.akaFlags, aoFlags: state.hantei.aoFlags } : undefined,
   };
   
+  persistMatchLogSnapshot(result.matchId);
   // Lưu vào localStorage
   localStorage.setItem(MATCH_RESULT_KEY, JSON.stringify(result));
   
@@ -2038,7 +2572,8 @@ function addMatchLog(type, side, label, scoreAfter = null) {
   // Build timer string
   const m = String(state.timer.minutes).padStart(2, '0');
   const s = String(state.timer.seconds).padStart(2, '0');
-  const timerStr = `${m}:${s}`;
+  const ds = Number(state.timer.deciseconds) || 0;
+  const timerStr = `${m}:${s}.${ds}`;
 
   // Nếu đấu đồng đội, thêm prefix Round vào để log rõ ràng
   let displayLabel = label;
@@ -2055,6 +2590,8 @@ function addMatchLog(type, side, label, scoreAfter = null) {
     timer: timerStr,
     akaScore: state.akaScore,
     aoScore: state.aoScore,
+    timestamp: now.toISOString(),
+    techniqueCounts: side ? { ...ensureTechniqueCounts()[side] } : null,
   };
 
   MATCH_LOG_ENTRIES.unshift(entry); // newest on top
@@ -2077,59 +2614,127 @@ function renderMatchLogUI(entry) {
   // Also clear first-time placeholder text
   if (logEl.innerHTML.includes('Chưa có sự kiện')) logEl.innerHTML = '';
 
-  const COLOR_MAP = {
-    aka: '#ff6b6b',
-    ao: '#6b9fff',
-    '': '#aaa',
-  };
-  const TYPE_ICON = {
-    point: '🟢',
-    remove: '🔴',
-    penalty: '⚠️',
-    senshu: '🟡',
-    win: '🏆',
-    system: '⚙️',
-  };
-
-  const sideColor = COLOR_MAP[entry.side] || '#aaa';
-  const icon = TYPE_ICON[entry.type] || '•';
-  const sideLabel = entry.side === 'aka' ? `<span style="color:#ff6b6b">[AKA]</span>` :
-                    entry.side === 'ao'  ? `<span style="color:#6b9fff">[AO]</span>` : '';
-  const scoreStr = `<span style="color:#888">(${entry.akaScore}-${entry.aoScore})</span>`;
-
+  const matchTime = entry.timer || '00:00.0';
+  const sideLabel = entry.side ? `  [${entry.side.toUpperCase()}]` : '';
+  let message = entry.label || '';
+  if ((entry.type === 'point' || entry.type === 'remove') && entry.side) {
+    const counts = entry.techniqueCounts || { ippon: 0, wazaari: 0, yuko: 0 };
+    const total = entry.side === 'aka' ? entry.akaScore : entry.aoScore;
+    message = `IPPON:${counts.ippon || 0} WAZA-ARI:${counts.wazaari || 0} YUKO:${counts.yuko || 0} TOTAL:${total || 0}`;
+  }
   const row = document.createElement('div');
-  row.style.cssText = `
-    display: flex; align-items: baseline; gap: 6px;
-    padding: 3px 6px; border-radius: 4px;
-    background: rgba(255,255,255,0.03);
-    border-left: 3px solid ${sideColor};
-    animation: logFadeIn 0.25s ease;
-  `;
-  row.innerHTML = `
-    <span style="color:#555;flex-shrink:0">${entry.timer}</span>
-    <span>${icon}</span>
-    ${sideLabel}
-    <span style="color:#e2e8f0;flex:1">${entry.label}</span>
-    ${scoreStr}
-  `;
+  row.style.cssText = 'color:#fff;padding:3px 6px;white-space:pre;font-family:monospace;animation:logFadeIn 0.25s ease;';
+  row.textContent = `${matchTime} [INFO]${sideLabel}  ${message}`;
 
   // Insert as first child (newest on top since flex-direction: column-reverse)
   logEl.prepend(row);
 }
 
 let _logSaveTimer = null;
+
+async function loadMatchLogFromDatabase(matchId) {
+  if (!matchId) return [];
+  if (window.electronAPI?.db?.getSessionData) {
+    try {
+      const value = await window.electronAPI.db.getSessionData("GLOBAL", `match_log_${matchId}`);
+      const rawValue = typeof value === "string" ? value : (value?.value ?? value?.data ?? null);
+      if (rawValue) {
+        const logs = typeof rawValue === "string" ? JSON.parse(rawValue) : rawValue;
+        if (Array.isArray(logs) && logs.length) return logs;
+      }
+    } catch (error) {
+      console.error("Khong the doc log truc tiep tu SQLite:", error);
+    }
+  }
+  if (!window.opener) return [];
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (logs = []) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("message", handleResponse);
+      resolve(Array.isArray(logs) ? logs : []);
+    };
+    const handleResponse = (event) => {
+      if (event.data?.type === "MATCH_LOG_RESPONSE" && event.data.matchId === matchId) {
+        finish(event.data.logs);
+      }
+    };
+    window.addEventListener("message", handleResponse);
+    window.opener.postMessage({ type: "MATCH_LOG_REQUEST", matchId }, "*");
+    setTimeout(() => finish([]), 2500);
+  });
+}
+
+async function restoreMatchLogForMatch(matchId, retry = false) {
+  if (!matchId) {
+    clearMatchLog();
+    return [];
+  }
+  let logs = [];
+  try {
+    logs = await loadMatchLogFromDatabase(matchId);
+  } catch (error) {
+    console.error("Khong the tai lich su tran dau tu SQLite:", error);
+  }
+  if (state.matchId !== matchId) return [];
+  if (!Array.isArray(logs) || !logs.length) {
+    if (!retry) clearMatchLog();
+    return [];
+  }
+  clearMatchLog();
+  logs.forEach((event) => {
+    const entry = { ...event };
+    MATCH_LOG_ENTRIES.push(entry);
+    renderMatchLogUI(entry);
+    if (entry.side && entry.techniqueCounts) {
+      ensureTechniqueCounts()[entry.side] = { ...entry.techniqueCounts };
+    }
+  });
+  saveState();
+  const status = document.getElementById("logSaveStatus");
+  if (status) {
+    status.textContent = `\u0110\u00e3 t\u1ea3i ${logs.length} s\u1ef1 ki\u1ec7n t\u1eeb Database`;
+    status.style.color = "#4caf50";
+  }
+  return logs;
+}
+
 function saveMatchLogToServer(matchId, event) {
+  const databaseLogs = [...MATCH_LOG_ENTRIES].reverse().slice(-100);
+  const serialized = JSON.stringify(databaseLogs);
+  if (window.electronAPI?.db?.setSessionData) {
+    window.electronAPI.db.setSessionData("GLOBAL", `match_log_${matchId}`, serialized)
+      .catch((error) => console.error("Khong the luu log vao SQLite:", error));
+  }
+  if (window.opener) {
+    window.opener.postMessage({
+      type: "MATCH_LOG_UPDATE",
+      matchId,
+      logs: databaseLogs,
+    }, "*");
+  }
+  const databaseStatus = document.getElementById("logSaveStatus");
+  if (databaseStatus) {
+    databaseStatus.textContent = "\u2713 \u0110\u00e3 \u0111\u1ed3ng b\u1ed9 Database";
+    databaseStatus.style.color = "#4caf50";
+    clearTimeout(_logSaveTimer);
+    _logSaveTimer = setTimeout(() => { databaseStatus.textContent = ""; }, 2000);
+  }
+  return;
+
   // 1. Lưu backup cục bộ (localStorage)
   let logs = [];
   try {
     const key = `kumite_log_${matchId}`;
-    const existing = localStorage.getItem(key);
-    if (existing) logs = JSON.parse(existing);
     
     event.timestamp = new Date().toISOString();
     logs.push(event);
     if (logs.length > 100) logs = logs.slice(logs.length - 100);
-    localStorage.setItem(key, JSON.stringify(logs));
+    if (window.electronAPI?.db?.setSessionData) {
+      window.electronAPI.db.setSessionData('GLOBAL', `match_log_${matchId}`, JSON.stringify(logs))
+        .catch((error) => console.error('Không thể lưu log vào SQLite:', error));
+    }
   } catch (err) {}
 
   // 2. Gửi lệnh qua postMessage về phần mềm chính để lưu vào SQLite
@@ -2151,11 +2756,64 @@ function saveMatchLogToServer(matchId, event) {
   }
 }
 
-function clearMatchLog() {
+function persistMatchLogSnapshot(matchId) {
+  if (!matchId || MATCH_LOG_ENTRIES.length === 0) return;
+  const logs = [...MATCH_LOG_ENTRIES].reverse();
+  const databaseValue = JSON.stringify(logs);
+  if (window.electronAPI?.db?.setSessionData) {
+    window.electronAPI.db.setSessionData("GLOBAL", `match_log_${matchId}`, databaseValue)
+      .catch((error) => console.error("Khong the luu snapshot log vao SQLite:", error));
+  }
+  if (window.opener) {
+    window.opener.postMessage({
+      type: "MATCH_LOG_UPDATE",
+      matchId,
+      logs,
+    }, "*");
+  }
+  return;
+
+  const key = `kumite_log_${matchId}`;
+  const serialized = JSON.stringify(logs);
+
+  if (window.electronAPI?.db?.setSessionData) {
+    window.electronAPI.db.setSessionData("GLOBAL", `match_log_${matchId}`, serialized)
+      .catch((error) => console.error("Khong the luu snapshot log tran dau:", error));
+  }
+  if (window.opener) {
+    window.opener.postMessage({
+      type: "MATCH_LOG_UPDATE",
+      matchId,
+      logs,
+    }, "*");
+  }
+  if (!restoredEvents.length && loadedMatchId) {
+    setTimeout(() => {
+      if (state.matchId === loadedMatchId && MATCH_LOG_ENTRIES.length <= 1) {
+        restoreMatchLogForMatch(loadedMatchId, true);
+      }
+    }, 600);
+  }
+}
+
+function clearMatchLog(deletePersisted = false) {
   MATCH_LOG_ENTRIES.length = 0;
   const logEl = document.getElementById('matchEventLog');
   if (logEl) {
     logEl.innerHTML = '<div style="color:#555;text-align:center;padding:20px 0" data-placeholder="true">— Chưa có sự kiện —</div>';
+  }
+  if (deletePersisted && state.matchId) {
+    localStorage.removeItem(`kumite_log_${state.matchId}`);
+    if (window.opener) {
+      window.opener.postMessage({
+        type: "MATCH_LOG_DELETE",
+        matchId: state.matchId,
+      }, "*");
+    }
+    if (window.electronAPI?.db?.deleteSessionData) {
+      window.electronAPI.db.deleteSessionData('GLOBAL', `match_log_${state.matchId}`)
+        .catch((error) => console.error('Không thể xóa log trong SQLite:', error));
+    }
   }
 }
 
@@ -2208,3 +2866,263 @@ document.addEventListener("keydown", function (e) {
     resetTimer();
   }
 });
+
+// ==================== MEDICAL TIMER FUNCTIONS ====================
+function formatMedicalTimeStr(timerObj) {
+  const m = String(timerObj.minutes || 0).padStart(2, "0");
+  const s = String(timerObj.seconds || 0).padStart(2, "0");
+  const ds = timerObj.deciseconds || 0;
+  return `${m}:${s}.${ds}`;
+}
+
+function startMedicalTimer(kind = "medical") {
+  const isRest = kind === "rest";
+  const durationMinutes = isRest ? 5 : 3;
+  const icon = isRest ? "☕" : "👨‍⚕️";
+  const label = isRest ? "Nghỉ giữa trận" : "Yêu cầu Cứu thương";
+
+  if (state.timer.isRunning) stopTimer();
+
+  const matchM = String(state.timer.minutes).padStart(2, "0");
+  const matchS = String(state.timer.seconds).padStart(2, "0");
+  const matchDs = state.timer.deciseconds || 0;
+  const matchTimeStr = `${matchM}:${matchS}.${matchDs}`;
+  addMatchLog("system", "", `${icon} ${label} tại thời điểm trận đấu ${matchTimeStr}`);
+
+  state.medicalTimer = {
+    kind: isRest ? "rest" : "medical",
+    durationMinutes,
+    isOpen: true,
+    minutes: durationMinutes,
+    seconds: 0,
+    deciseconds: 0,
+    isRunning: true,
+    hasStarted: true,
+    expired: false,
+    endAt: Date.now() + durationMinutes * 60000,
+    category: state.category || "KUMITE",
+    akaName: state.akaName || "AKA",
+    aoName: state.aoName || "AO",
+  };
+
+  addMatchLog("system", "", `${icon} ${isRest ? "Rest Timer" : "Medical Timer"} started – 0${durationMinutes}:00`);
+  renderMedicalAdmin();
+  saveState();
+  runMedicalTimerInterval();
+}
+
+function startRestTimer() {
+  startMedicalTimer("rest");
+}
+function runMedicalTimerInterval() {
+  stopMedicalTimerInterval();
+
+  const intervalTime = 100 / (state.timerSpeed || 1);
+
+  medicalTimerInterval = setInterval(() => {
+    if (!state.medicalTimer || !state.medicalTimer.isOpen || !state.medicalTimer.isRunning) {
+      stopMedicalTimerInterval();
+      return;
+    }
+
+    if (!Number.isFinite(state.medicalTimer.endAt)) {
+      const remaining = ((state.medicalTimer.minutes || 0) * 60 + (state.medicalTimer.seconds || 0)) * 1000
+        + (state.medicalTimer.deciseconds || 0) * 100;
+      state.medicalTimer.endAt = Date.now() + remaining;
+    }
+    const remainingDs = Math.max(0, Math.ceil((state.medicalTimer.endAt - Date.now()) / 100));
+    state.medicalTimer.minutes = Math.floor(remainingDs / 600);
+    state.medicalTimer.seconds = Math.floor((remainingDs % 600) / 10);
+    state.medicalTimer.deciseconds = remainingDs % 10;
+    if (remainingDs === 0) {
+      // Expired (reached 00:00.0)
+      stopMedicalTimerInterval();
+      state.medicalTimer.isRunning = false;
+      state.medicalTimer.expired = true;
+
+      playManualKumiteBeep();
+      const timerLabel = state.medicalTimer.kind === "rest" ? "Rest Timer expired (Hết 5 phút)" : "Medical Timer expired (Hết 3 phút)";
+      addMatchLog("system", "", `⚠️ ${timerLabel}`);
+
+      saveState();
+      renderMedicalAdmin();
+      return;
+    }
+
+    // Audio warning alerts at 30s and 10s
+    const totalSec = state.medicalTimer.minutes * 60 + state.medicalTimer.seconds;
+    if (state.medicalTimer.deciseconds === 0) {
+      if (totalSec === 30 || totalSec === 10) {
+        playManualKumiteBeep();
+      }
+    }
+
+    saveState();
+    renderMedicalAdmin();
+  }, intervalTime);
+}
+
+function stopMedicalTimerInterval() {
+  if (medicalTimerInterval) {
+    clearInterval(medicalTimerInterval);
+    medicalTimerInterval = null;
+  }
+}
+
+function toggleMedicalTimer() {
+  if (!state.medicalTimer) return;
+
+  if (state.medicalTimer.isRunning) {
+    // STOP action
+    stopMedicalTimerInterval();
+    state.medicalTimer.isRunning = false;
+    const curTime = formatMedicalTimeStr(state.medicalTimer);
+    const timerName = state.medicalTimer.kind === "rest" ? "☕ Rest Timer" : "👨‍⚕️ Medical Timer";
+    addMatchLog("system", "", `${timerName} stopped – ${curTime}`);
+  } else if (!state.medicalTimer.expired) {
+    // RESUME action
+    state.medicalTimer.isRunning = true;
+    const remaining = ((state.medicalTimer.minutes || 0) * 60 + (state.medicalTimer.seconds || 0)) * 1000
+      + (state.medicalTimer.deciseconds || 0) * 100;
+    state.medicalTimer.endAt = Date.now() + remaining;
+    const curTime = formatMedicalTimeStr(state.medicalTimer);
+    const timerName = state.medicalTimer.kind === "rest" ? "☕ Rest Timer" : "👨‍⚕️ Medical Timer";
+    addMatchLog("system", "", `${timerName} resumed – ${curTime}`);
+    runMedicalTimerInterval();
+  }
+
+  saveState();
+  renderMedicalAdmin();
+}
+
+function resetMedicalTimer() {
+  if (!state.medicalTimer) return;
+  stopMedicalTimerInterval();
+  const isRest = state.medicalTimer.kind === "rest";
+  const durationMinutes = isRest ? 5 : 3;
+  state.medicalTimer.durationMinutes = durationMinutes;
+  state.medicalTimer.minutes = durationMinutes;
+  state.medicalTimer.seconds = 0;
+  state.medicalTimer.deciseconds = 0;
+  state.medicalTimer.expired = false;
+  state.medicalTimer.isRunning = true;
+  state.medicalTimer.hasStarted = true;
+  state.medicalTimer.endAt = Date.now() + durationMinutes * 60000;
+
+  addMatchLog("system", "", `${isRest ? "☕ Rest" : "👨‍⚕️ Medical"} Timer reset – 0${durationMinutes}:00`);
+  saveState();
+  renderMedicalAdmin();
+  runMedicalTimerInterval();
+}
+function closeMedicalTimer() {
+  if (!state.medicalTimer) return;
+
+  stopMedicalTimerInterval();
+  state.medicalTimer.isRunning = false;
+  state.medicalTimer.isOpen = false;
+  const timerName = state.medicalTimer.kind === "rest" ? "☕ Rest Timer" : "👨‍⚕️ Medical Timer";
+  addMatchLog("system", "", `${timerName} closed`);
+
+  saveState();
+  renderMedicalAdmin();
+}
+
+function renderMedicalAdmin() {
+  const overlay = document.getElementById("medicalModalOverlay");
+  if (!overlay) return;
+
+  const med = state.medicalTimer;
+  const isOpen = med && med.isOpen === true;
+  const isRest = med?.kind === "rest";
+
+  overlay.classList.toggle("show", isOpen);
+  overlay.classList.toggle("rest-mode", isRest);
+  overlay.style.display = isOpen ? "flex" : "none";
+  if (!isOpen) return;
+
+  const titleEl = document.getElementById("medicalTitle");
+  const iconEl = document.getElementById("medicalHeaderIcon");
+  const resetBtn = document.getElementById("medicalResetBtn");
+  if (titleEl) titleEl.textContent = isRest ? "NGHỈ 5 PHÚT" : "MEDICAL TIME";
+  if (iconEl) iconEl.textContent = isRest ? "☕" : "👨‍⚕️";
+  if (resetBtn) resetBtn.textContent = isRest ? "🔄 05:00" : "🔄 03:00";
+  const minutes = String(med.minutes || 0).padStart(2, "0");
+  const seconds = String(med.seconds || 0).padStart(2, "0");
+  const deciseconds = med.deciseconds || 0;
+
+  const categoryEl = document.getElementById("medicalCategory");
+  const akaEl = document.getElementById("medicalAkaName");
+  const aoEl = document.getElementById("medicalAoName");
+  if (categoryEl) categoryEl.textContent = med.category || state.category || "KUMITE";
+  if (akaEl) akaEl.textContent = med.akaName || state.akaName || "AKA";
+  if (aoEl) aoEl.textContent = med.aoName || state.aoName || "AO";
+
+  const mainEl = document.getElementById("medicalTimerMain");
+  const decEl = document.getElementById("medicalTimerDecimal");
+  if (mainEl) mainEl.textContent = `${minutes}:${seconds}`;
+  if (decEl) decEl.textContent = `.${deciseconds}`;
+
+  const stopBtn = document.getElementById("medicalStopResumeBtn");
+  if (stopBtn) {
+    if (med.expired) {
+      stopBtn.textContent = "EXPIRED";
+      stopBtn.disabled = true;
+      stopBtn.classList.remove("is-resume");
+    } else if (med.isRunning) {
+      stopBtn.textContent = "STOP";
+      stopBtn.disabled = false;
+      stopBtn.classList.remove("is-resume");
+    } else {
+      stopBtn.textContent = "RESUME";
+      stopBtn.disabled = false;
+      stopBtn.classList.add("is-resume");
+    }
+  }
+
+  const badge = document.getElementById("medicalStatusBadge");
+  const notice = document.getElementById("medicalNotice");
+  const timerBox = document.getElementById("medicalTimerBox");
+
+  const totalSec = (med.minutes || 0) * 60 + (med.seconds || 0);
+
+  if (timerBox) {
+    timerBox.classList.remove("med-warning-30", "med-warning-10", "med-expired");
+    if (med.expired || (totalSec === 0 && deciseconds === 0)) {
+      timerBox.classList.add("med-expired");
+    } else if (totalSec <= 10) {
+      timerBox.classList.add("med-warning-10");
+    } else if (totalSec <= 30) {
+      timerBox.classList.add("med-warning-30");
+    }
+  }
+
+  if (badge) {
+    if (med.expired) {
+      badge.textContent = isRest ? "HẾT 5 PHÚT" : "HẾT 3 PHÚT";
+      badge.style.color = isRest ? "#facc15" : "#ef4444";
+    } else if (!med.isRunning) {
+      badge.textContent = "TẠM DỪNG";
+      badge.style.color = "#f59e0b";
+    } else {
+      badge.textContent = "ĐANG ĐẾM NGUỢC";
+      badge.style.color = isRest ? "#facc15" : "#10b981";
+    }
+  }
+
+  if (notice) {
+    if (med.expired) {
+      notice.textContent = isRest
+        ? "⚠️ THỜI GIAN NGHỈ ĐÃ HẾT 5 PHÚT!"
+        : "⚠️ THỜI GIAN CỨU THƯƠNG ĐÃ HẾT 3 PHÚT!";
+    } else if (!med.isRunning) {
+      notice.textContent = isRest
+        ? "Thời gian nghỉ đang tạm dừng. Bấm RESUME để tiếp tục."
+        : "Thời gian cứu thương đang tạm dừng. Bấm RESUME để tiếp tục.";
+    } else {
+      notice.textContent = isRest
+        ? "Match Timer is paused. Rest Timer 5 minutes."
+        : "Match Timer is paused. Medical Timer 3 minutes.";
+    }
+  }
+}
+// ==================== END MEDICAL TIMER FUNCTIONS ====================

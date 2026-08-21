@@ -14,7 +14,7 @@ const MATCH_RESULT_KEY = 'match_result';
  * @param {string} tournamentName - Tên giải đấu
  * @param {string} roundName - Tên vòng đấu (vd: "Bán kết")
  */
-export function openScoreboard(match, categoryType, categoryName, tournamentName, roundName, scheduleInfo = null, sponsorLogos = null, categoryId = null) {
+export function openScoreboard(match, categoryType, categoryName, tournamentName, roundName, scheduleInfo = null, sponsorLogos = null, categoryId = null, categoryData = null) {
   // Always send an explicit logo configuration for the current tournament.
   // An empty sponsor list tells the scoreboard to show the K-SPORT default
   // instead of reusing logos left in another scoreboard session.
@@ -24,24 +24,96 @@ export function openScoreboard(match, categoryType, categoryName, tournamentName
   };
 
   // Chuẩn bị data để gửi sang scoreboard
+  const resolveMembers = (participant) => {
+    if (Array.isArray(participant?.members) && participant.members.length > 0) {
+      return participant.members;
+    }
+    const bracket = categoryData?.bracket || {};
+    const matches = [
+      ...(Array.isArray(bracket.matches) ? bracket.matches : []),
+      ...(Array.isArray(bracket.auxiliaryMatches) ? bracket.auxiliaryMatches : []),
+    ];
+    const candidates = matches.flatMap((item) => [
+      item?.athlete1,
+      item?.athlete2,
+      item?.winner && typeof item.winner === "object" ? item.winner : null,
+    ]).filter(Boolean);
+    const sameTeam = candidates.find((candidate) =>
+      candidate.id === participant?.id &&
+      Array.isArray(candidate.members) &&
+      candidate.members.length > 0
+    );
+    if (sameTeam?.members?.length) return sameTeam.members;
+
+    // A team propagated to a later bracket round can lose its nested members
+    // while retaining only the team id/name. Recover only athletes registered
+    // in this category and belonging to that exact club/team.
+    const normalizeTeamName = (value) => String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toUpperCase();
+    const teamNames = new Set([
+      normalizeTeamName(participant?.name),
+      normalizeTeamName(participant?.club),
+    ].filter(Boolean));
+    const categoryAthletes = Array.isArray(categoryData?.athletes) ? categoryData.athletes : [];
+    const participantId = String(participant?.id || "").toLowerCase().replace(/-/g, "_");
+    const idMembers = categoryAthletes.filter((athlete) => {
+      const athleteId = String(athlete?.id || "").toLowerCase().replace(/-/g, "_");
+      return athleteId.length > 8 && participantId.includes(athleteId);
+    });
+    if (idMembers.length) return idMembers;
+
+    const canonicalClub = (value) => normalizeTeamName(value)
+      .replace(/\b(CLB|NDK|KARATE|KARATEDO|KARATE DO|VO DUONG)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const canonicalTeams = [...teamNames].map(canonicalClub).filter(Boolean);
+    return categoryAthletes.filter((athlete) => {
+      const club = canonicalClub(athlete?.club);
+      return canonicalTeams.some((team) =>
+        club === team ||
+        (team.length >= 4 && club.includes(team)) ||
+        (club.length >= 4 && team.includes(club))
+      );
+    });
+  };
+
+  const athlete1Members = resolveMembers(match.athlete1);
+  const athlete2Members = resolveMembers(match.athlete2);
+
   const pendingMatch = {
     matchId: match.id,
     categoryId,
     categoryType,
     categoryName,
+    categoryAthletes: (Array.isArray(categoryData?.athletes) ? categoryData.athletes : []).map((athlete) => ({
+      id: athlete?.id || null,
+      name: athlete?.name || "",
+      club: athlete?.club || "",
+      isTeam: athlete?.isTeam === true,
+    })),
+    teamRosters: {
+      aka: athlete1Members,
+      ao: athlete2Members,
+    },
     tournamentName,
     roundName,
     athlete1: match.athlete1 ? {
       id: match.athlete1.id,
       name: match.athlete1.name,
       club: match.athlete1.club || '',
-      members: match.athlete1.members || [],
+      members: athlete1Members,
     } : null,
     athlete2: match.athlete2 ? {
       id: match.athlete2.id,
       name: match.athlete2.name,
       club: match.athlete2.club || '',
-      members: match.athlete2.members || [],
+      members: athlete2Members,
     } : null,
     // Existing scores for re-editing completed matches
     score1: match.score1,
@@ -99,6 +171,17 @@ export function openScoreboard(match, categoryType, categoryName, tournamentName
   
   if (popup) {
     popup.focus();
+    const deliverMatch = () => {
+      try {
+        popup.postMessage({ type: 'LOAD_SCOREBOARD_MATCH', match: pendingMatch }, '*');
+      } catch (error) {
+        console.warn('Scoreboard match delivery failed:', error);
+      }
+    };
+    deliverMatch();
+    popup.addEventListener('load', deliverMatch, { once: true });
+    setTimeout(deliverMatch, 150);
+    setTimeout(deliverMatch, 500);
   } else {
     alert('Không thể mở bảng điểm. Vui lòng kiểm tra cài đặt popup blocker.');
   }
@@ -132,9 +215,35 @@ export function listenForMatchResult(callback) {
       cleanupMatchData();
     } else if (event.data && event.data.type === 'MATCH_LOG_UPDATE') {
       // Bắn trực tiếp vào SQLite bằng sessionData IPC
-      if (window.api && window.api.invoke) {
-        window.api.invoke('db:setSessionData', 'GLOBAL', `match_log_${event.data.matchId}`, JSON.stringify(event.data.logs))
+      if (window.electronAPI?.db?.setSessionData) {
+        window.electronAPI.db.setSessionData('GLOBAL', `match_log_${event.data.matchId}`, JSON.stringify(event.data.logs))
           .catch(err => console.log('Error saving log to SQLite:', err));
+      }
+    } else if (event.data && event.data.type === 'MATCH_LOG_REQUEST') {
+      const matchId = event.data.matchId;
+      const replyTarget = event.source;
+      if (matchId && replyTarget && window.electronAPI?.db?.getSessionData) {
+        window.electronAPI.db.getSessionData('GLOBAL', `match_log_${matchId}`)
+          .then((value) => {
+            let logs = [];
+            try {
+              logs = value ? JSON.parse(value) : [];
+            } catch (error) {
+              console.error('Error parsing match log from SQLite:', error);
+            }
+            replyTarget.postMessage({
+              type: 'MATCH_LOG_RESPONSE',
+              matchId,
+              logs,
+            }, '*');
+          })
+          .catch((error) => console.error('Error loading match log from SQLite:', error));
+      }
+    } else if (event.data && event.data.type === 'MATCH_LOG_DELETE') {
+      const matchId = event.data.matchId;
+      if (matchId && window.electronAPI?.db?.deleteSessionData) {
+        window.electronAPI.db.deleteSessionData('GLOBAL', `match_log_${matchId}`)
+          .catch((error) => console.error('Error deleting match log from SQLite:', error));
       }
     }
   };

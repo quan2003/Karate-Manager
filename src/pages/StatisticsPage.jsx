@@ -92,6 +92,8 @@ export default function StatisticsPage() {
   // States for checkbox selection in Delegation tab
   const [selectedDelegationCategories, setSelectedDelegationCategories] =
     useState(new Set());
+  const [delegationEligibilityFilter, setDelegationEligibilityFilter] =
+    useState("all"); // all | eligible | ineligible
   const [selectedDelegationClubs, setSelectedDelegationClubs] = useState(
     new Set()
   );
@@ -2677,6 +2679,28 @@ export default function StatisticsPage() {
   };
   const medals = getEstimatedMedals();
   const clubs = getClubs();
+  const isDelegationCategoryEligible = (category) => {
+    const { isTeamCategory } = getCategoryMedalMeta(category);
+    return isTeamCategory
+      ? getTeamsFromAthletes(category.athletes || [], category, tournament).length >= 2
+      : (category.athletes?.length || 0) >= 3;
+  };
+  const delegationCategories = tournament.categories.filter(
+    (category) => (category.athletes || []).length > 0
+  );
+  const eligibleDelegationCategories = delegationCategories.filter(
+    isDelegationCategoryEligible
+  );
+  const ineligibleDelegationCategories = delegationCategories.filter(
+    (category) => !isDelegationCategoryEligible(category)
+  );
+  const visibleDelegationCategories = delegationCategories.filter((category) =>
+    delegationEligibilityFilter === "all"
+      ? true
+      : delegationEligibilityFilter === "eligible"
+        ? isDelegationCategoryEligible(category)
+        : !isDelegationCategoryEligible(category)
+  );
   const medalTally = getMedalTally();
   const ageGroupMedalTallies = getMedalTallyByAgeGroup();
   const filteredCategories = getFilteredCategories();
@@ -4263,7 +4287,7 @@ export default function StatisticsPage() {
                 }}
               >
                 <h3>
-                  📋 Danh sách VĐV theo hạng mục ({tournament.categories.length}
+                  📋 Danh sách VĐV theo hạng mục ({visibleDelegationCategories.length}/{delegationCategories.length}
                   )
                 </h3>
                 <div style={{ display: "flex", gap: "8px" }}>
@@ -4282,6 +4306,18 @@ export default function StatisticsPage() {
                 </div>
               </div>
 
+              <div style={{ marginBottom: "12px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                <select
+                  aria-label="Lọc điều kiện nội dung"
+                  value={delegationEligibilityFilter}
+                  onChange={(event) => setDelegationEligibilityFilter(event.target.value)}
+                  style={{ padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: "4px", background: "#fff" }}
+                >
+                  <option value="all">Tất cả ({delegationCategories.length})</option>
+                  <option value="eligible">Đủ điều kiện ({eligibleDelegationCategories.length})</option>
+                  <option value="ineligible">Không đủ điều kiện ({ineligibleDelegationCategories.length})</option>
+                </select>
+              </div>
               <div
                 style={{ marginBottom: "12px", display: "flex", gap: "8px" }}
               >
@@ -4289,7 +4325,7 @@ export default function StatisticsPage() {
                   className="btn btn-sm"
                   onClick={() =>
                     setSelectedDelegationCategories(
-                      new Set(tournament.categories.map((c) => c.id))
+                      new Set(visibleDelegationCategories.map((c) => c.id))
                     )
                   }
                   style={{ background: "#f1f5f9", border: "1px solid #cbd5e1" }}
@@ -4305,9 +4341,9 @@ export default function StatisticsPage() {
                 </button>
               </div>
 
-              {tournament.categories.map((cat) => {
+              {visibleDelegationCategories.map((cat) => {
                 const athletes = cat.athletes || [];
-                if (athletes.length === 0) return null;
+                const isEligible = isDelegationCategoryEligible(cat);
                 const isSelected = selectedDelegationCategories.has(cat.id);
 
                 return (
@@ -4368,6 +4404,19 @@ export default function StatisticsPage() {
                           ? "Nữ"
                           : "Hỗn hợp"}
                         )
+                      </span>
+                      <span
+                        style={{
+                          marginLeft: "8px",
+                          padding: "2px 6px",
+                          borderRadius: "999px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: isEligible ? "#166534" : "#b91c1c",
+                          background: isEligible ? "#dcfce7" : "#fee2e2",
+                        }}
+                      >
+                        {isEligible ? "Đủ điều kiện" : "Không đủ điều kiện"}
                       </span>
                     </h4>
                     {isSelected && (

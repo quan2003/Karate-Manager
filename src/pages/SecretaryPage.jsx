@@ -873,6 +873,55 @@ function SecretaryPage() {
 
     try {
       setActiveMatchId(match.id);
+      const categoryGender = selectedCategory.gender
+        || (/\bnữ\b/i.test(selectedCategory.name || "") ? "female" : "male");
+      const initialTeamGenderAthletes = (matchData.categories || [])
+        .filter((category) => {
+          const name = category.name || "";
+          const gender = category.gender || (/\bnữ\b/i.test(name) ? "female" : "male");
+          return category.type === "kumite"
+            && /đồng đội/i.test(name)
+            && gender === categoryGender;
+        })
+        .flatMap((category) => Array.isArray(category.athletes) ? category.athletes : []);
+      const nestedTeamAthletes = (matchData.categories || []).flatMap((category) => {
+        const bracketMatches = [
+          ...(category.bracket?.matches || []),
+          ...(category.bracket?.auxiliaryMatches || []),
+        ];
+        const sampleMember = (category.athletes || [])[0]
+          || bracketMatches.flatMap((item) => [
+            ...(item?.athlete1?.members || []),
+            ...(item?.athlete2?.members || []),
+          ])[0];
+        const dataGender = category.gender || sampleMember?.gender || null;
+        if (categoryGender && dataGender && dataGender !== categoryGender) return [];
+        const hasTeamData = (category.athletes || []).some((athlete) => athlete?.isTeam)
+          || bracketMatches.some((item) =>
+            item?.athlete1?.isTeam || item?.athlete2?.isTeam || item?.winner?.isTeam
+          );
+        if (category.type !== "kumite" || !hasTeamData) return [];
+        return bracketMatches.flatMap((item) => [
+          ...(Array.isArray(item?.athlete1?.members) ? item.athlete1.members : []),
+          ...(Array.isArray(item?.athlete2?.members) ? item.athlete2.members : []),
+          ...(Array.isArray(item?.winner?.members) ? item.winner.members : []),
+        ]);
+      });
+      const seenTeamAthletes = new Set();
+      const teamGenderAthletes = [...initialTeamGenderAthletes, ...nestedTeamAthletes]
+        .filter((athlete) => athlete?.name)
+        .filter((athlete) => {
+          const key = String(athlete.id || (athlete.name + "|" + (athlete.club || ""))).toLowerCase();
+          if (seenTeamAthletes.has(key)) return false;
+          seenTeamAthletes.add(key);
+          return true;
+        });
+      const scoreboardCategory = {
+        ...selectedCategory,
+        athletes: teamGenderAthletes.length
+          ? teamGenderAthletes
+          : (selectedCategory.athletes || []),
+      };
       openScoreboard(
         match,
         selectedCategory.type || "kumite",
@@ -881,7 +930,8 @@ function SecretaryPage() {
         roundName,
         matchData.schedule?.[selectedCategory.id] || null,
         matchData.sponsorLogos || null,
-        selectedCategory.id
+        selectedCategory.id,
+        scoreboardCategory
       );
       publishCategoryLive(selectedCategory, {
         currentMatch: match,

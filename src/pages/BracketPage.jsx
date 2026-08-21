@@ -12,7 +12,9 @@ import {
   getSeedAssignments,
   swapBracketSeeds,
   rebuildBracketFromSeeds,
+  generateBracket,
 } from "../utils/drawEngine";
+import { useToast } from "../components/common/Toast";
 import {
   exportBracketToPDF,
   exportScoreSheetToPDF,
@@ -21,7 +23,7 @@ import {
   openScoreboard,
   listenForMatchResult,
 } from "../services/scoreboardService";
-import { syncTeamBracketMembers } from "../utils/teamDraw";
+import { getTeamsFromAthletes, isTeamCategory as isTeamCategoryMeta, syncTeamBracketMembers } from "../utils/teamDraw";
 import Bracket from "../components/Bracket/Bracket";
 import CompetitionMatchReport from "../components/MatchReport/CompetitionMatchReport";
 import { useOnboarding } from "../context/OnboardingContext";
@@ -129,10 +131,16 @@ export default function BracketPage() {
   const { id } = useParams();
   const { tournaments, currentTournament, currentCategory } = useTournament();
   const dispatch = useTournamentDispatch();
+  const toast = useToast();
   const [exporting, setExporting] = useState(false);
   const [showMatchReport, setShowMatchReport] = useState(false);
   const [dragEnabled, setDragEnabled] = useState(true); // Bật drag & drop mặc định
   const [swapHistory, setSwapHistory] = useState([]); // Lưu lịch sử swap để undo
+  const [redrawCountdown, setRedrawCountdown] = useState(null);
+  const [redrawShuffledName, setRedrawShuffledName] = useState("");
+  const redrawCountdownTimerRef = useRef(null);
+  const redrawShuffleTimerRef = useRef(null);
+  const redrawFinishTimerRef = useRef(null);
   const { activeHint, clearHint } = useOnboarding();
   const navigate = useNavigate();
   const location = useLocation();
@@ -144,6 +152,12 @@ export default function BracketPage() {
       setTimeout(() => dialogInputRef.current?.focus(), 50);
     }
   }, [dialog]);
+
+  useEffect(() => () => {
+    window.clearInterval(redrawCountdownTimerRef.current);
+    window.clearInterval(redrawShuffleTimerRef.current);
+    window.clearTimeout(redrawFinishTimerRef.current);
+  }, []);
 
   // Calculate category and tournament FIRST before using in effects
   const category =
@@ -338,7 +352,8 @@ export default function BracketPage() {
         getRoundName(match),
         scheduleInfo,
         sponsorLogos,
-        category.id
+        category.id,
+        category
       );
     }
   };
@@ -371,7 +386,8 @@ export default function BracketPage() {
       match, category.type, category.name, tournament.name,
       "Tranh huy chương đồng", tournament.schedule?.[category.id] || null,
       tournament.sponsorLogos || null,
-      category.id
+      category.id,
+      category
     );
   };
   const handleExportScoreSheet = async () => {
@@ -509,26 +525,50 @@ export default function BracketPage() {
     const sourceSeed = fromMatch.position * 2 + fromSlot;
     const targetSeed = toMatch.position * 2 + toSlot;
     const previousSeedAssignments = getSeedAssignments(category.bracket);
-    try {
-      const updatedBracket = swapBracketSeeds(category.bracket, sourceSeed, targetSeed);
-      setSwapHistory((prev) => [
-        ...prev.slice(-9),
-        { seedAssignments: previousSeedAssignments },
-      ]);
-      dispatch({
-        type: ACTIONS.UPDATE_CATEGORY,
-        payload: { id: category.id, bracket: updatedBracket },
-      });
-    } catch (error) {
-      console.error(error);
+    const applySwap = () => {
+      try {
+        const updatedBracket = swapBracketSeeds(category.bracket, sourceSeed, targetSeed);
+        setSwapHistory((prev) => [
+          ...prev.slice(-9),
+          { seedAssignments: previousSeedAssignments },
+        ]);
+        dispatch({
+          type: ACTIONS.UPDATE_CATEGORY,
+          payload: { id: category.id, bracket: updatedBracket },
+        });
+        const name1 = (fromSlot === 1 ? fromMatch.athlete1 : fromMatch.athlete2)?.name || "VĐV";
+        const name2 = (toSlot === 1 ? toMatch.athlete1 : toMatch.athlete2)?.name || "VĐV";
+        toast.success(`🔀 Đã đổi vị trí giữa "${name1}" và "${name2}"`);
+      } catch (error) {
+        console.error(error);
+        setDialog({
+          type: "alert",
+          title: "Không thể đổi vị trí VĐV",
+          message: error.message,
+          onOk: () => setDialog(null),
+          onCancel: () => setDialog(null),
+        });
+      }
+    };
+
+    const hasRecordedResults = category.bracket.matches.some(
+      (match) => Boolean(match.winner && !match.isBye)
+    );
+    if (hasRecordedResults) {
       setDialog({
-        type: "alert",
-        title: "Không thể đổi vị trí VĐV",
-        message: error.message,
-        onOk: () => setDialog(null),
+        type: "confirm",
+        title: "🔀 Đổi vị trí VĐV",
+        message: "Đổi vị trí sau khi đã có kết quả có thể xóa kết quả liên quan. Bạn có chắc muốn tiếp tục?",
+        onOk: () => {
+          setDialog(null);
+          applySwap();
+        },
         onCancel: () => setDialog(null),
       });
+      return;
     }
+
+    applySwap();
   };
 
   const handleUndoSwap = () => {
@@ -614,6 +654,78 @@ export default function BracketPage() {
     }
   }
   const isTeamBracket = category.bracket?.isTeamBracket || false;
+  const isReviewMode = Boolean(location.state?.reviewSigma);
+  const handleRedrawBracket = () => {
+    const redrawAsTeam = isTeamBracket || isTeamCategoryMeta(category);
+    const entries = redrawAsTeam
+      ? getTeamsFromAthletes(category.athletes || [], category, tournament)
+      : category.athletes || [];
+    const minimumEntries = redrawAsTeam ? 2 : 3;
+    const entryLabel = redrawAsTeam ? "đội" : "VĐV";
+
+    if (entries.length < minimumEntries) {
+      setDialog({
+        type: "alert",
+        title: "Chưa đủ điều kiện bốc lại",
+        message: `Nội dung này cần ít nhất ${minimumEntries} ${entryLabel} để bốc thăm.`,
+        onOk: () => setDialog(null),
+        onCancel: () => setDialog(null),
+      });
+      return;
+    }
+
+    const hasRecordedResults = category.bracket.matches.some(
+      (match) => Boolean(match.winner && !match.isBye)
+    );
+    setDialog({
+      type: "confirm",
+      title: "🔄 Bốc thăm lại",
+      message: hasRecordedResults
+        ? "Bốc thăm lại sẽ xóa toàn bộ kết quả đã ghi của nội dung này. Bạn có chắc muốn tiếp tục?"
+        : "Bốc thăm lại sẽ thay thế sơ đồ hiện tại. Bạn có chắc muốn tiếp tục?",
+      onOk: () => {
+        setDialog(null);
+        setRedrawCountdown(5);
+        setRedrawShuffledName(entries[0]?.name || "");
+        redrawShuffleTimerRef.current = window.setInterval(() => {
+          const randomEntry = entries[Math.floor(Math.random() * entries.length)];
+          setRedrawShuffledName(randomEntry?.name || "");
+        }, 100);
+
+        let count = 5;
+        redrawCountdownTimerRef.current = window.setInterval(() => {
+          count -= 1;
+          setRedrawCountdown(count);
+          if (count <= 0) {
+            window.clearInterval(redrawCountdownTimerRef.current);
+            window.clearInterval(redrawShuffleTimerRef.current);
+            try {
+              const redrawnBracket = generateBracket(entries, { format: category.format });
+              redrawnBracket.isTeamBracket = redrawAsTeam;
+              dispatch({
+                type: ACTIONS.SET_BRACKET,
+                payload: { categoryId: category.id, bracket: redrawnBracket },
+              });
+              setSwapHistory([]);
+              toast.success(`🎲 Đã bốc thăm lại sơ đồ "${category.name}"!`);
+            } catch (error) {
+              console.error("Không thể bốc thăm lại sơ đồ", error);
+              toast.error(`Không thể bốc thăm lại: ${error.message || "Lỗi không xác định"}`);
+            } finally {
+              redrawFinishTimerRef.current = window.setTimeout(() => {
+                setRedrawCountdown(null);
+                setRedrawShuffledName("");
+              }, 500);
+            }
+          }
+        }, 1000);
+      },
+      onCancel: () => setDialog(null),
+    });
+  };
+  const drawnCategories = tournament?.categories?.filter((c) => c.bracket) || [];
+  const currentCatIndex = drawnCategories.findIndex((c) => c.id === category?.id);
+
   return (
     <div className="page bracket-page">
       <div className="container-fluid">
@@ -655,6 +767,15 @@ export default function BracketPage() {
             <Link to={`/category/${category.id}`} state={location.state} className="btn btn-secondary">
               📄 Chi tiết nội dung
             </Link>
+            {!isReviewMode && (
+              <button
+                className="btn btn-secondary"
+                onClick={handleRedrawBracket}
+                title="Bốc thăm lại nội dung này"
+              >
+                🔄 Bốc lại
+              </button>
+            )}
             {/* Nút toggle Drag & Drop */}
             <button
               className={`btn ${dragEnabled ? 'btn-warning' : 'btn-secondary'}`}
@@ -684,7 +805,8 @@ export default function BracketPage() {
               onClick={() => setShowMatchReport(true)}
             >
               📄 Biên bản thi đấu
-            </button>            <button
+            </button>
+            <button
               className="btn btn-secondary"
               onClick={handleExportScoreSheet}
             >
@@ -700,6 +822,90 @@ export default function BracketPage() {
           </div>
         </header>
 
+        {isReviewMode && (
+          <section className="review-sigma-banner">
+            <div className="review-sigma-info">
+              <div className="review-sigma-title-row">
+                <span className="review-sigma-badge">🔎 Kiểm tra sơ đồ sau bốc thăm</span>
+                {drawnCategories.length > 1 && (
+                  <span className="review-sigma-counter">
+                    Hạng mục {currentCatIndex >= 0 ? currentCatIndex + 1 : 1} / {drawnCategories.length}
+                  </span>
+                )}
+              </div>
+              <p className="review-sigma-desc">
+                Kiểm tra các cặp đấu Vòng 1. Bạn có thể <strong>Kéo - Thả VĐV</strong> ở Vòng 1 để đổi vị trí,
+                hoặc nhấn nút <strong>"🔄 Bốc lại"</strong> nếu muốn chia lại sơ đồ mới.
+              </p>
+            </div>
+
+            <div className="review-sigma-actions">
+              {drawnCategories.length > 1 && (
+                <div className="review-nav-group">
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    disabled={currentCatIndex <= 0}
+                    onClick={() =>
+                      navigate(`/bracket/${drawnCategories[currentCatIndex - 1].id}`, {
+                        state: { reviewSigma: true, reviewSource: location.state?.reviewSource },
+                      })
+                    }
+                    title="Xem sơ đồ hạng mục phía trước"
+                  >
+                    ‹ Trước
+                  </button>
+                  <select
+                    className="review-cat-select"
+                    value={category.id}
+                    onChange={(e) =>
+                      navigate(`/bracket/${e.target.value}`, {
+                        state: { reviewSigma: true, reviewSource: location.state?.reviewSource },
+                      })
+                    }
+                  >
+                    {drawnCategories.map((c, idx) => (
+                      <option key={c.id} value={c.id}>
+                        {idx + 1}. {c.name} ({c.athletes?.length || 0} VĐV)
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    disabled={currentCatIndex < 0 || currentCatIndex >= drawnCategories.length - 1}
+                    onClick={() =>
+                      navigate(`/bracket/${drawnCategories[currentCatIndex + 1].id}`, {
+                        state: { reviewSigma: true, reviewSource: location.state?.reviewSource },
+                      })
+                    }
+                    title="Xem sơ đồ hạng mục tiếp theo"
+                  >
+                    Tiếp ›
+                  </button>
+                </div>
+              )}
+
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={handleRedrawBracket}
+                title="Bốc thăm lại sơ đồ này"
+                style={{ fontWeight: 600 }}
+              >
+                🔄 Bốc lại
+              </button>
+
+              <button
+                className="btn btn-sm btn-success"
+                onClick={() => {
+                  toast.success(`Đã xác nhận sơ đồ "${category.name}"!`);
+                  navigate(location.pathname, { replace: true, state: {} });
+                }}
+                style={{ fontWeight: 700 }}
+              >
+                ✓ Hoàn tất Review
+              </button>
+            </div>
+          </section>
+        )}
         <div className="bracket-scroll-container">
           {" "}
           <Bracket
@@ -896,6 +1102,36 @@ export default function BracketPage() {
         </div>
       </div>
 
+      {redrawCountdown !== null && (
+        <div className="draw-countdown-overlay">
+          <div className="draw-countdown-content">
+            <div className="draw-countdown-dice">
+              {['🎲', '🎯', '🎰', '🎲'][Math.max(0, redrawCountdown) % 4]}
+            </div>
+            <h2 className="draw-countdown-title">Đang bốc thăm lại...</h2>
+            <div className="draw-countdown-number">
+              {redrawCountdown > 0 ? redrawCountdown : (
+                <span style={{ WebkitTextFillColor: '#16a34a', color: '#16a34a' }}>✓</span>
+              )}
+            </div>
+            <div className="draw-countdown-shuffle">
+              <span className="shuffle-label">🏋️ {isTeamBracket ? 'Đội' : 'VĐV'}:</span>
+              <span className="shuffle-name">{redrawShuffledName}</span>
+            </div>
+            <div className="draw-countdown-bar">
+              <div
+                className="draw-countdown-bar-fill"
+                style={{ width: `${((5 - redrawCountdown) / 5) * 100}%` }}
+              />
+            </div>
+            <p className="draw-countdown-hint">
+              {redrawCountdown > 0
+                ? 'Thuật toán đang xáo trộn và sắp xếp vị trí...'
+                : 'Hoàn tất! Đang cập nhật sơ đồ...'}
+            </p>
+          </div>
+        </div>
+      )}
       {showMatchReport && (
         <CompetitionMatchReport
           tournament={tournament}

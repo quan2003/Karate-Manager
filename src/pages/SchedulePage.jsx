@@ -1303,7 +1303,7 @@ export default function SchedulePage() {
                           <td>
                             <div className="table-actions">
                               {s && (
-                                <button className="btn btn-sm" style={{background:'#ede9fe',color:'#6d28d9',fontWeight:800}} onClick={() => navigate(`/bracket/${cat.id}`)} title="Xem sigma">Σ</button>
+                                <button className="btn btn-sm" style={{background:'#ede9fe',color:'#6d28d9',fontWeight:800}} onClick={() => navigate(`/bracket/${cat.id}`, { state: { reviewSigma: true } })} title="Xem review sigma">Σ Review</button>
                               )}
                               <button className="btn btn-sm btn-primary" onClick={() => handleOpenAssign(cat)}>
                                 {s ? '✏️ Sửa' : '📌 Xếp'}

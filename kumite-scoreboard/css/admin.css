@@ -72,12 +72,23 @@ body {
 }
 
 .seconds-input {
-  width: 80px;
-  padding: 10px;
+  width: 90px;
+  padding: 8px;
   font-size: 16px;
+  font-weight: bold;
   text-align: center;
   border: 2px solid #ddd;
   border-radius: 8px;
+  background: #ffffff;
+  color: #333333;
+  pointer-events: auto !important;
+  user-select: text !important;
+}
+
+.seconds-input:focus {
+  outline: none;
+  border-color: #0066cc;
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.2);
 }
 
 /* Buttons */
@@ -182,23 +193,33 @@ body {
   background: #f0f5ff;
 }
 
-/* Penalty Section */
+/* Penalty Section - Sportdata Style */
 .penalty-section {
-  background: #fafafa;
+  background: #f8fafc;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  margin-top: 12px;
+  margin-bottom: 12px;
 }
 
 .penalty-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 85px repeat(5, minmax(0, 1fr));
+  gap: 8px;
   align-items: center;
-  gap: 15px;
-  margin-bottom: 15px;
-  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.penalty-row:last-child {
+  margin-bottom: 0;
 }
 
 .penalty-label {
-  font-weight: bold;
-  font-size: 14px;
-  min-width: 80px;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .aka-text {
@@ -209,24 +230,84 @@ body {
   color: #0066cc;
 }
 
-/* Custom Checkbox */
-.checkbox-container {
+/* Penalty Cell Button (Sportdata Style) */
+.penalty-cell {
   display: flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 4px;
+  border: 2px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
   user-select: none;
+  transition: all 0.15s ease;
+  width: 100%;
+  height: 42px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-.checkbox-container input {
-  width: 20px;
-  height: 20px;
-  cursor: pointer;
+.penalty-cell:hover {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+  transform: translateY(-1px);
 }
 
-.checkbox-label {
-  font-weight: 500;
-  color: #333;
+.penalty-cell:active {
+  transform: translateY(0);
+}
+
+.penalty-checkbox-icon {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #94a3b8;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  background: white;
+  color: transparent;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.penalty-checkbox-icon::before {
+  content: "✓";
+  line-height: 1;
+}
+
+/* AO Active State (Blue) */
+.penalty-cell.penalty-ao.active {
+  background: #0066cc;
+  border-color: #0055aa;
+  color: #ffffff;
+  box-shadow: 0 3px 8px rgba(0, 102, 204, 0.35);
+}
+
+.penalty-cell.penalty-ao.active .penalty-checkbox-icon {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0066cc;
+}
+
+/* AKA Active State (Red) */
+.penalty-cell.penalty-aka.active {
+  background: #cc0000;
+  border-color: #aa0000;
+  color: #ffffff;
+  box-shadow: 0 3px 8px rgba(204, 0, 0, 0.35);
+}
+
+.penalty-cell.penalty-aka.active .penalty-checkbox-icon {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #cc0000;
 }
 
 /* Reset Button */
@@ -587,6 +668,11 @@ body {
   white-space: nowrap;
 }
 
+.grid-empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .score-buttons {
   padding: 10px 12px;
 }
@@ -671,6 +757,23 @@ body {
   padding: 8px 14px;
 }
 
+.team-athlete-selectors { display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; margin-top: 10px; }
+.team-athlete-selectors[hidden] { display: none; }
+.team-athlete-label { font-weight: 700; color: #333; padding-top: 31px; }
+.team-athlete-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; align-items: stretch; min-width: 0; font-weight: 800; }
+.team-athlete-field > span { display: block; white-space: nowrap; line-height: 22px; }
+.team-athlete-field select { width: 100%; min-width: 0; box-sizing: border-box; padding: 9px 10px; border: 2px solid #cbd5e1; border-radius: 8px; background: #fff; color: #111; font-weight: 600; text-overflow: ellipsis; }
+.team-athlete-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; min-width: 0; }
+.team-athlete-aka { color: #dc0000; }
+.team-athlete-aka select { border-color: #ef4444; }
+.team-athlete-ao { color: #0066cc; }
+.team-athlete-ao select { border-color: #1683e8; }
+@media (max-width: 820px) {
+  .team-athlete-selectors { grid-template-columns: 1fr; gap: 8px; }
+  .team-athlete-label { padding-top: 0; }
+  .team-athlete-controls { grid-template-columns: minmax(0, 1fr); }
+}
+
 .match-log-section {
   flex: 1 1 100px;
   min-height: 90px;
@@ -752,17 +855,68 @@ body {
 }
 
 .mini-display.positions-swapped .mini-ao {
-  order: 1;
+  order: 2;
 }
 
 .mini-display.positions-swapped .mini-aka {
-  order: 2;
+  order: 1;
 }
 
 .mini-display.positions-swapped .mini-timer {
   order: 3;
 }
+/* Keep all secretary controls aligned with the swapped audience layout. */
+body.positions-swapped .score-action-grid > :nth-child(1) { order: 8; }
+body.positions-swapped .score-action-grid > :nth-child(2) { order: 7; }
+body.positions-swapped .score-action-grid > :nth-child(3) { order: 6; }
+body.positions-swapped .score-action-grid > :nth-child(4) { order: 5; }
+body.positions-swapped .score-action-grid > :nth-child(5) { order: 4; }
+body.positions-swapped .score-action-grid > :nth-child(6) { order: 3; }
+body.positions-swapped .score-action-grid > :nth-child(7) { order: 2; }
+body.positions-swapped .score-action-grid > :nth-child(8) { order: 1; }
+
+body.positions-swapped .penalty-section {
+  display: flex;
+  flex-direction: column;
+}
+
+body.positions-swapped .penalty-section .penalty-row:first-child { order: 2; }
+body.positions-swapped .penalty-section .penalty-row:last-child { order: 1; }
+
+body.positions-swapped .result-action-grid > :first-child { order: 3; }
+body.positions-swapped .result-action-grid > :nth-child(2) { order: 2; }
+body.positions-swapped .result-action-grid > :nth-child(3) { order: 1; }
+body.positions-swapped .result-action-grid > :nth-child(n + 4) { order: 4; }
 /* HANTEI result controls and modal */
+.win-proposal-overlay {
+  position: fixed; inset: 0; z-index: 12000; display: none;
+  align-items: center; justify-content: center; padding: 24px;
+  background: rgba(5, 8, 18, 0.78); backdrop-filter: blur(5px);
+}
+.win-proposal-overlay.show { display: flex; }
+.win-proposal-dialog {
+  width: min(560px, 94vw); padding: 28px; border: 2px solid #f3c800;
+  border-radius: 18px; background: #fff; color: #111;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45); text-align: center;
+  font-family: "Arial", "Segoe UI", Tahoma, sans-serif;
+}
+.win-proposal-kicker { color: #b58d00; font-weight: 900; letter-spacing: 0.12em; }
+.win-proposal-dialog h2 { margin: 8px 0 20px; font-size: clamp(20px, 2vw, 28px); }
+.win-proposal-winner {
+  display: grid; gap: 5px; margin-bottom: 18px; padding: 16px;
+  border-radius: 12px; background: #111827; color: #fff;
+}
+.win-proposal-winner span { color: #ffd400; font-size: 1.1rem; font-weight: 900; }
+.win-proposal-winner strong { font-size: 1.55rem; }
+.win-proposal-reason { padding: 14px; border: 1px solid #d8dee9; border-radius: 10px; text-align: left; }
+.win-proposal-reason span { color: #666; font-size: 0.78rem; font-weight: 900; }
+.win-proposal-reason p { margin: 6px 0 0; font-weight: 800; line-height: 1.45; }
+.win-proposal-note { margin: 18px 0 12px; font-weight: 700; }
+.win-proposal-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 10px; }
+.win-proposal-actions button { min-height: 50px; border-radius: 9px; font: 900 15px/1.2 "Arial", "Segoe UI", sans-serif; cursor: pointer; }
+.win-proposal-reject { border: 1px solid #c9ced8; background: #fff; color: #333; }
+.win-proposal-accept { border: 1px solid #16803c; background: #169447; color: #fff; }
+
 .result-action-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1025,6 +1179,246 @@ body {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+/* Medical Button (Admin Panel) */
+.btn-medical {
+  min-width: 52px;
+  padding-inline: 12px;
+  border: 2px solid #ef4444;
+  background: #fef2f2;
+  font-size: 22px;
+  line-height: 1;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 5px rgba(239, 68, 68, 0.2);
+}
+
+.btn-medical:hover {
+  border-color: #dc2626;
+  background: #fee2e2;
+  transform: scale(1.06);
+}
+
+.btn-medical:active {
+  transform: scale(0.96);
+}
+
+/* Medical Timer Admin Modal Overlay */
+.medical-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(6px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 999999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.medical-modal-overlay.show {
+  display: flex !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.medical-modal-card {
+  width: 90%;
+  max-width: 520px;
+  background: #000000;
+  border: 3px solid #cc0000;
+  border-radius: 20px;
+  padding: 24px;
+  color: #ffffff;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.9), 0 0 35px rgba(204, 0, 0, 0.35);
+  text-align: center;
+  transform: scale(0.95);
+  transition: transform 0.25s ease;
+}
+
+.medical-modal-overlay.show .medical-modal-card {
+  transform: scale(1);
+}
+
+.medical-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #222222;
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+}
+
+.medical-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.medical-header-icon {
+  font-size: 28px;
+}
+
+.medical-header-left h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  color: #ff0000;
+  text-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+}
+
+.medical-status-badge {
+  background: #1a1a1a;
+  color: #cccccc;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.medical-timer-body {
+  background: #000000;
+  border: 3px solid #cc0000;
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+}
+
+.medical-timer-main {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 72px;
+  font-weight: 900;
+  color: #ff0000;
+  letter-spacing: -2px;
+  text-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
+}
+
+.medical-timer-decimal {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 36px;
+  font-weight: 800;
+  color: #ff3333;
+  text-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+}
+
+.medical-timer-body.med-warning-30 {
+  border-color: #eab308;
+}
+
+.medical-timer-body.med-warning-30 .medical-timer-main {
+  color: #fef08a;
+}
+
+.medical-timer-body.med-warning-10 {
+  border-color: #ef4444;
+  animation: pulseMedical 1s infinite alternate;
+}
+
+.medical-timer-body.med-warning-10 .medical-timer-main {
+  color: #fca5a5;
+}
+
+.medical-timer-body.med-expired {
+  border-color: #dc2626;
+  background: #450a0a;
+}
+
+.medical-timer-body.med-expired .medical-timer-main,
+.medical-timer-body.med-expired .medical-timer-decimal {
+  color: #ef4444;
+}
+
+@keyframes pulseMedical {
+  from { box-shadow: 0 0 5px rgba(239, 68, 68, 0.3); }
+  to { box-shadow: 0 0 20px rgba(239, 68, 68, 0.8); }
+}
+
+.medical-notice {
+  font-size: 14px;
+  color: #94a3b8;
+  margin-bottom: 22px;
+  font-weight: 500;
+}
+
+.medical-match-context { text-align: center; font-weight: 800; font-size: 18px; line-height: 1.5; }
+.medical-match-context #medicalCategory { color: #475569; font-size: 14px; text-transform: uppercase; }
+.medical-aka { color: #dc2626; }
+.medical-ao { color: #2563eb; }
+.medical-vs { color: #64748b; padding: 0 10px; }
+
+.medical-modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+.btn-medical-reset {
+  background: #3b82f6;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 12px 6px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn-medical-reset:hover {
+  background: #2563eb;
+}
+
+.btn-medical-stop {
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 800;
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn-medical-stop:hover {
+  background: #b91c1c;
+}
+
+.btn-medical-stop.is-resume {
+  background: #16a34a;
+}
+
+.btn-medical-stop.is-resume:hover {
+  background: #15803d;
+}
+
+.btn-medical-close {
+  background: #334155;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn-medical-close:hover {
+  background: #475569;
+}
+
 .hantei-undo-btn {
   color: #ffe39b;
   background: #40310e;
@@ -1033,3 +1427,50 @@ body {
 }
 
 .hantei-undo-btn:hover { background: #574313; }
+
+/* Five-minute rest timer */
+.btn-rest {
+  min-width: 72px;
+  padding-inline: 12px;
+  border: 2px solid #eab308;
+  border-radius: 8px;
+  background: #fefce8;
+  color: #854d0e;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(234, 179, 8, 0.25);
+  transition: all 0.2s ease;
+}
+
+.btn-rest:hover {
+  border-color: #ca8a04;
+  background: #fef9c3;
+  transform: scale(1.06);
+}
+
+.medical-modal-overlay.rest-mode .medical-modal-card,
+.medical-modal-overlay.rest-mode .medical-timer-body {
+  border-color: #eab308;
+  box-shadow: 0 0 35px rgba(234, 179, 8, 0.3);
+}
+
+.medical-modal-overlay.rest-mode .medical-header-left h2,
+.medical-modal-overlay.rest-mode .medical-timer-main,
+.medical-modal-overlay.rest-mode .medical-timer-decimal {
+  color: #facc15 !important;
+  text-shadow: 0 0 18px rgba(250, 204, 21, 0.42);
+}
+
+.medical-modal-overlay.rest-mode .medical-timer-body.med-warning-30,
+.medical-modal-overlay.rest-mode .medical-timer-body.med-warning-10,
+.medical-modal-overlay.rest-mode .medical-timer-body.med-expired {
+  border-color: #eab308;
+  background: #1c1602;
+  animation: none;
+}
+
+.medical-modal-overlay.rest-mode .btn-medical-reset {
+  background: #ca8a04;
+}

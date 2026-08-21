@@ -310,10 +310,12 @@ export default function CategoryPage() {
           countdownTimerRef.current = null;
           shuffleTimerRef.current = null;
           // Navigate to bracket view after countdown
-          setTimeout(() => {
-            setDrawCountdown(null);
-            navigate(`/bracket/${id}`, { state: location.state });
-          }, 500);
+            setTimeout(() => {
+              setDrawCountdown(null);
+              navigate(`/bracket/${id}`, {
+                state: { ...location.state, reviewSigma: true, reviewSource: "single-draw" },
+              });
+            }, 500);
         }
       }, 1000);
     } catch (error) {
@@ -421,7 +423,7 @@ export default function CategoryPage() {
 
             {hasBracket ? (
               <Link to={`/bracket/${id}`} state={location.state} className="btn btn-primary btn-lg">
-                📊 Xem sơ đồ thi đấu
+                📊 Sơ đồ thi đấu
               </Link>
             ) : (
               <button
