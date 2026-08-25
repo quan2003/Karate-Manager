@@ -111,6 +111,12 @@ body {
   line-height: 1.2;
 }
 
+/* In team Kata this line contains the club/team name. Lift it slightly to
+   separate it from the kata name anchored at the bottom-right. */
+.team-mode .athlete-name {
+  transform: translateY(-3vh);
+}
+
 .unit-name {
   font-size: 3.2vw;
   color: white;

@@ -157,6 +157,19 @@ export function openScoreboard(match, categoryType, categoryName, tournamentName
     scoreboardPath = `/${scoreboardFolder}/admin.html`;
   }
   
+  // Open the audience display from the same user click that launches the
+  // scoreboard. Using the same window names as the manual buttons makes a
+  // later manual click focus/reuse the display instead of creating duplicates.
+  const displayPath = scoreboardPath.replace(/admin\.html(?:[?#].*)?$/, "display.html");
+  const displayWindowName = categoryType === "kata"
+    ? "KarateScoreboardDisplay"
+    : "KumiteDisplay";
+  window.open(
+    displayPath,
+    displayWindowName,
+    "width=1920,height=1080,resizable=yes"
+  );
+
   // Mở popup window
   const width = 1400;
   const height = 900;

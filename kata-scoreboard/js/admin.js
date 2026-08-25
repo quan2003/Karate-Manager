@@ -1859,19 +1859,6 @@ function loadPendingMatch() {
     // Set for team config
     state.aka.team = name;
 
-    // Process members if exist for sigma format display in team mode
-    if (
-      pendingMatchData.athlete1.members &&
-      pendingMatchData.athlete1.members.length > 0
-    ) {
-      const membersText = pendingMatchData.athlete1.members
-        .map((m) => {
-          const parts = m.name.trim().split(" ");
-          return parts.length > 0 ? parts[parts.length - 1] : m.name;
-        })
-        .join(", ");
-      state.aka.athlete = membersText.toUpperCase();
-    }
 
     const akaNameInput = document.getElementById("akaAthleteName");
     const akaUnitInput = document.getElementById("akaUnit");
@@ -1897,19 +1884,6 @@ function loadPendingMatch() {
     // Set for team config
     state.ao.team = name;
 
-    // Process members if exist for sigma format display in team mode
-    if (
-      pendingMatchData.athlete2.members &&
-      pendingMatchData.athlete2.members.length > 0
-    ) {
-      const membersText = pendingMatchData.athlete2.members
-        .map((m) => {
-          const parts = m.name.trim().split(" ");
-          return parts.length > 0 ? parts[parts.length - 1] : m.name;
-        })
-        .join(", ");
-      state.ao.athlete = membersText.toUpperCase();
-    }
 
     const aoNameInput = document.getElementById("aoAthleteName");
     const aoUnitInput = document.getElementById("aoUnit");

@@ -19,6 +19,8 @@ function loadState() {
 function updateDisplay() {
   if (!state) return;
 
+  document.body.classList.toggle("team-mode", state.contentType === "team");
+
   // Header update
   if (document.getElementById("tournamentTitle")) {
     document.getElementById("tournamentTitle").textContent = state.tournamentTitle || "";
