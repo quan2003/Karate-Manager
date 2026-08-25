@@ -1,7 +1,7 @@
 {
   "name": "k-sport",
   "private": true,
-  "version": "3.0.5",
+  "version": "3.0.6",
   "type": "module",
   "main": "electron.cjs",
   "author": "K-SPORT",
@@ -125,5 +125,5 @@
       "target": "AppImage"
     }
   },
-  "buildDate": "21/08/2026"
+  "buildDate": "25/08/2026"
 }
