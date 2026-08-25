@@ -602,8 +602,12 @@ function SecretaryPage() {
     const medals = getMatchExportData()?.categoryMedals || [];
     const completeMedals = medals.filter((item) => {
       const category = matchData.categories?.find((cat) => cat.id === item.categoryId);
-      const needsSecondBronze = category?.bronze_mode !== "SINGLE_BRONZE";
-      return item.gold && item.silver && item.bronze1 && (!needsSecondBronze || item.bronze2);
+      // Small draws may finish without every configured bronze slot. Use the
+      // bracket completion state as the source of truth for LAN synchronization.
+      return Boolean(
+        category &&
+        isCategoryCompleted(category, matchResults)
+      );
     });
     const storagePrefix = `lan_medals_${matchData.exportId || matchData.tournamentId}_`;
     const alreadySynced = completeMedals.filter((item) => {

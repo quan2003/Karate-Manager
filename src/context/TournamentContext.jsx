@@ -3,6 +3,7 @@ import { createContext, useContext, useReducer, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { createAutoBackup } from "../services/backupService";
 import { dbGetTournaments, dbSaveTournaments, runMigrationIfNeeded } from "../services/dbService";
+import { useToast } from "../components/common/Toast";
 import { disqualifyAthlete, updateMatchResult } from "../utils/drawEngine";
 import {
   DEFAULT_BRONZE_MODE,
@@ -1092,6 +1093,7 @@ async function loadFromStorage() {
 
 export function TournamentProvider({ children }) {
   const [state, dispatch] = useReducer(tournamentReducer, initialState);
+  const { toast } = useToast();
 
   // Load data from SQLite on mount (run migration first if needed)
   useEffect(() => {
@@ -1136,13 +1138,18 @@ export function TournamentProvider({ children }) {
               tournamentId: targetTournamentId,
             },
           });
+
+          if (data.syncType === "category-medals") {
+            const categoryLabel = data.categoryName || "nội dung thi đấu";
+            toast.success(`🏆 Đã hoàn tất và đồng bộ nội dung: ${categoryLabel}`, 7000);
+          }
         } else {
           console.warn("Received match result but no target tournament identified.");
         }
       });
       return cleanup;
     }
-  }, [state.currentTournament?.id]); // Keep dependency to allow fallback to current if payload missing id
+  }, [state.currentTournament?.id, toast]); // Keep dependency to allow fallback to current if payload missing id
 
   return (
     <TournamentContext.Provider value={state}>
