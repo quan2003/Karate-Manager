@@ -115,6 +115,7 @@ function getCategoryResults(tournament, categoryId) {
     merged[f] =
       saved[f] && saved[f].trim() !== "" ? saved[f] : computed[f] || "";
   });
+  merged.awardTeams = saved.awardTeams || computed.awardTeams || null;
   return merged;
 }
 
@@ -154,7 +155,9 @@ function getMembersOfTeam(cat, teamNameOrClub, tournament) {
     cat,
     tournament
   );
-  const exactTeam = [...bracketTeams, ...generatedTeams].find(
+  // Current registrations carry the corrected official/reserve split. Prefer
+  // them over legacy bracket snapshots that may have grouped 7 athletes as 4+3.
+  const exactTeam = [...generatedTeams, ...bracketTeams].find(
     (team) => normalize(team.name) === key || normalize(team.id) === key
   );
   if (exactTeam?.members?.length) return exactTeam.members;
@@ -191,14 +194,19 @@ export function getAwardedAthletes(tournament) {
      * For individual: nameOrTeam = athlete name, club = club name
      * For team: nameOrTeam = club/team name → expand to all members
      */
-    const push = (nameOrTeam, club, achievement) => {
+    const push = (nameOrTeam, club, achievement, awardedTeam = null) => {
       if (!nameOrTeam || !nameOrTeam.trim()) return;
 
       if (isTeam) {
         // Expand to individual members of the club
         // The "name" in result for team brackets is stored as the club name
         // Try matching by club field first, then fallback to name
-        const membersByTeam = getMembersOfTeam(cat, nameOrTeam, tournament);
+        const snapshotMembers = Array.isArray(awardedTeam?.members)
+          ? awardedTeam.members
+          : [];
+        const membersByTeam = snapshotMembers.length > 0
+          ? snapshotMembers
+          : getMembersOfTeam(cat, nameOrTeam, tournament);
         const members = membersByTeam.length > 0
           ? membersByTeam
           : getMembersOfTeam(cat, club, tournament);
@@ -260,10 +268,10 @@ export function getAwardedAthletes(tournament) {
       }
     };
 
-    push(result.first, result.club1, "Huy chương Vàng");
-    push(result.second, result.club2, "Huy chương Bạc");
-    push(result.third1, result.club3a, "Huy chương Đồng");
-    push(result.third2, result.club3b, "Huy chương Đồng");
+    push(result.first, result.club1, "Huy chương Vàng", result.awardTeams?.first);
+    push(result.second, result.club2, "Huy chương Bạc", result.awardTeams?.second);
+    push(result.third1, result.club3a, "Huy chương Đồng", result.awardTeams?.third1);
+    push(result.third2, result.club3b, "Huy chương Đồng", result.awardTeams?.third2);
   });
 
   return records;

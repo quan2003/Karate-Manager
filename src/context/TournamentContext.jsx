@@ -2,7 +2,11 @@
 import { createContext, useContext, useReducer, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { createAutoBackup } from "../services/backupService";
-import { dbGetTournaments, dbSaveTournaments, runMigrationIfNeeded } from "../services/dbService";
+import {
+  dbGetTournaments,
+  dbSaveTournaments,
+  runMigrationIfNeeded,
+} from "../services/dbService";
 import { useToast } from "../components/common/Toast";
 import { disqualifyAthlete, updateMatchResult } from "../utils/drawEngine";
 import {
@@ -43,8 +47,15 @@ function normalizeCategoryImportKey(value) {
     .replace(/\s+/g, " ");
 }
 
-function buildImportedCategory(cat, existingCategory = null, defaultBronzeMode = DEFAULT_BRONZE_MODE) {
-  const hasIncomingBronzeMode = Object.prototype.hasOwnProperty.call(cat, "bronze_mode");
+function buildImportedCategory(
+  cat,
+  existingCategory = null,
+  defaultBronzeMode = DEFAULT_BRONZE_MODE,
+) {
+  const hasIncomingBronzeMode = Object.prototype.hasOwnProperty.call(
+    cat,
+    "bronze_mode",
+  );
   if (hasIncomingBronzeMode) validateBronzeMode(cat.bronze_mode);
   const imported = {
     ...(existingCategory || {}),
@@ -61,7 +72,8 @@ function buildImportedCategory(cat, existingCategory = null, defaultBronzeMode =
   };
   if (hasIncomingBronzeMode) imported.bronze_mode = cat.bronze_mode;
   else if (!existingCategory) imported.bronze_mode = defaultBronzeMode;
-  if (!existingCategory) imported.eligibilityPolicy = cat.eligibilityPolicy || { version: 1 };
+  if (!existingCategory)
+    imported.eligibilityPolicy = cat.eligibilityPolicy || { version: 1 };
   return imported;
 }
 
@@ -105,8 +117,13 @@ function extractAthletesFromBracket(bracket) {
   (bracket?.matches || []).forEach((match) => {
     [match.athlete1, match.athlete2, match.winner].forEach((participant) => {
       if (!participant) return;
-      if (Array.isArray(participant.members) && participant.members.length > 0) {
-        participant.members.forEach((member) => addAthlete(member, participant.club || participant.name));
+      if (
+        Array.isArray(participant.members) &&
+        participant.members.length > 0
+      ) {
+        participant.members.forEach((member) =>
+          addAthlete(member, participant.club || participant.name),
+        );
       } else if (!participant.isTeam) {
         addAthlete(participant);
       }
@@ -142,7 +159,9 @@ function removeAthleteFromParticipant(participant, athleteId) {
   if (!participant) return { participant, changed: false };
 
   if (Array.isArray(participant.members)) {
-    const nextMembers = participant.members.filter((member) => member.id !== athleteId);
+    const nextMembers = participant.members.filter(
+      (member) => member.id !== athleteId,
+    );
     if (nextMembers.length === participant.members.length) {
       return { participant, changed: false };
     }
@@ -210,19 +229,23 @@ function removeAthleteFromBracket(bracket, athleteId) {
 
 function bracketHasParticipants(bracket) {
   return (bracket?.matches || []).some(
-    (match) => match?.athlete1 || match?.athlete2 || match?.winner || match?.winnerId
+    (match) =>
+      match?.athlete1 || match?.athlete2 || match?.winner || match?.winnerId,
   );
 }
 
 function addAthleteToExistingTeamBracket(bracket, athlete) {
-  if (!bracket?.isTeamBracket || !bracket.matches || !athlete?.club) return bracket;
+  if (!bracket?.isTeamBracket || !bracket.matches || !athlete?.club)
+    return bracket;
 
   const clubKey = athlete.club.trim().toLowerCase();
   const teamIds = new Set();
   bracket.matches.forEach((match) => {
     ["athlete1", "athlete2", "winner"].forEach((field) => {
       const participant = match[field];
-      const participantClub = (participant?.club || participant?.name || "").trim().toLowerCase();
+      const participantClub = (participant?.club || participant?.name || "")
+        .trim()
+        .toLowerCase();
       if (participant?.isTeam && participantClub === clubKey) {
         teamIds.add(participant.id || participant.name);
       }
@@ -241,7 +264,9 @@ function addAthleteToExistingTeamBracket(bracket, athlete) {
       const participantId = participant?.id || participant?.name;
       if (!participant?.isTeam || participantId !== targetTeamId) return;
 
-      const members = Array.isArray(participant.members) ? participant.members : [];
+      const members = Array.isArray(participant.members)
+        ? participant.members
+        : [];
       if (members.some((member) => member.id === athlete.id)) return;
 
       nextMatch[field] = {
@@ -282,10 +307,53 @@ const ACTIONS = {
   UPDATE_CLUB_REGISTRATIONS: "UPDATE_CLUB_REGISTRATIONS",
   MOVE_ATHLETE: "MOVE_ATHLETE",
   SYNC_MATCH_RESULT: "SYNC_MATCH_RESULT",
+  SYNC_ATHLETE_CHECK: "SYNC_ATHLETE_CHECK",
   SYNC_CATEGORY_MEDALS: "SYNC_CATEGORY_MEDALS",
   CLEAR_TOURNAMENT_ATHLETES: "CLEAR_TOURNAMENT_ATHLETES",
   RESTORE_ATHLETES_FROM_BRACKET: "RESTORE_ATHLETES_FROM_BRACKET",
 };
+
+function applySyncedTeamLineups(category, lineups = []) {
+  if (!category || !Array.isArray(lineups) || lineups.length === 0)
+    return category;
+  const updateParticipant = (participant) => {
+    if (!participant?.isTeam) return participant;
+    const lineup = lineups.find(
+      (item) =>
+        (item.teamId && String(item.teamId) === String(participant.id)) ||
+        (item.teamName === participant.name && item.club === participant.club),
+    );
+    if (!lineup) return participant;
+    const members = (lineup.members || []).map((member) => ({ ...member }));
+    return {
+      ...participant,
+      members,
+      mainMembers: members.filter((member) => !member.isReserve),
+      reserveMembers: members.filter((member) => member.isReserve),
+      lineupConfirmedAt: lineup.confirmedAt,
+      lineupConfirmedBy: lineup.confirmedBy,
+    };
+  };
+  const updateMatch = (match) => ({
+    ...match,
+    athlete1: updateParticipant(match.athlete1),
+    athlete2: updateParticipant(match.athlete2),
+    winner: updateParticipant(match.winner),
+  });
+  return {
+    ...category,
+    bracket: category.bracket
+      ? {
+          ...category.bracket,
+          matches: (category.bracket.matches || []).map(updateMatch),
+          auxiliaryMatches: (category.bracket.auxiliaryMatches || []).map(
+            updateMatch,
+          ),
+        }
+      : category.bracket,
+    matches: (category.matches || []).map(updateMatch),
+  };
+}
 
 function tournamentReducer(state, action) {
   let newState;
@@ -305,12 +373,12 @@ function tournamentReducer(state, action) {
                 })),
                 clubRegistrations: {}, // Also reset registrations
               }
-            : t
+            : t,
         ),
       };
       if (state.currentTournament?.id === action.payload) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === action.payload
+          (t) => t.id === action.payload,
         );
       }
       break;
@@ -322,7 +390,9 @@ function tournamentReducer(state, action) {
     }
 
     case ACTIONS.ADD_TOURNAMENT:
-      validateBronzeMode(action.payload.default_bronze_mode ?? DEFAULT_BRONZE_MODE);
+      validateBronzeMode(
+        action.payload.default_bronze_mode ?? DEFAULT_BRONZE_MODE,
+      );
       newState = {
         ...state,
         tournaments: [
@@ -337,8 +407,10 @@ function tournamentReducer(state, action) {
               action.payload.startDate ||
               action.payload.date,
             location: action.payload.location,
-            default_bronze_mode: action.payload.default_bronze_mode ?? DEFAULT_BRONZE_MODE,
-            defaultEligibilityPolicy: action.payload.defaultEligibilityPolicy || { version: 1 },
+            default_bronze_mode:
+              action.payload.default_bronze_mode ?? DEFAULT_BRONZE_MODE,
+            defaultEligibilityPolicy: action.payload
+              .defaultEligibilityPolicy || { version: 1 },
             categories: [],
             createdAt: new Date().toISOString(),
           },
@@ -347,21 +419,87 @@ function tournamentReducer(state, action) {
       break;
 
     case ACTIONS.UPDATE_TOURNAMENT:
-      if (Object.prototype.hasOwnProperty.call(action.payload, "default_bronze_mode")) {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          action.payload,
+          "default_bronze_mode",
+        )
+      ) {
         validateBronzeMode(action.payload.default_bronze_mode);
       }
       newState = {
         ...state,
         tournaments: state.tournaments.map((t) =>
-          t.id === action.payload.id ? { ...t, ...action.payload } : t
+          t.id === action.payload.id ? { ...t, ...action.payload } : t,
         ),
       };
       if (state.currentTournament?.id === action.payload.id) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === action.payload.id
+          (t) => t.id === action.payload.id,
         );
       }
       break;
+
+    case ACTIONS.SYNC_ATHLETE_CHECK: {
+      const {
+        tournamentId,
+        updateType,
+        identityKey,
+        registrationKey,
+        checked,
+        field,
+        value,
+        updatedAt,
+      } = action.payload;
+      const nextTournaments = state.tournaments.map((tournament) => {
+        if (String(tournament.id) !== String(tournamentId)) return tournament;
+        const currentChecks = tournament.athleteChecks || {};
+        const cards = currentChecks.cards || {};
+        const weighIns = currentChecks.weighIns || {};
+        if (updateType === "card") {
+          return {
+            ...tournament,
+            athleteChecks: {
+              cards: {
+                ...cards,
+                [identityKey]: {
+                  ...(cards[identityKey] || {}),
+                  checked,
+                  checkedAt: checked ? updatedAt : "",
+                },
+              },
+              weighIns,
+            },
+          };
+        }
+        return {
+          ...tournament,
+          athleteChecks: {
+            cards,
+            weighIns: {
+              ...weighIns,
+              [registrationKey]: {
+                ...(weighIns[registrationKey] || {}),
+                [field]: value,
+                ...(field === "actualWeight"
+                  ? { weighedAt: value !== "" ? updatedAt : "" }
+                  : {}),
+              },
+            },
+          },
+        };
+      });
+      newState = {
+        ...state,
+        tournaments: nextTournaments,
+        currentTournament: state.currentTournament
+          ? nextTournaments.find(
+              (item) => item.id === state.currentTournament.id,
+            ) || null
+          : null,
+      };
+      break;
+    }
 
     case ACTIONS.DELETE_TOURNAMENT:
       newState = {
@@ -403,18 +541,22 @@ function tournamentReducer(state, action) {
                     athletes: [],
                     bracket: null,
                     format: action.payload.format || "single_elimination", // or 'repechage'
-                    bronze_mode: action.payload.bronze_mode ?? t.default_bronze_mode ?? DEFAULT_BRONZE_MODE,
-                    eligibilityPolicy: action.payload.eligibilityPolicy || t.defaultEligibilityPolicy || { version: 1 },
+                    bronze_mode:
+                      action.payload.bronze_mode ??
+                      t.default_bronze_mode ??
+                      DEFAULT_BRONZE_MODE,
+                    eligibilityPolicy: action.payload.eligibilityPolicy ||
+                      t.defaultEligibilityPolicy || { version: 1 },
                   },
                 ],
               }
-            : t
+            : t,
         ),
       };
       // Update currentTournament if it matches
       if (state.currentTournament?.id === action.payload.tournamentId) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === action.payload.tournamentId
+          (t) => t.id === action.payload.tournamentId,
         );
       }
       break;
@@ -437,13 +579,19 @@ function tournamentReducer(state, action) {
             new Map(
               (action.payload.categories || [])
                 .map((cat) => [normalizeCategoryImportKey(cat.name), cat])
-                .filter(([key]) => key)
-            ).entries()
-          ).map(([key, cat]) => buildImportedCategory(
-            { ...cat, eligibilityPolicy: cat.eligibilityPolicy || t.defaultEligibilityPolicy || { version: 1 } },
-            existingByName.get(key),
-            t.default_bronze_mode ?? DEFAULT_BRONZE_MODE
-          ));
+                .filter(([key]) => key),
+            ).entries(),
+          ).map(([key, cat]) =>
+            buildImportedCategory(
+              {
+                ...cat,
+                eligibilityPolicy: cat.eligibilityPolicy ||
+                  t.defaultEligibilityPolicy || { version: 1 },
+              },
+              existingByName.get(key),
+              t.default_bronze_mode ?? DEFAULT_BRONZE_MODE,
+            ),
+          );
 
           return {
             ...t,
@@ -453,7 +601,7 @@ function tournamentReducer(state, action) {
       };
       if (state.currentTournament?.id === action.payload.tournamentId) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === action.payload.tournamentId
+          (t) => t.id === action.payload.tournamentId,
         );
       }
       break;
@@ -467,25 +615,40 @@ function tournamentReducer(state, action) {
         tournaments: state.tournaments.map((t) => ({
           ...t,
           categories: t.categories.map((c) =>
-            c.id === action.payload.id ? (() => {
-              if (!Object.prototype.hasOwnProperty.call(action.payload, "bracket")) return { ...c, ...action.payload };
-              const prepared = reconcileBronzeAfterMainBracketChange({
-                category: c,
-                candidateBracket: action.payload.bracket,
-                singleEnabled: isSingleBronzeCoreEnabled(),
-              });
-              if (!prepared.ok) {
-                console.error("[BRONZE] Atomic bracket update blocked", prepared);
-                return c;
-              }
-              return { ...c, ...action.payload, bracket: prepared.bracketCopy };
-            })() : c
+            c.id === action.payload.id
+              ? (() => {
+                  if (
+                    !Object.prototype.hasOwnProperty.call(
+                      action.payload,
+                      "bracket",
+                    )
+                  )
+                    return { ...c, ...action.payload };
+                  const prepared = reconcileBronzeAfterMainBracketChange({
+                    category: c,
+                    candidateBracket: action.payload.bracket,
+                    singleEnabled: isSingleBronzeCoreEnabled(),
+                  });
+                  if (!prepared.ok) {
+                    console.error(
+                      "[BRONZE] Atomic bracket update blocked",
+                      prepared,
+                    );
+                    return c;
+                  }
+                  return {
+                    ...c,
+                    ...action.payload,
+                    bracket: prepared.bracketCopy,
+                  };
+                })()
+              : c,
           ),
         })),
       };
       if (state.currentTournament) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === state.currentTournament.id
+          (t) => t.id === state.currentTournament.id,
         );
       }
       if (state.currentCategory?.id === action.payload.id) {
@@ -510,14 +673,14 @@ function tournamentReducer(state, action) {
       };
       if (state.currentTournament) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === state.currentTournament.id
+          (t) => t.id === state.currentTournament.id,
         );
       }
       break;
 
     case ACTIONS.SET_CURRENT_CATEGORY:
       const category = state.currentTournament?.categories.find(
-        (c) => c.id === action.payload
+        (c) => c.id === action.payload,
       );
       newState = {
         ...state,
@@ -547,20 +710,23 @@ function tournamentReducer(state, action) {
               ? {
                   ...c,
                   athletes: [...c.athletes, newAthlete],
-                  bracket: addAthleteToExistingTeamBracket(c.bracket, newAthlete),
+                  bracket: addAthleteToExistingTeamBracket(
+                    c.bracket,
+                    newAthlete,
+                  ),
                 }
-              : c
+              : c,
           ),
         })),
       };
       if (state.currentTournament) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === state.currentTournament.id
+          (t) => t.id === state.currentTournament.id,
         );
       }
       if (state.currentCategory?.id === action.payload.categoryId) {
         newState.currentCategory = newState.currentTournament?.categories.find(
-          (c) => c.id === action.payload.categoryId
+          (c) => c.id === action.payload.categoryId,
         );
       }
       break;
@@ -574,7 +740,7 @@ function tournamentReducer(state, action) {
           categories: t.categories.map((c) => ({
             ...c,
             athletes: c.athletes.map((a) =>
-              a.id === action.payload.id ? { ...a, ...action.payload } : a
+              a.id === action.payload.id ? { ...a, ...action.payload } : a,
             ),
             bracket: syncAthleteInBracket(c.bracket, action.payload),
           })),
@@ -582,12 +748,12 @@ function tournamentReducer(state, action) {
       };
       if (state.currentTournament) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === state.currentTournament.id
+          (t) => t.id === state.currentTournament.id,
         );
       }
       if (state.currentCategory) {
         newState.currentCategory = newState.currentTournament?.categories.find(
-          (c) => c.id === state.currentCategory.id
+          (c) => c.id === state.currentCategory.id,
         );
       }
       break;
@@ -604,19 +770,22 @@ function tournamentReducer(state, action) {
             return {
               ...c,
               athletes,
-              bracket: athletes.length === 0 && !bracketHasParticipants(bracket) ? null : bracket,
+              bracket:
+                athletes.length === 0 && !bracketHasParticipants(bracket)
+                  ? null
+                  : bracket,
             };
           }),
         })),
       };
       if (state.currentTournament) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === state.currentTournament.id
+          (t) => t.id === state.currentTournament.id,
         );
       }
       if (state.currentCategory) {
         newState.currentCategory = newState.currentTournament?.categories.find(
-          (c) => c.id === state.currentCategory.id
+          (c) => c.id === state.currentCategory.id,
         );
       }
       break;
@@ -635,13 +804,11 @@ function tournamentReducer(state, action) {
               .map((a) => a.id);
             if (removedAthleteIds.length === 0) return c;
 
-            const athletes = c.athletes.filter(
-              (a) => !removedIds.has(a.id)
-            );
+            const athletes = c.athletes.filter((a) => !removedIds.has(a.id));
             const bracket = removedAthleteIds.reduce(
               (currentBracket, athleteId) =>
                 removeAthleteFromBracket(currentBracket, athleteId),
-              c.bracket
+              c.bracket,
             );
 
             return {
@@ -659,12 +826,13 @@ function tournamentReducer(state, action) {
       };
       if (state.currentTournament?.id === tournamentId) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === tournamentId
+          (t) => t.id === tournamentId,
         );
         if (state.currentCategory) {
-          newState.currentCategory = newState.currentTournament?.categories.find(
-            (c) => c.id === state.currentCategory.id
-          );
+          newState.currentCategory =
+            newState.currentTournament?.categories.find(
+              (c) => c.id === state.currentCategory.id,
+            );
         }
       }
       break;
@@ -690,17 +858,27 @@ function tournamentReducer(state, action) {
                 return {
                   ...c,
                   athletes: [...c.athletes, athleteToMove],
-                  bracket: addAthleteToExistingTeamBracket(c.bracket, athleteToMove),
+                  bracket: addAthleteToExistingTeamBracket(
+                    c.bracket,
+                    athleteToMove,
+                  ),
                 };
               }
               return {
                 ...c,
                 athletes: c.athletes.filter((a) => a.id !== athleteId),
                 bracket: (() => {
-                  if (!c.athletes.some((a) => a.id === athleteId)) return c.bracket;
+                  if (!c.athletes.some((a) => a.id === athleteId))
+                    return c.bracket;
                   const athletes = c.athletes.filter((a) => a.id !== athleteId);
-                  const bracket = removeAthleteFromBracket(c.bracket, athleteId);
-                  return athletes.length === 0 && !bracketHasParticipants(bracket) ? null : bracket;
+                  const bracket = removeAthleteFromBracket(
+                    c.bracket,
+                    athleteId,
+                  );
+                  return athletes.length === 0 &&
+                    !bracketHasParticipants(bracket)
+                    ? null
+                    : bracket;
                 })(),
               };
             }),
@@ -709,12 +887,12 @@ function tournamentReducer(state, action) {
       };
       if (state.currentTournament) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === state.currentTournament.id
+          (t) => t.id === state.currentTournament.id,
         );
       }
       if (state.currentCategory) {
         newState.currentCategory = newState.currentTournament?.categories.find(
-          (c) => c.id === state.currentCategory.id
+          (c) => c.id === state.currentCategory.id,
         );
       }
       break;
@@ -732,10 +910,28 @@ function tournamentReducer(state, action) {
                   athletes: [
                     ...c.athletes,
                     ...action.payload.athletes
-                      .filter(newA => !c.athletes.some(oldA => 
-                        oldA.name.trim().normalize("NFC").toLowerCase() === newA.name.trim().normalize("NFC").toLowerCase() && 
-                        (oldA.club || "").trim().normalize("NFC").toLowerCase() === (newA.club || "").trim().normalize("NFC").toLowerCase()
-                      ))
+                      .filter(
+                        (newA) =>
+                          !c.athletes.some(
+                            (oldA) =>
+                              oldA.name
+                                .trim()
+                                .normalize("NFC")
+                                .toLowerCase() ===
+                                newA.name
+                                  .trim()
+                                  .normalize("NFC")
+                                  .toLowerCase() &&
+                              (oldA.club || "")
+                                .trim()
+                                .normalize("NFC")
+                                .toLowerCase() ===
+                                (newA.club || "")
+                                  .trim()
+                                  .normalize("NFC")
+                                  .toLowerCase(),
+                          ),
+                      )
                       .map((a) => ({
                         id: uuidv4(),
                         cloudAthleteId: a.cloudAthleteId || a.id || null,
@@ -752,18 +948,18 @@ function tournamentReducer(state, action) {
                       })),
                   ],
                 }
-              : c
+              : c,
           ),
         })),
       };
       if (state.currentTournament) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === state.currentTournament.id
+          (t) => t.id === state.currentTournament.id,
         );
       }
       if (state.currentCategory?.id === action.payload.categoryId) {
         newState.currentCategory = newState.currentTournament?.categories.find(
-          (c) => c.id === action.payload.categoryId
+          (c) => c.id === action.payload.categoryId,
         );
       }
       break;
@@ -787,12 +983,12 @@ function tournamentReducer(state, action) {
       };
       if (state.currentTournament) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === state.currentTournament.id
+          (t) => t.id === state.currentTournament.id,
         );
       }
       if (state.currentCategory?.id === action.payload.categoryId) {
         newState.currentCategory = newState.currentTournament?.categories.find(
-          (c) => c.id === action.payload.categoryId
+          (c) => c.id === action.payload.categoryId,
         );
       }
       break;
@@ -805,18 +1001,18 @@ function tournamentReducer(state, action) {
           categories: t.categories.map((c) =>
             c.id === action.payload.categoryId
               ? { ...c, bracket: action.payload.bracket }
-              : c
+              : c,
           ),
         })),
       };
       if (state.currentTournament) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === state.currentTournament.id
+          (t) => t.id === state.currentTournament.id,
         );
       }
       if (state.currentCategory?.id === action.payload.categoryId) {
         newState.currentCategory = newState.currentTournament?.categories.find(
-          (c) => c.id === action.payload.categoryId
+          (c) => c.id === action.payload.categoryId,
         );
       }
       break;
@@ -835,7 +1031,7 @@ function tournamentReducer(state, action) {
                 matches: c.bracket.matches.map((m) =>
                   m.id === action.payload.matchId
                     ? { ...m, ...action.payload.updates }
-                    : m
+                    : m,
                 ),
               },
             };
@@ -844,12 +1040,12 @@ function tournamentReducer(state, action) {
       };
       if (state.currentTournament) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === state.currentTournament.id
+          (t) => t.id === state.currentTournament.id,
         );
       }
       if (state.currentCategory) {
         newState.currentCategory = newState.currentTournament?.categories.find(
-          (c) => c.id === state.currentCategory.id
+          (c) => c.id === state.currentCategory.id,
         );
       }
       break;
@@ -860,12 +1056,12 @@ function tournamentReducer(state, action) {
         tournaments: state.tournaments.map((t) =>
           t.id === action.payload.tournamentId
             ? { ...t, schedule: action.payload.schedule }
-            : t
+            : t,
         ),
       };
       if (state.currentTournament?.id === action.payload.tournamentId) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === action.payload.tournamentId
+          (t) => t.id === action.payload.tournamentId,
         );
       }
       break;
@@ -876,12 +1072,12 @@ function tournamentReducer(state, action) {
         tournaments: state.tournaments.map((t) =>
           t.id === action.payload.tournamentId
             ? { ...t, customEvents: action.payload.customEvents }
-            : t
+            : t,
         ),
       };
       if (state.currentTournament?.id === action.payload.tournamentId) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === action.payload.tournamentId
+          (t) => t.id === action.payload.tournamentId,
         );
       }
       break;
@@ -892,12 +1088,12 @@ function tournamentReducer(state, action) {
         tournaments: state.tournaments.map((t) =>
           t.id === action.payload.tournamentId
             ? { ...t, sponsorLogos: action.payload.sponsorLogos }
-            : t
+            : t,
         ),
       };
       if (state.currentTournament?.id === action.payload.tournamentId) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === action.payload.tournamentId
+          (t) => t.id === action.payload.tournamentId,
         );
       }
       break;
@@ -908,18 +1104,19 @@ function tournamentReducer(state, action) {
         tournaments: state.tournaments.map((t) =>
           t.id === action.payload.tournamentId
             ? { ...t, clubRegistrations: action.payload.clubRegistrations }
-            : t
+            : t,
         ),
       };
       if (state.currentTournament?.id === action.payload.tournamentId) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === action.payload.tournamentId
+          (t) => t.id === action.payload.tournamentId,
         );
       }
       break;
 
     case ACTIONS.SYNC_CATEGORY_MEDALS: {
-      const { tournamentId, categoryId, categoryName, medals, syncedAt } = action.payload;
+      const { tournamentId, categoryId, categoryName, medals, syncedAt } =
+        action.payload;
       if (!tournamentId || !medals) return state;
 
       newState = {
@@ -927,7 +1124,8 @@ function tournamentReducer(state, action) {
         tournaments: state.tournaments.map((t) => {
           if (t.id !== tournamentId) return t;
           const category = t.categories.find(
-            (c) => c.id === categoryId || (categoryName && c.name === categoryName)
+            (c) =>
+              c.id === categoryId || (categoryName && c.name === categoryName),
           );
           if (!category) return t;
           return {
@@ -943,6 +1141,12 @@ function tournamentReducer(state, action) {
                 club3a: medals.bronze1?.club || "",
                 third2: medals.bronze2?.name || "",
                 club3b: medals.bronze2?.club || "",
+                awardTeams: {
+                  first: medals.gold || null,
+                  second: medals.silver || null,
+                  third1: medals.bronze1 || null,
+                  third2: medals.bronze2 || null,
+                },
                 _lanSyncedAt: syncedAt || new Date().toISOString(),
               },
             },
@@ -950,17 +1154,30 @@ function tournamentReducer(state, action) {
         }),
       };
       if (state.currentTournament?.id === tournamentId) {
-        newState.currentTournament = newState.tournaments.find((t) => t.id === tournamentId);
+        newState.currentTournament = newState.tournaments.find(
+          (t) => t.id === tournamentId,
+        );
       }
       break;
     }
     case ACTIONS.SYNC_MATCH_RESULT: {
       const {
-        matchId, matchCode, categoryId, score1, score2, winnerId, tournamentId,
-        disqualification, disqualifiedSlot, disqualifiedReason,
+        matchId,
+        matchCode,
+        categoryId,
+        score1,
+        score2,
+        winnerId,
+        tournamentId,
+        disqualification,
+        disqualifiedSlot,
+        disqualifiedReason,
+        teamLineups,
       } = action.payload;
-      
-      console.log(`[SYNC] Processing match ${matchId} (${matchCode || 'N/A'}) for tournament ${tournamentId}`);
+
+      console.log(
+        `[SYNC] Processing match ${matchId} (${matchCode || "N/A"}) for tournament ${tournamentId}`,
+      );
 
       newState = {
         ...state,
@@ -972,28 +1189,45 @@ function tournamentReducer(state, action) {
             ? t.categories.flatMap((category) =>
                 (category.bracket?.matches || [])
                   .filter((match) => match.matchCode === matchCode)
-                  .map((match) => ({ categoryId: category.id, match }))
+                  .map((match) => ({ categoryId: category.id, match })),
               )
             : [];
           const updatedCategories = t.categories.map((c) => {
             if (!c.bracket?.matches) return c;
             if (categoryId && c.id !== categoryId) return c;
 
-            const auxiliaryMatch = (c.bracket.auxiliaryMatches || []).find((m) => m.id === matchId);
+            const syncedCategory = applySyncedTeamLineups(c, teamLineups);
+
+            const auxiliaryMatch = (
+              syncedCategory.bracket.auxiliaryMatches || []
+            ).find((m) => m.id === matchId);
             if (auxiliaryMatch) {
-              const auxiliaryResult = updateAuxiliaryMatchResult({ bracket: c.bracket, matchId, winnerId, score1, score2 });
-              if (!auxiliaryResult.ok) return c;
+              const auxiliaryResult = updateAuxiliaryMatchResult({
+                bracket: syncedCategory.bracket,
+                matchId,
+                winnerId,
+                score1,
+                score2,
+              });
+              if (!auxiliaryResult.ok) return syncedCategory;
               found = true;
-              return { ...c, bracket: auxiliaryResult.bracketCopy };
+              return {
+                ...syncedCategory,
+                bracket: auxiliaryResult.bracketCopy,
+              };
             }
-            
+
             // 1. Try finding by matchId (UUID)
-            let match = c.bracket.matches.find((m) => m.id === matchId);
-            
+            let match = syncedCategory.bracket.matches.find(
+              (m) => m.id === matchId,
+            );
+
             // 2. Fallback: Try finding by matchCode if available (e.g., "M6")
             // This handles cases where ID might have changed but structure is same
             if (!match && matchCode && matchCodeCandidates.length === 1) {
-              match = c.bracket.matches.find((m) => m.matchCode === matchCode);
+              match = syncedCategory.bracket.matches.find(
+                (m) => m.matchCode === matchCode,
+              );
               if (match) {
                 console.log(`[SYNC] Match found by matchCode: ${matchCode}`);
               } else {
@@ -1005,33 +1239,42 @@ function tournamentReducer(state, action) {
 
             found = true;
             const targetMatchId = match.id; // Use the actual ID in the bracket
-            
-            const updatedBracket = disqualification && disqualifiedSlot
-              ? disqualifyAthlete(
-                  JSON.parse(JSON.stringify(c.bracket)),
-                  targetMatchId,
-                  disqualifiedSlot,
-                  disqualifiedReason || "KIKEN"
-                )
-              : updateMatchResult(c.bracket, targetMatchId, score1, score2, winnerId);
-            return { ...c, bracket: updatedBracket };
+
+            const updatedBracket =
+              disqualification && disqualifiedSlot
+                ? disqualifyAthlete(
+                    JSON.parse(JSON.stringify(syncedCategory.bracket)),
+                    targetMatchId,
+                    disqualifiedSlot,
+                    disqualifiedReason || "KIKEN",
+                  )
+                : updateMatchResult(
+                    syncedCategory.bracket,
+                    targetMatchId,
+                    score1,
+                    score2,
+                    winnerId,
+                  );
+            return { ...syncedCategory, bracket: updatedBracket };
           });
 
           if (!found) {
-            console.warn(`[SYNC] Match ${matchId}/${matchCode} not found in tournament ${tournamentId}`);
+            console.warn(
+              `[SYNC] Match ${matchId}/${matchCode} not found in tournament ${tournamentId}`,
+            );
             return t;
           }
           return { ...t, categories: updatedCategories };
         }),
       };
-      
+
       if (state.currentTournament?.id === tournamentId) {
         newState.currentTournament = newState.tournaments.find(
-          (t) => t.id === tournamentId
+          (t) => t.id === tournamentId,
         );
         if (state.currentCategory) {
           newState.currentCategory = newState.currentTournament.categories.find(
-            (c) => c.id === state.currentCategory.id
+            (c) => c.id === state.currentCategory.id,
           );
         }
       }
@@ -1063,14 +1306,17 @@ async function saveToStorage(state, actionType) {
         ACTIONS.IMPORT_CATEGORIES,
         ACTIONS.UPDATE_MATCH,
         ACTIONS.SYNC_MATCH_RESULT,
+        ACTIONS.SYNC_ATHLETE_CHECK,
         ACTIONS.REMOVE_WITHDRAWN_ATHLETES,
       ];
-      
+
       if (importantActions.includes(actionType)) {
         autoBackupCounter++;
         if (autoBackupCounter >= AUTO_BACKUP_INTERVAL) {
           autoBackupCounter = 0;
-          createAutoBackup(`Auto-backup sau ${AUTO_BACKUP_INTERVAL} thay đổi quan trọng`);
+          createAutoBackup(
+            `Auto-backup sau ${AUTO_BACKUP_INTERVAL} thay đổi quan trọng`,
+          );
         }
       }
     } catch (error) {
@@ -1109,44 +1355,107 @@ export function TournamentProvider({ children }) {
     initialize();
   }, []);
 
+  // Keep only the fields needed by the PIN-protected LAN Check-in page.
+  useEffect(() => {
+    if (!window.electronAPI?.lan?.setCheckInData) return;
+    const tournaments = state.tournaments.map((tournament) => ({
+      id: tournament.id,
+      name: tournament.name,
+      athleteCheckSettings: tournament.athleteCheckSettings || {},
+      athleteChecks: tournament.athleteChecks || { cards: {}, weighIns: {} },
+      categories: (tournament.categories || []).map((category) => ({
+        id: category.id,
+        name: category.name,
+        type: category.type,
+        weightClass: category.weightClass,
+        weightMin: category.weightMin,
+        weightMax: category.weightMax,
+        athletes: (category.athletes || []).map((athlete) => ({
+          id: athlete.id,
+          name: athlete.name,
+          club: athlete.club,
+          birthDate: athlete.birthDate,
+          birthYear: athlete.birthYear,
+          gender: athlete.gender,
+        })),
+      })),
+    }));
+    window.electronAPI.lan.setCheckInData({
+      currentTournamentId: state.currentTournament?.id || "",
+      tournaments,
+    });
+  }, [state.currentTournament?.id, state.tournaments]);
+
+  // Merge secretary card/weight updates into the latest reducer state.
+  useEffect(() => {
+    if (!window.electronAPI?.receive) return undefined;
+    return window.electronAPI.receive("lan:receive-check-in", (data) => {
+      if (!data?.tournamentId || !["card", "weigh"].includes(data.updateType))
+        return;
+      dispatch({ type: ACTIONS.SYNC_ATHLETE_CHECK, payload: data });
+      if (data.updateType === "card") {
+        toast.success(
+          data.checked
+            ? "🪪 Thư ký đã check thẻ VĐV"
+            : "↩️ Thư ký đã bỏ check thẻ",
+          2500,
+        );
+      }
+    });
+  }, [toast]);
+
   // Listen for LAN match results (Admin side)
   useEffect(() => {
     if (window.electronAPI && window.electronAPI.receive) {
-      const cleanup = window.electronAPI.receive("lan:receive-result", (data) => {
-        console.log("Received match result via LAN:", data);
-        
-        // Old Secretary builds could publish medal summaries immediately from
-        // restored local results. Reject them at the Admin boundary.
-        if (
-          data.syncType === 'category-medals' &&
-          (data.syncProtocol !== 2 || data.confirmedInCurrentRun !== true || !data.exportId)
-        ) {
-          console.warn('Rejected unverified category-medals payload from an old Secretary session.');
-          return;
-        }
+      const cleanup = window.electronAPI.receive(
+        "lan:receive-result",
+        (data) => {
+          console.log("Received match result via LAN:", data);
 
-        // Use tournamentId from payload if provided, fallback to current
-        const targetTournamentId = data.tournamentId || state.currentTournament?.id;
-        
-        if (targetTournamentId) {
-          dispatch({
-            type: data.syncType === "category-medals"
-              ? ACTIONS.SYNC_CATEGORY_MEDALS
-              : ACTIONS.SYNC_MATCH_RESULT,
-            payload: {
-              ...data,
-              tournamentId: targetTournamentId,
-            },
-          });
-
-          if (data.syncType === "category-medals") {
-            const categoryLabel = data.categoryName || "nội dung thi đấu";
-            toast.success(`🏆 Đã hoàn tất và đồng bộ nội dung: ${categoryLabel}`, 7000);
+          // Old Secretary builds could publish medal summaries immediately from
+          // restored local results. Reject them at the Admin boundary.
+          if (
+            data.syncType === "category-medals" &&
+            (data.syncProtocol !== 2 ||
+              data.confirmedInCurrentRun !== true ||
+              !data.exportId)
+          ) {
+            console.warn(
+              "Rejected unverified category-medals payload from an old Secretary session.",
+            );
+            return;
           }
-        } else {
-          console.warn("Received match result but no target tournament identified.");
-        }
-      });
+
+          // Use tournamentId from payload if provided, fallback to current
+          const targetTournamentId =
+            data.tournamentId || state.currentTournament?.id;
+
+          if (targetTournamentId) {
+            dispatch({
+              type:
+                data.syncType === "category-medals"
+                  ? ACTIONS.SYNC_CATEGORY_MEDALS
+                  : ACTIONS.SYNC_MATCH_RESULT,
+              payload: {
+                ...data,
+                tournamentId: targetTournamentId,
+              },
+            });
+
+            if (data.syncType === "category-medals") {
+              const categoryLabel = data.categoryName || "nội dung thi đấu";
+              toast.success(
+                `🏆 Đã hoàn tất và đồng bộ nội dung: ${categoryLabel}`,
+                7000,
+              );
+            }
+          } else {
+            console.warn(
+              "Received match result but no target tournament identified.",
+            );
+          }
+        },
+      );
       return cleanup;
     }
   }, [state.currentTournament?.id, toast]); // Keep dependency to allow fallback to current if payload missing id
@@ -1172,7 +1481,7 @@ export function useTournamentDispatch() {
   const context = useContext(TournamentDispatchContext);
   if (context === null) {
     throw new Error(
-      "useTournamentDispatch must be used within a TournamentProvider"
+      "useTournamentDispatch must be used within a TournamentProvider",
     );
   }
   return context;

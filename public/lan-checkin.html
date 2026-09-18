@@ -1,0 +1,1099 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>K-SPORT - Bàn Check-in VĐV</title>
+    <style>
+      :root {
+        font-family: Inter, "Segoe UI", Arial, sans-serif;
+        color: #172033;
+        background: #eef3f9;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-width: 320px;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 24px;
+        color: #fff;
+        background: linear-gradient(120deg, #122b52, #1d4f83);
+        box-shadow: 0 4px 18px rgba(15, 42, 78, 0.22);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .brand img {
+        width: 42px;
+        height: 42px;
+        object-fit: contain;
+        border-radius: 9px;
+        background: #fff;
+        padding: 3px;
+      }
+      .brand strong {
+        display: block;
+        font-size: 18px;
+      }
+      .brand span {
+        display: block;
+        margin-top: 2px;
+        color: #cde1f6;
+        font-size: 12px;
+      }
+      .connection {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 11px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .connection::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #fbbf24;
+      }
+      .connection.online::before {
+        background: #4ade80;
+        box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.16);
+      }
+      .connection.offline::before {
+        background: #f87171;
+      }
+      main {
+        width: min(1540px, calc(100% - 28px));
+        margin: 22px auto 40px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #dbe4ef;
+        border-radius: 14px;
+        box-shadow: 0 4px 18px rgba(26, 54, 93, 0.06);
+      }
+      .login {
+        width: min(440px, 100%);
+        margin: 70px auto;
+        padding: 28px;
+        text-align: center;
+      }
+      .login-icon {
+        font-size: 42px;
+      }
+      .login h1 {
+        margin: 10px 0 5px;
+        color: #10294c;
+        font-size: 23px;
+      }
+      .login p {
+        margin: 0 0 20px;
+        color: #64748b;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .pin {
+        width: 190px;
+        padding: 12px;
+        border: 1px solid #a9bad0;
+        border-radius: 9px;
+        text-align: center;
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: 0.25em;
+      }
+      .pin:focus,
+      .input:focus {
+        outline: 3px solid rgba(37, 99, 235, 0.12);
+        border-color: #3b82f6;
+      }
+      .login-error {
+        min-height: 20px;
+        margin: 10px 0;
+        color: #b91c1c;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .btn,
+      .input {
+        min-height: 42px;
+        border: 1px solid #cbd5e1;
+        border-radius: 9px;
+        background: #fff;
+        padding: 9px 12px;
+        color: #243247;
+      }
+      .btn {
+        cursor: pointer;
+        font-weight: 800;
+      }
+      .btn:hover {
+        background: #f8fafc;
+        border-color: #8ea5c0;
+      }
+      .btn-primary {
+        color: #fff;
+        background: #2563eb;
+        border-color: #2563eb;
+      }
+      .btn-primary:hover {
+        background: #1d4ed8;
+      }
+      .login .btn {
+        width: 190px;
+      }
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) max-content;
+        align-items: center;
+        gap: 24px;
+        padding: 20px 24px;
+        overflow: hidden;
+      }
+      .hero-copy {
+        min-width: 0;
+      }
+      .hero-kicker {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-bottom: 7px;
+        color: #2563eb;
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .hero-kicker::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+        box-shadow: 0 0 0 4px #dcfce7;
+      }
+      h1 {
+        margin: 0;
+        color: #10294c;
+        font-size: clamp(19px, 1.55vw, 25px);
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+      }
+      .subtitle {
+        margin: 7px 0 0;
+        color: #64748b;
+        font-size: 13px;
+      }
+      .hero-actions {
+        display: grid;
+        grid-template-columns: repeat(3, max-content);
+        align-items: center;
+        gap: 9px;
+        padding-left: 22px;
+        border-left: 1px solid #e2e8f0;
+      }
+      .hero-actions .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 9px 15px;
+        white-space: nowrap;
+      }
+      .hero-actions .print-btn {
+        color: #fff;
+        background: #1d4ed8;
+        border-color: #1d4ed8;
+        box-shadow: 0 4px 10px rgba(29, 78, 216, 0.18);
+      }
+      .hero-actions .print-btn:hover {
+        background: #1e40af;
+        border-color: #1e40af;
+      }
+      .hero-actions .logout-btn {
+        color: #b91c1c;
+        background: #fff7f7;
+        border-color: #fecaca;
+      }
+      .hero-actions .logout-btn:hover {
+        background: #fee2e2;
+      }
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .summary-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 16px;
+        border: 1px solid #dbe4ef;
+        border-left: 4px solid #2563eb;
+        border-radius: 11px;
+        background: #fff;
+      }
+      .summary-card span {
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+      .summary-card strong {
+        color: #10294c;
+        font-size: 23px;
+      }
+      .summary-card.danger {
+        border-left-color: #dc2626;
+        background: #fff7f7;
+      }
+      .summary-card.danger strong {
+        color: #dc2626;
+      }
+      .config {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-top: 14px;
+        padding: 12px 16px;
+        color: #78350f;
+        background: #fffbeb;
+        border-color: #f6cb60;
+      }
+      .config strong {
+        font-size: 13px;
+      }
+      .config small {
+        color: #92400e;
+      }
+      .config-value {
+        padding: 7px 12px;
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        background: #fff;
+        font-weight: 900;
+      }
+      .filters {
+        display: grid;
+        grid-template-columns: minmax(240px, 1.35fr) repeat(
+            4,
+            minmax(150px, 1fr)
+          );
+        gap: 10px;
+        margin-top: 14px;
+        padding: 14px;
+      }
+      .count {
+        margin: 11px 4px 7px;
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 700;
+        text-align: right;
+      }
+      .table-card {
+        overflow: auto;
+      }
+      table {
+        width: 100%;
+        min-width: 1160px;
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        padding: 12px 10px;
+        color: #fff;
+        background: #193b67;
+        font-size: 12px;
+        text-align: left;
+        white-space: nowrap;
+      }
+      td {
+        padding: 10px;
+        border-bottom: 1px solid #e7edf4;
+        background: #fff;
+        font-size: 13px;
+        vertical-align: middle;
+      }
+      tbody tr:hover td {
+        background: #f8fbff;
+      }
+      tr.failed td {
+        background: #fee2e2;
+        border-color: #fca5a5;
+      }
+      tr.failed:hover td {
+        background: #fecaca;
+      }
+      .athlete-name strong,
+      .athlete-name small {
+        display: block;
+      }
+      .athlete-name small {
+        margin-top: 3px;
+        color: #64748b;
+      }
+      .card-check {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        white-space: nowrap;
+        cursor: pointer;
+        font-weight: 800;
+      }
+      .card-check input {
+        width: 19px;
+        height: 19px;
+        accent-color: #16a34a;
+      }
+      .weight-box {
+        display: inline-flex;
+        align-items: center;
+        overflow: hidden;
+        border: 1px solid #b8c7da;
+        border-radius: 8px;
+        background: #fff;
+      }
+      .weight-box input {
+        width: 92px;
+        padding: 8px 5px;
+        border: 0;
+        outline: 0;
+        text-align: right;
+        font-weight: 900;
+      }
+      .weight-box span {
+        padding: 0 7px 0 2px;
+        color: #64748b;
+        font-size: 12px;
+      }
+      .note {
+        width: 150px;
+        padding: 8px;
+        border: 1px solid #b8c7da;
+        border-radius: 7px;
+      }
+      .status {
+        display: inline-block;
+        min-width: 96px;
+        padding: 5px 9px;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #475569;
+        font-size: 11px;
+        font-weight: 900;
+        text-align: center;
+      }
+      .status.pass {
+        color: #166534;
+        background: #dcfce7;
+      }
+      .status.fail {
+        color: #fff;
+        background: #dc2626;
+      }
+      .status.missing-card,
+      .status.missing-weight,
+      .status.missing-limit {
+        color: #92400e;
+        background: #fef3c7;
+      }
+      .difference-fail {
+        color: #b91c1c;
+        font-weight: 900;
+      }
+      .toast {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        z-index: 50;
+        max-width: 360px;
+        padding: 12px 16px;
+        border-radius: 10px;
+        color: #fff;
+        background: #166534;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        font-weight: 700;
+        transform: translateY(120px);
+        opacity: 0;
+        transition: 0.2s ease;
+      }
+      .toast.show {
+        transform: translateY(0);
+        opacity: 1;
+      }
+      .toast.error {
+        background: #b91c1c;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      @media (max-width: 1250px) {
+        .hero {
+          grid-template-columns: 1fr;
+          gap: 16px;
+        }
+        .hero-actions {
+          justify-content: start;
+          padding-top: 15px;
+          padding-left: 0;
+          border-top: 1px solid #e2e8f0;
+          border-left: 0;
+        }
+      }
+      @media (max-width: 1050px) {
+        .summary {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .filters {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .filters .search {
+          grid-column: span 2;
+        }
+      }
+      @media (max-width: 650px) {
+        .topbar,
+        .config {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .hero {
+          padding: 17px;
+        }
+        .hero-actions {
+          grid-template-columns: 1fr;
+          width: 100%;
+        }
+        .hero-actions .btn {
+          width: 100%;
+        }
+        main {
+          width: calc(100% - 16px);
+          margin-top: 10px;
+        }
+        .hero-actions {
+          width: 100%;
+        }
+        .summary,
+        .filters {
+          grid-template-columns: 1fr;
+        }
+        .filters .search {
+          grid-column: auto;
+        }
+      }
+      @media print {
+        .topbar,
+        .hero-actions,
+        .filters,
+        .toast {
+          display: none !important;
+        }
+        body {
+          background: #fff;
+        }
+        main {
+          width: 100%;
+          margin: 0;
+        }
+        .card {
+          box-shadow: none;
+        }
+        .table-card {
+          overflow: visible;
+        }
+        th {
+          position: static;
+        }
+        table {
+          min-width: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img src="/assets/ksport-logo.png" alt="K-SPORT" />
+        <div>
+          <strong>K-SPORT CHECK-IN</strong
+          ><span>Bàn kiểm tra thẻ và cân vận động viên</span>
+        </div>
+      </div>
+      <div id="connection" class="connection">Đang kết nối máy Admin</div>
+    </header>
+    <main>
+      <section id="login" class="login card">
+        <div class="login-icon">🪪</div>
+        <h1>Truy cập bàn Check-in</h1>
+        <p id="login-message">Nhập mã PIN 6 số đang hiển thị trên máy Admin.</p>
+        <form id="login-form">
+          <input
+            id="pin"
+            class="pin"
+            inputmode="numeric"
+            maxlength="6"
+            autocomplete="one-time-code"
+            placeholder="••••••"
+          />
+          <div id="login-error" class="login-error"></div>
+          <button class="btn btn-primary" type="submit">Kết nối</button>
+        </form>
+      </section>
+      <section id="workspace" hidden>
+        <section class="hero card">
+          <div class="hero-copy">
+            <div class="hero-kicker">Giải đấu đang Check-in</div>
+            <h1 id="title">Kiểm tra VĐV</h1>
+            <p class="subtitle">
+              Dữ liệu được lưu trực tiếp về máy Admin qua mạng LAN.
+            </p>
+          </div>
+          <div class="hero-actions">
+            <button id="print" class="btn print-btn" type="button">
+              🖨️ In danh sách đang lọc</button
+            ><button id="refresh" class="btn" type="button">↻ Làm mới</button
+            ><button id="logout" class="btn logout-btn" type="button">
+              Thoát
+            </button>
+          </div>
+        </section>
+        <div id="summary" class="summary"></div>
+        <section id="config" class="config card"></section>
+        <section class="filters card">
+          <input
+            id="search"
+            class="input search"
+            placeholder="Tìm tên VĐV, đơn vị, hạng mục..."
+          /><select id="category" class="input"></select
+          ><select id="club" class="input"></select
+          ><select id="type" class="input">
+            <option value="all">Kata & Kumite</option>
+            <option value="kumite">Chỉ Kumite</option>
+            <option value="kata">Chỉ Kata</option></select
+          ><select id="status" class="input">
+            <option value="all">Tất cả trạng thái</option>
+            <option value="pending">Chưa hoàn tất</option>
+            <option value="pass">Đạt</option>
+            <option value="fail">Không đạt hạng cân</option>
+          </select>
+        </section>
+        <div id="count" class="count"></div>
+        <section class="table-card card">
+          <table>
+            <thead id="thead"></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </section>
+      </section>
+    </main>
+    <div id="toast" class="toast"></div>
+    <script>
+      const state = {
+        token: sessionStorage.getItem("ksportCheckInToken") || "",
+        tournament: null,
+        search: "",
+        category: "all",
+        club: "all",
+        type: "all",
+        status: "all",
+      };
+      const $ = (id) => document.getElementById(id);
+      const normalize = (value) =>
+        String(value || "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/đ/gi, "d")
+          .toLowerCase()
+          .trim();
+      const escapeHtml = (value) =>
+        String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      const toNumber = (value) => {
+        if (value === "" || value == null) return null;
+        const parsed = Number(String(value).replace(",", "."));
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+      const cleanDecimal = (value) => {
+        const cleaned = String(value ?? "").replace(/[^\d,.]/g, "");
+        const index = cleaned.search(/[,.]/);
+        return index < 0
+          ? cleaned
+          : cleaned.slice(0, index + 1) +
+              cleaned.slice(index + 1).replace(/[,.]/g, "");
+      };
+      const identityKey = (athlete) =>
+        [
+          athlete.name,
+          athlete.club,
+          athlete.birthDate || athlete.birthYear,
+          athlete.gender,
+        ]
+          .map(normalize)
+          .join("|");
+      const registrationKey = (category, athlete) =>
+        `${category.id}|${athlete.id || identityKey(athlete)}`;
+      const isKumite = (category) =>
+        normalize(category.type) === "kumite" ||
+        normalize(category.name).includes("kumite");
+      const birthYear = (athlete) =>
+        athlete.birthYear ||
+        (String(athlete.birthDate || "").match(/\b(19|20)\d{2}\b/) || [
+          athlete.birthDate || "",
+        ])[0];
+      function weightLimits(category) {
+        const min = toNumber(category.weightMin),
+          max = toNumber(category.weightMax);
+        if (min !== null || max !== null) return { min, max };
+        const text = normalize(category.weightClass || category.name).replace(
+          /,/g,
+          ".",
+        );
+        const range = text.match(
+          /(\d+(?:\.\d+)?)\s*(?:-|–|den|toi)\s*(\d+(?:\.\d+)?)\s*kg/,
+        );
+        if (range) return { min: Number(range[1]), max: Number(range[2]) };
+        const single = text.match(/(\d+(?:\.\d+)?)\s*kg/);
+        return single
+          ? { min: Number(single[1]), max: Number(single[1]) }
+          : { min: null, max: null };
+      }
+      const kg = (value) =>
+        Number(value).toLocaleString("vi-VN", { maximumFractionDigits: 2 });
+      function formatLimits(row, tolerance) {
+        const { min, max } = row.limits,
+          hasMin = min != null,
+          hasMax = max != null;
+        if (!hasMin && !hasMax) return "Chưa cấu hình";
+        const base =
+          row.weightClass ||
+          (hasMin && hasMax
+            ? min === max
+              ? `${kg(min)} kg`
+              : `${kg(min)}–${kg(max)} kg`
+            : hasMin
+              ? `Từ ${kg(min)} kg`
+              : `Đến ${kg(max)} kg`);
+        const allowed =
+          hasMin && hasMax
+            ? `${kg(min - tolerance)}–${kg(max + tolerance)} kg`
+            : hasMin
+              ? `từ ${kg(min - tolerance)} kg`
+              : `đến ${kg(max + tolerance)} kg`;
+        return `${base} (cho phép ${allowed})`;
+      }
+      function evaluate(row, tolerance) {
+        if (!row.kumite)
+          return row.card.checked
+            ? { code: "pass", label: "Đạt", difference: null }
+            : {
+                code: "missing-card",
+                label: "Chưa check thẻ",
+                difference: null,
+              };
+        const actual = toNumber(row.weigh.actualWeight),
+          { min, max } = row.limits;
+        let difference = null;
+        if (actual !== null) {
+          if (min !== null && actual < min) difference = actual - min;
+          if (max !== null && actual > max) difference = actual - max;
+          if (
+            (min !== null && actual < min - tolerance) ||
+            (max !== null && actual > max + tolerance)
+          )
+            return { code: "fail", label: "Không đạt hạng cân", difference };
+        }
+        if (!row.card.checked)
+          return {
+            code: "missing-card",
+            label: "Chưa check thẻ",
+            difference: null,
+          };
+        if (actual === null)
+          return {
+            code: "missing-weight",
+            label: "Chưa cân",
+            difference: null,
+          };
+        if (min === null && max === null)
+          return {
+            code: "missing-limit",
+            label: "Chưa cấu hình hạng cân",
+            difference: null,
+          };
+        return difference !== null
+          ? { code: "pass", label: "Đạt trong dung sai", difference }
+          : { code: "pass", label: "Đạt", difference };
+      }
+      function buildRows() {
+        const tournament = state.tournament,
+          cards = tournament.athleteChecks?.cards || {},
+          weighs = tournament.athleteChecks?.weighIns || {};
+        return (tournament.categories || [])
+          .flatMap((category, categoryOrder) =>
+            (category.athletes || []).map((athlete) => {
+              const idKey = identityKey(athlete),
+                regKey = registrationKey(category, athlete);
+              return {
+                categoryId: String(category.id),
+                categoryName: category.name || "",
+                categoryOrder,
+                weightClass: category.weightClass || "",
+                kumite: isKumite(category),
+                limits: weightLimits(category),
+                athlete,
+                identityKey: idKey,
+                registrationKey: regKey,
+                card: cards[idKey] || {},
+                weigh: weighs[regKey] || {},
+              };
+            }),
+          )
+          .sort(
+            (a, b) =>
+              a.categoryOrder - b.categoryOrder ||
+              String(a.athlete.name).localeCompare(
+                String(b.athlete.name),
+                "vi",
+              ),
+          );
+      }
+      function filteredRows(rows, tolerance) {
+        const term = normalize(state.search);
+        return rows
+          .map((row) => ({ ...row, evaluation: evaluate(row, tolerance) }))
+          .filter((row) => {
+            if (state.club !== "all" && row.athlete.club !== state.club)
+              return false;
+            if (state.category !== "all" && row.categoryId !== state.category)
+              return false;
+            if (state.type === "kumite" && !row.kumite) return false;
+            if (state.type === "kata" && row.kumite) return false;
+            if (state.status === "pass" && row.evaluation.code !== "pass")
+              return false;
+            if (state.status === "fail" && row.evaluation.code !== "fail")
+              return false;
+            if (
+              state.status === "pending" &&
+              ["pass", "fail"].includes(row.evaluation.code)
+            )
+              return false;
+            return (
+              !term ||
+              normalize(
+                [
+                  row.athlete.name,
+                  row.athlete.club,
+                  row.categoryName,
+                  row.weightClass,
+                ].join(" "),
+              ).includes(term)
+            );
+          });
+      }
+      function option(value, label, selected) {
+        return `<option value="${escapeHtml(value)}"${String(value) === String(selected) ? " selected" : ""}>${escapeHtml(label)}</option>`;
+      }
+      function render() {
+        if (!state.tournament) return;
+        const rows = buildRows(),
+          tolerance = Math.max(
+            0,
+            toNumber(
+              state.tournament.athleteCheckSettings?.weightToleranceKg,
+            ) ?? 0.5,
+          );
+        const categories = (state.tournament.categories || [])
+          .filter((category) => (category.athletes || []).length > 0)
+          .map((category, displayIndex) => ({
+            id: String(category.id),
+            name: category.name || "",
+            athleteCount: category.athletes.length,
+            displayIndex,
+          }));
+        const clubs = [
+          ...new Set(rows.map((row) => row.athlete.club).filter(Boolean)),
+        ].sort((a, b) => a.localeCompare(b, "vi"));
+        $("category").innerHTML =
+          option("all", "Tất cả hạng mục", state.category) +
+          categories
+            .map((category) =>
+              option(
+                category.id,
+                `${category.displayIndex + 1}. ${category.name} (${category.athleteCount} VĐV)`,
+                state.category,
+              ),
+            )
+            .join("");
+        $("club").innerHTML =
+          option("all", "Tất cả đơn vị", state.club) +
+          clubs.map((club) => option(club, club, state.club)).join("");
+        $("type").value = state.type;
+        $("status").value = state.status;
+        $("search").value = state.search;
+        const evaluated = rows.map((row) => ({
+            ...row,
+            evaluation: evaluate(row, tolerance),
+          })),
+          shown = filteredRows(rows, tolerance),
+          hasKumite = shown.some((row) => row.kumite);
+        const uniqueCards = new Set(
+            evaluated
+              .filter((row) => row.card.checked)
+              .map((row) => row.identityKey),
+          ).size,
+          weighed = evaluated.filter(
+            (row) => row.kumite && toNumber(row.weigh.actualWeight) !== null,
+          ).length,
+          failed = evaluated.filter(
+            (row) => row.evaluation.code === "fail",
+          ).length;
+        $("title").textContent = state.tournament.name || "Kiểm tra VĐV";
+        document.title = `Check-in - ${state.tournament.name || "K-SPORT"}`;
+        $("summary").innerHTML =
+          `<div class="summary-card"><span>Lượt đăng ký</span><strong>${rows.length}</strong></div><div class="summary-card"><span>Đã check thẻ</span><strong>${uniqueCards}</strong></div><div class="summary-card"><span>Đã cân Kumite</span><strong>${weighed}</strong></div><div class="summary-card${failed ? " danger" : ""}"><span>Vượt dung sai</span><strong>${failed}</strong></div>`;
+        $("config").innerHTML =
+          `<div><strong>Dung sai do Admin cấu hình</strong><br><small>Vượt khoảng cho phép sẽ tự động tô đỏ.</small></div><div class="config-value">± ${escapeHtml(kg(tolerance))} kg</div>`;
+        $("count").textContent =
+          `Hiển thị ${shown.length}/${rows.length} lượt đăng ký • In theo đúng danh sách đang lọc`;
+        $("thead").innerHTML =
+          `<tr><th>STT</th><th>VĐV</th><th>Đơn vị</th><th>Hạng mục</th>${hasKumite ? "<th>Giới hạn hạng cân</th>" : ""}<th>Check thẻ</th>${hasKumite ? "<th>Cân thực tế</th><th>Chênh lệch</th>" : ""}<th>Trạng thái</th><th>Ghi chú</th></tr>`;
+        $("tbody").innerHTML = shown.length
+          ? shown
+              .map((row, index) => {
+                const diff = row.evaluation.difference;
+                return `<tr class="${row.evaluation.code === "fail" ? "failed" : ""}"><td>${index + 1}</td><td class="athlete-name"><strong>${escapeHtml(row.athlete.name)}</strong><small>${escapeHtml(birthYear(row.athlete))}</small></td><td>${escapeHtml(row.athlete.club || "—")}</td><td><strong>${escapeHtml(row.categoryName)}</strong></td>${hasKumite ? `<td>${row.kumite ? escapeHtml(formatLimits(row, tolerance)) : "—"}</td>` : ""}<td><label class="card-check"><input class="card-input" type="checkbox" data-key="${escapeHtml(row.identityKey)}"${row.card.checked ? " checked" : ""}><span>${row.card.checked ? "Đã check" : "Chưa"}</span></label></td>${hasKumite ? `<td>${row.kumite ? `<label class="weight-box"><input class="weight-input" inputmode="decimal" data-key="${escapeHtml(row.registrationKey)}" value="${escapeHtml(row.weigh.actualWeight ?? "")}" placeholder="Nhập cân"><span>kg</span></label>` : "—"}</td><td class="${row.evaluation.code === "fail" ? "difference-fail" : ""}">${row.kumite && diff !== null ? `${diff > 0 ? "+" : ""}${diff.toFixed(2)} kg` : "—"}</td>` : ""}<td><span class="status ${row.evaluation.code}">${escapeHtml(row.evaluation.label)}</span></td><td><input class="note note-input" data-key="${escapeHtml(row.registrationKey)}" value="${escapeHtml(row.weigh.note || "")}" placeholder="Ghi chú..."></td></tr>`;
+              })
+              .join("")
+          : `<tr><td colspan="${hasKumite ? 10 : 7}" style="padding:36px;text-align:center;color:#94a3b8">Không có VĐV phù hợp với bộ lọc.</td></tr>`;
+      }
+      function setConnection(online, label) {
+        const el = $("connection");
+        el.className = `connection ${online ? "online" : "offline"}`;
+        el.textContent = label;
+      }
+      function showToast(message, error = false) {
+        const el = $("toast");
+        el.textContent = message;
+        el.className = `toast show${error ? " error" : ""}`;
+        clearTimeout(showToast.timer);
+        showToast.timer = setTimeout(() => (el.className = "toast"), 2600);
+      }
+      function showLogin(message = "") {
+        state.token = "";
+        state.tournament = null;
+        sessionStorage.removeItem("ksportCheckInToken");
+        $("workspace").hidden = true;
+        $("login").hidden = false;
+        $("login-error").textContent = message;
+        setConnection(false, "Chưa đăng nhập");
+      }
+      async function loadStatus() {
+        try {
+          const response = await fetch("/api/check-in/status", {
+              cache: "no-store",
+            }),
+            result = await response.json();
+          if (!result.enabled) {
+            $("login-message").textContent =
+              "Máy Admin chưa bật bàn Check-in. Vui lòng liên hệ Ban tổ chức.";
+            $("pin").disabled = true;
+          } else {
+            $("login-message").textContent =
+              `Giải: ${result.tournamentName}. Nhập mã PIN 6 số trên máy Admin.`;
+            $("pin").disabled = false;
+          }
+        } catch {
+          $("login-message").textContent = "Không kết nối được máy Admin.";
+        }
+      }
+      async function login(pin) {
+        const response = await fetch("/api/check-in/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pin }),
+          }),
+          result = await response.json();
+        if (!response.ok || !result.success)
+          throw new Error(result.error || "Không thể đăng nhập");
+        state.token = result.token;
+        sessionStorage.setItem("ksportCheckInToken", result.token);
+        await loadSnapshot(false);
+      }
+      async function loadSnapshot(silent = true) {
+        if (!state.token) return;
+        try {
+          const response = await fetch("/api/check-in/snapshot", {
+              cache: "no-store",
+              headers: { "X-Check-In-Token": state.token },
+            }),
+            result = await response.json();
+          if (response.status === 401) {
+            showLogin(result.error);
+            return;
+          }
+          if (!response.ok || !result.success)
+            throw new Error(result.error || "Không lấy được dữ liệu");
+          state.tournament = result.data.tournament;
+          $("login").hidden = true;
+          $("workspace").hidden = false;
+          setConnection(true, "Đã kết nối máy Admin");
+          render();
+          if (!silent) showToast("Đã kết nối bàn Check-in");
+        } catch (error) {
+          setConnection(false, "Mất kết nối máy Admin");
+          if (!silent) showToast(error.message, true);
+        }
+      }
+      async function sendUpdate(payload) {
+        try {
+          setConnection(false, "Đang lưu…");
+          const response = await fetch("/api/check-in/update", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Check-In-Token": state.token,
+              },
+              body: JSON.stringify({
+                tournamentId: state.tournament.id,
+                ...payload,
+              }),
+            }),
+            result = await response.json();
+          if (response.status === 401) {
+            showLogin(result.error);
+            return;
+          }
+          if (!response.ok || !result.success)
+            throw new Error(result.error || "Không lưu được dữ liệu");
+          setConnection(true, "Đã lưu về máy Admin");
+        } catch (error) {
+          setConnection(false, "Lưu thất bại");
+          showToast(error.message, true);
+          await loadSnapshot(true);
+        }
+      }
+      $("login-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const pin = $("pin").value.replace(/\D/g, "");
+        if (!/^\d{6}$/.test(pin)) {
+          $("login-error").textContent = "Vui lòng nhập đủ 6 chữ số.";
+          return;
+        }
+        $("login-error").textContent = "Đang kết nối…";
+        try {
+          await login(pin);
+        } catch (error) {
+          $("login-error").textContent = error.message;
+        }
+      });
+      $("pin").addEventListener("input", (event) => {
+        event.target.value = event.target.value.replace(/\D/g, "").slice(0, 6);
+      });
+      ["category", "club", "type", "status"].forEach((id) =>
+        $(id).addEventListener("change", (event) => {
+          state[id] = event.target.value;
+          render();
+        }),
+      );
+      $("search").addEventListener("input", (event) => {
+        state.search = event.target.value;
+        render();
+        $("search").focus();
+        $("search").setSelectionRange(state.search.length, state.search.length);
+      });
+      $("refresh").addEventListener("click", () => loadSnapshot(false));
+      $("print").addEventListener("click", () => window.print());
+      $("logout").addEventListener("click", () => {
+        showLogin();
+        loadStatus();
+      });
+      $("tbody").addEventListener("change", (event) => {
+        const target = event.target;
+        if (target.classList.contains("card-input")) {
+          const checks = (state.tournament.athleteChecks ||= {});
+          const cards = (checks.cards ||= {});
+          cards[target.dataset.key] = {
+            ...(cards[target.dataset.key] || {}),
+            checked: target.checked,
+          };
+          render();
+          sendUpdate({
+            updateType: "card",
+            identityKey: target.dataset.key,
+            checked: target.checked,
+          });
+        }
+        if (target.classList.contains("weight-input")) {
+          const value = cleanDecimal(target.value),
+            checks = (state.tournament.athleteChecks ||= {}),
+            weighs = (checks.weighIns ||= {});
+          weighs[target.dataset.key] = {
+            ...(weighs[target.dataset.key] || {}),
+            actualWeight: value,
+          };
+          render();
+          sendUpdate({
+            updateType: "weigh",
+            registrationKey: target.dataset.key,
+            field: "actualWeight",
+            value,
+          });
+        }
+        if (target.classList.contains("note-input")) {
+          const value = target.value,
+            checks = (state.tournament.athleteChecks ||= {}),
+            weighs = (checks.weighIns ||= {});
+          weighs[target.dataset.key] = {
+            ...(weighs[target.dataset.key] || {}),
+            note: value,
+          };
+          sendUpdate({
+            updateType: "weigh",
+            registrationKey: target.dataset.key,
+            field: "note",
+            value,
+          });
+        }
+      });
+      loadStatus().then(() => (state.token ? loadSnapshot(true) : showLogin()));
+      setInterval(() => {
+        if (
+          state.token &&
+          !document.hidden &&
+          !["INPUT", "SELECT"].includes(document.activeElement?.tagName)
+        )
+          loadSnapshot(true);
+      }, 4000);
+    </script>
+  </body>
+</html>

@@ -61,37 +61,94 @@ export function getTeamSizeForCategory(category = {}, tournament = {}) {
   const gender = normalizeText(category.gender);
   const isFemale = gender === "female" || /\bnu\b/.test(name);
   const settings = tournament.teamMedalsSettings || {};
-  const configuredSize = isKata
-    ? settings.kata
-    : isFemale
-      ? settings.kumiteFemale ?? settings.kumite
-      : settings.kumiteMale ?? settings.kumite;
+  const teamConfig = category.teamConfig || {};
+  const categoryMain = Number(teamConfig.main);
+  const categoryReserve = Number(teamConfig.reserve);
+  const categorySize = categoryMain > 0
+    ? categoryMain + Math.max(0, categoryReserve || 0)
+    : Number(category.teamSize);
+  const configuredSize = categorySize > 0
+    ? categorySize
+    : isKata
+      ? settings.kata
+      : isFemale
+        ? Number(settings.kumiteFemaleMain ?? 3) + Number(settings.kumiteFemaleReserve ?? Math.max(0, Number(settings.kumiteFemale ?? settings.kumite ?? 3) - 3))
+        : Number(settings.kumiteMaleMain ?? 3) + Number(settings.kumiteMaleReserve ?? Math.max(0, Number(settings.kumiteMale ?? settings.kumite ?? 3) - 3));
 
   const fallbackSize = 3;
   const teamSize = Number(configuredSize) || fallbackSize;
   return Math.max(1, Math.floor(teamSize));
 }
 
-export function getTeamFormationSize() {
-  return 3;
+export function getTeamFormationSize(category = {}, tournament = {}) {
+  const name = normalizeText(category.name);
+  const type = normalizeText(category.type);
+  const isKata = type === "kata" || name.includes("kata");
+  const gender = normalizeText(category.gender);
+  const isFemale = gender === "female" || /\bnu\b/.test(name);
+  const settings = tournament.teamMedalsSettings || {};
+  const teamConfig = category.teamConfig || {};
+  const categoryMain = Number(teamConfig.main);
+  if (categoryMain > 0) return Math.max(1, Math.floor(categoryMain));
+
+  const configuredMain = isKata
+    ? settings.kata
+    : isFemale
+      ? (settings.kumiteFemaleMain ?? 3)
+      : (settings.kumiteMaleMain ?? 3);
+
+  const fallbackSize = 3;
+  const mainSize = Number(configuredMain) || fallbackSize;
+  return Math.max(1, Math.floor(mainSize));
+}
+
+export function getTeamReserveSize(category = {}, tournament = {}) {
+  const name = normalizeText(category.name);
+  const type = normalizeText(category.type);
+  const isKata = type === "kata" || name.includes("kata");
+  const gender = normalizeText(category.gender);
+  const isFemale = gender === "female" || /\bnu\b/.test(name);
+  const settings = tournament.teamMedalsSettings || {};
+  const configuredReserve = Number(category.teamConfig?.reserve);
+
+  if (Number.isFinite(configuredReserve) && configuredReserve >= 0) {
+    return Math.floor(configuredReserve);
+  }
+  if (isKata) return 0;
+
+  const reserve = isFemale
+    ? settings.kumiteFemaleReserve ?? Math.max(0, Number(settings.kumiteFemale ?? settings.kumite ?? 3) - 3)
+    : settings.kumiteMaleReserve ?? Math.max(0, Number(settings.kumiteMale ?? settings.kumite ?? 3) - 3);
+  return Math.max(0, Math.floor(Number(reserve) || 0));
 }
 
 function getClubGroupingKey(value) {
   return normalizeText(value || "Khong CLB");
 }
 
-function splitMembersIntoTeams(members, targetSize) {
-  const teamCount = Math.floor(members.length / targetSize);
-  if (teamCount < 2) return [members];
+function splitMembersIntoTeams(members, mainSize, reserveSize) {
+  const teamCount = Math.floor(members.length / mainSize);
+  if (teamCount < 1) return [];
 
-  const teams = [];
-  let offset = 0;
-  for (let index = 0; index < teamCount; index += 1) {
-    const remainingMembers = members.length - offset;
-    const remainingTeams = teamCount - index;
-    const size = Math.ceil(remainingMembers / remainingTeams);
-    teams.push(members.slice(offset, offset + size));
-    offset += size;
+  // Registration order is: all official line-ups first, then reserves. Assigning
+  // surplus athletes from the last team backwards keeps 7 athletes as
+  // 3 + (3 official + 1 reserve), instead of the old incorrect 4 + 3 split.
+  const teams = Array.from({ length: teamCount }, (_, index) =>
+    members
+      .slice(index * mainSize, (index + 1) * mainSize)
+      .map((member) => ({ ...member, isReserve: false, teamRole: "main" }))
+  );
+  const reserves = members.slice(teamCount * mainSize);
+  let reserveIndex = 0;
+  for (let teamIndex = teamCount - 1; teamIndex >= 0 && reserveIndex < reserves.length; teamIndex -= 1) {
+    for (let slot = 0; slot < reserveSize && reserveIndex < reserves.length; slot += 1) {
+      teams[teamIndex].push({
+        ...reserves[reserveIndex],
+        isReserve: true,
+        teamRole: "reserve",
+      });
+      reserveIndex += 1;
+    }
   }
   return teams;
 }
@@ -101,9 +158,11 @@ export function isTeamCategory(category = {}) {
 }
 
 export function getTeamsFromAthletes(athletes = [], category = {}, tournament = {}, options = {}) {
-  const targetSize = getTeamFormationSize();
+  const targetSize = getTeamFormationSize(category, tournament);
+  const reserveSize = getTeamReserveSize(category, tournament);
   const clubMap = new Map();
   const splitClubKeys = new Set((options.splitClubs || []).map(getClubGroupingKey));
+  const autoSplit = options.autoSplit ?? true;
 
   athletes.forEach((athlete) => {
     const clubName = String(athlete.club || "Khong CLB").trim().replace(/\s+/g, " ");
@@ -115,9 +174,14 @@ export function getTeamsFromAthletes(athletes = [], category = {}, tournament = 
   const teams = [];
   clubMap.forEach(({ clubName, members }, groupingKey) => {
     if (members.length < targetSize) return;
-    const memberGroups = splitClubKeys.has(groupingKey)
-      ? splitMembersIntoTeams(members, targetSize)
-      : [members];
+    const shouldSplit = autoSplit || splitClubKeys.has(groupingKey);
+    const memberGroups = shouldSplit
+      ? splitMembersIntoTeams(members, targetSize, reserveSize)
+      : [members.map((member, index) => ({
+          ...member,
+          isReserve: index >= targetSize,
+          teamRole: index >= targetSize ? "reserve" : "main",
+        }))];
     memberGroups.forEach((teamMembers, index) => {
       const teamNumber = index + 1;
       const idMembers = teamMembers.map((member) => member.id || member.name).join("_");
@@ -131,6 +195,9 @@ export function getTeamsFromAthletes(athletes = [], category = {}, tournament = 
         isTeam: true,
         teamNumber: memberGroups.length > 1 ? teamNumber : null,
         targetTeamSize: targetSize,
+        reserveTeamSize: reserveSize,
+        mainMembers: teamMembers.filter((member) => !member.isReserve),
+        reserveMembers: teamMembers.filter((member) => member.isReserve),
         members: teamMembers,
       });
     });
@@ -154,7 +221,7 @@ function membersMatch(currentMembers = [], nextMembers = []) {
     return (
       (member.id && nextMember?.id && member.id === nextMember.id) ||
       (!member.id && !nextMember?.id && member.name === nextMember?.name)
-    );
+    ) && Boolean(member.isReserve) === Boolean(nextMember?.isReserve);
   });
 }
 
@@ -214,6 +281,9 @@ export function syncTeamBracketMembers(bracket, athletes = [], category = {}, to
       gender: replacement.gender,
       teamNumber: replacement.teamNumber,
       targetTeamSize: replacement.targetTeamSize,
+      reserveTeamSize: replacement.reserveTeamSize,
+      mainMembers: replacement.mainMembers,
+      reserveMembers: replacement.reserveMembers,
       members: replacement.members,
     };
     syncedParticipants.set(participantKey, synced);

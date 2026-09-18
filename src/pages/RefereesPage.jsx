@@ -7,6 +7,7 @@ import appIcon from "../assets/icon.png";
 import excelLogo from "../assets/excel-logo.svg";
 import pdfLogo from "../assets/pdf-logo.svg";
 import {
+  buildImportedRefereeAssignments,
   downloadRefereeTemplate,
   exportRefereeDeploymentExcel,
   exportRefereeMatListsExcel,
@@ -23,6 +24,7 @@ const EMPTY_REFEREE = {
   code: "",
   name: "",
   unit: "",
+  assignedMat: "",
   grade: "",
   specialty: "Cả hai",
   refereeRole: "TTP",
@@ -130,7 +132,12 @@ export default function RefereesPage() {
     if (message) toast.success(message);
   };
 
-  const invalidateRandom = (next) => ({ ...next, assignments: [], warnings: [], generatedAt: null });
+  const invalidateRandom = (next) => ({
+    ...next,
+    assignments: buildImportedRefereeAssignments(next.referees, next.fixedByMat, next.matCount),
+    warnings: [],
+    generatedAt: null,
+  });
 
   const saveReferee = (event) => {
     event.preventDefault();
@@ -189,9 +196,14 @@ export default function RefereesPage() {
     try {
       const result = await parseRefereeExcelFile(file);
       const merged = mergeImportedReferees(management.referees, result.referees);
-      persist(invalidateRandom({ ...management, referees: merged.referees }));
+      const importedMatCount = Math.max(0, ...merged.referees.map((item) => Number(item.assignedMat) || 0));
+      const matCount = Math.max(management.matCount, importedMatCount);
+      const fixedByMat = normalizeFixedAssignments(management.fixedByMat, matCount);
+      const assignments = buildImportedRefereeAssignments(merged.referees, fixedByMat, matCount);
+      const assignedCount = assignments.reduce((total, item) => total + item.randomIds.length, 0);
+      persist({ ...management, referees: merged.referees, matCount, fixedByMat, assignments, warnings: [], generatedAt: null });
       const errorText = result.errors.length ? ` Bỏ qua ${result.errors.length} dòng lỗi.` : "";
-      toast.success(`Import xong: thêm ${merged.added}, cập nhật ${merged.updated}.${errorText}`, 7000);
+      toast.success(`Import xong: thêm ${merged.added}, cập nhật ${merged.updated}, xếp sẵn ${assignedCount} trọng tài theo thảm.${errorText}`, 7000);
       if (result.errors.length) console.warn("Lỗi import trọng tài:", result.errors);
     } catch (error) {
       toast.error(error.message || "Không thể đọc file Excel.");
@@ -237,7 +249,7 @@ export default function RefereesPage() {
       management.matCount
     );
     const next = { ...management, ...result };
-    persist(next, `Đã random ${result.assignments.reduce((total, item) => total + item.randomIds.length, 0)} trọng tài cho ${management.matCount} thảm.`);
+    persist(next, `Giữ nguyên ${result.importedCount} trọng tài theo Excel, đã random ${result.randomizedCount} trọng tài chưa có thảm.`);
     if (result.warnings.length) toast.warning(result.warnings.join(" "), 9000);
   };
 
@@ -363,7 +375,7 @@ export default function RefereesPage() {
 
         <section className="referee-card">
           <div className="referee-section-heading">
-            <div><h2>2. Danh sách trọng tài</h2><p>Mã TT được cấp tự động. Import Excel sẽ cập nhật người trùng họ tên + đơn vị.</p></div>
+            <div><h2>2. Danh sách trọng tài</h2><p>Import Excel sẽ xếp thẳng người có cột Thảm; chỉ người để trống mới được random.</p></div>
             <button type="button" className="btn btn-danger" disabled={!management.referees.length} onClick={clearAllReferees}>🗑️ Xóa toàn bộ danh sách</button>
           </div>
           <form className="referee-form" onSubmit={saveReferee}>
@@ -382,9 +394,9 @@ export default function RefereesPage() {
             <select className="input" value={unitFilter} onChange={(e) => setUnitFilter(e.target.value)}><option value="all">Tất cả đơn vị</option>{units.map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select>
             <span>Hiển thị {filteredReferees.length}/{management.referees.length}</span>
           </div>
-          <div className="referee-table-wrap"><table className="referee-table"><thead><tr><th>Mã</th><th>Họ và tên</th><th>Đơn vị</th><th>Cấp bậc</th><th>Nội dung</th><th>TTC/TTP</th><th>Trạng thái</th><th></th></tr></thead><tbody>
-            {filteredReferees.map((referee) => <tr key={referee.id} className={referee.active === false ? "inactive" : ""}><td>{referee.code}</td><td><strong>{referee.name}</strong>{referee.note && <small>{referee.note}</small>}</td><td>{referee.unit}</td><td>{referee.grade || "—"}</td><td>{referee.specialty || "Cả hai"}</td><td>{formatRefereeRole(referee.refereeRole)}</td><td><label className="status-toggle"><input type="checkbox" checked={referee.active !== false} onChange={() => persist(invalidateRandom({ ...management, referees: management.referees.map((item) => item.id === referee.id ? { ...item, active: item.active === false } : item) }))} /><span>{referee.active === false ? "Tạm nghỉ" : "Hoạt động"}</span></label></td><td><div className="row-actions"><button onClick={() => editReferee(referee)}>Sửa</button><button className="danger" onClick={() => deleteReferee(referee)}>Xóa</button></div></td></tr>)}
-            {!filteredReferees.length && <tr><td colSpan="8" className="empty-state">Chưa có trọng tài. Hãy thêm trực tiếp hoặc import file Excel.</td></tr>}
+          <div className="referee-table-wrap"><table className="referee-table"><thead><tr><th>Mã</th><th>Họ và tên</th><th>Đơn vị</th><th>Thảm Excel</th><th>Cấp bậc</th><th>Nội dung</th><th>TTC/TTP</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+            {filteredReferees.map((referee) => <tr key={referee.id} className={referee.active === false ? "inactive" : ""}><td>{referee.code}</td><td><strong>{referee.name}</strong>{referee.note && <small>{referee.note}</small>}</td><td>{referee.unit}</td><td>{referee.assignedMat ? `Thảm ${referee.assignedMat}` : "Random"}</td><td>{referee.grade || "—"}</td><td>{referee.specialty || "Cả hai"}</td><td>{formatRefereeRole(referee.refereeRole)}</td><td><label className="status-toggle"><input type="checkbox" checked={referee.active !== false} onChange={() => persist(invalidateRandom({ ...management, referees: management.referees.map((item) => item.id === referee.id ? { ...item, active: item.active === false } : item) }))} /><span>{referee.active === false ? "Tạm nghỉ" : "Hoạt động"}</span></label></td><td><div className="row-actions"><button onClick={() => editReferee(referee)}>Sửa</button><button className="danger" onClick={() => deleteReferee(referee)}>Xóa</button></div></td></tr>)}
+            {!filteredReferees.length && <tr><td colSpan="9" className="empty-state">Chưa có trọng tài. Hãy thêm trực tiếp hoặc import file Excel.</td></tr>}
           </tbody></table></div>
         </section>
 
@@ -398,7 +410,7 @@ export default function RefereesPage() {
         </section>
 
         <section className="referee-card random-section">
-          <div className="referee-section-heading"><div><h2>4. Random danh sách</h2><p>Hệ thống ghép cặp 2 trọng tài cùng đơn vị, rải các cặp sang thảm và cân bằng tổng số người.</p></div><button className="btn referee-random-button" onClick={doRandom}>🎲 Random lại danh sách</button></div>
+          <div className="referee-section-heading"><div><h2>4. Phân công theo thảm</h2><p>Giữ nguyên thảm đã nhập trong Excel; chỉ random các trọng tài có cột Thảm để trống.</p></div><button className="btn referee-random-button" onClick={doRandom}>🎲 Random người chưa có thảm</button></div>
           {management.warnings.map((warning, index) => <div className="referee-alert" key={index}>⚠️ {warning}</div>)}
           <div className="assignment-grid">{Array.from({ length: management.matCount }, (_, index) => {
             const mat = index + 1;

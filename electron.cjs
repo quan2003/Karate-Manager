@@ -5,12 +5,17 @@ const path = require("path");
 const fs = require("fs");
 const http = require("http");
 const os = require("os");
+const crypto = require("crypto");
 const dbService = require("./database.cjs");
 const licenseVault = require("./licenseVault.cjs");
-const { createLiveStatusStore, isDisplayRequest, isWriteMethod } = require("./lanDisplayState.cjs");
+const {
+  createLiveStatusStore,
+  isDisplayRequest,
+  isWriteMethod,
+} = require("./lanDisplayState.cjs");
 
 // Thiết lập ngôn ngữ mặc định của Chromium cho app để input date formating là vi-VN (dd/mm/yyyy)
-app.commandLine.appendSwitch('lang', 'vi-VN');
+app.commandLine.appendSwitch("lang", "vi-VN");
 
 // Biến giữ window chính
 let mainWindow = null;
@@ -18,6 +23,92 @@ let lanServer = null;
 const lanLiveStatusStore = createLiveStatusStore();
 const tvDisplayWindows = new Map();
 const lanLiveStatusClients = new Map();
+let lanCheckInSnapshot = {
+  currentTournamentId: "",
+  tournaments: [],
+  updatedAt: "",
+};
+let lanCheckInAccess = { enabled: false, pin: "", tournamentId: "" };
+const lanCheckInSessions = new Map();
+const lanCheckInLoginAttempts = new Map();
+const CHECK_IN_SESSION_MS = 12 * 60 * 60 * 1000;
+const CHECK_IN_LOGIN_WINDOW_MS = 60 * 1000;
+const CHECK_IN_MAX_LOGIN_ATTEMPTS = 5;
+
+function getLanRequestIp(req) {
+  return String(req.socket?.remoteAddress || "unknown");
+}
+
+function authorizeCheckInRequest(req) {
+  const token = String(req.headers["x-check-in-token"] || "");
+  const session = lanCheckInSessions.get(token);
+  if (!lanCheckInAccess.enabled || !session) return false;
+  if (session.expiresAt <= Date.now() || session.ip !== getLanRequestIp(req)) {
+    lanCheckInSessions.delete(token);
+    return false;
+  }
+  return String(session.tournamentId) === String(lanCheckInAccess.tournamentId);
+}
+
+function normalizeCheckInText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/gi, "d")
+    .toLowerCase()
+    .trim();
+}
+
+function getCheckInAthleteIdentity(athlete) {
+  return [
+    athlete.name,
+    athlete.club,
+    athlete.birthDate || athlete.birthYear,
+    athlete.gender,
+  ]
+    .map(normalizeCheckInText)
+    .join("|");
+}
+
+function getAllowedCheckInKeys(tournament) {
+  const identities = new Set();
+  const registrations = new Set();
+  for (const category of tournament?.categories || []) {
+    for (const athlete of category.athletes || []) {
+      const identity = getCheckInAthleteIdentity(athlete);
+      identities.add(identity);
+      registrations.add(`${category.id}|${athlete.id || identity}`);
+    }
+  }
+  return { identities, registrations };
+}
+
+function updateLanCheckInSnapshot(data) {
+  const tournament = lanCheckInSnapshot.tournaments.find(
+    (item) => String(item.id) === String(data.tournamentId),
+  );
+  if (!tournament) return;
+  const checks = tournament.athleteChecks || { cards: {}, weighIns: {} };
+  if (data.updateType === "card") {
+    checks.cards = checks.cards || {};
+    checks.cards[data.identityKey] = {
+      ...(checks.cards[data.identityKey] || {}),
+      checked: data.checked,
+      checkedAt: data.checked ? data.updatedAt : "",
+    };
+  } else {
+    checks.weighIns = checks.weighIns || {};
+    checks.weighIns[data.registrationKey] = {
+      ...(checks.weighIns[data.registrationKey] || {}),
+      [data.field]: data.value,
+      ...(data.field === "actualWeight"
+        ? { weighedAt: data.value !== "" ? data.updatedAt : "" }
+        : {}),
+    };
+  }
+  tournament.athleteChecks = checks;
+  lanCheckInSnapshot.updatedAt = data.updatedAt;
+}
 
 function sendLanLiveStatusEvent(res, eventName, payload) {
   res.write(`event: ${eventName}\n`);
@@ -27,8 +118,15 @@ function sendLanLiveStatusEvent(res, eventName, payload) {
 function broadcastLanLiveStatuses(changedRow = null) {
   for (const [client, tournamentId] of lanLiveStatusClients) {
     try {
-      sendLanLiveStatusEvent(client, "live-status", lanLiveStatusStore.list(tournamentId));
-      if (changedRow && (!tournamentId || changedRow.tournament_id === tournamentId)) {
+      sendLanLiveStatusEvent(
+        client,
+        "live-status",
+        lanLiveStatusStore.list(tournamentId),
+      );
+      if (
+        changedRow &&
+        (!tournamentId || changedRow.tournament_id === tournamentId)
+      ) {
         sendLanLiveStatusEvent(client, "tatami.state.changed", changedRow);
       }
     } catch {
@@ -43,129 +141,291 @@ function broadcastLanLiveStatuses(changedRow = null) {
 // =============================================
 let kataReceiveServer = null;
 const kataReceiveState = {
-  matId: '1',
-  pin: '',
-  matches: [],         // danh sách trận hiện tại
+  matId: "1",
+  pin: "",
+  matches: [], // danh sách trận hiện tại
   lockedMatchIds: new Set(), // matchId đang thi đấu -> khoá
   receivedRequestIds: new Set(), // chống gửi trùng
-  revision: 0,         // tăng mỗi khi dữ liệu thay đổi để thiết bị ngoài nhận biết
+  revision: 0, // tăng mỗi khi dữ liệu thay đổi để thiết bị ngoài nhận biết
 };
+
+function normalizeKataName(value = "") {
+  return String(value)
+    .normalize("NFC")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function getKataWarnings(match, slot, kataName) {
+  const kata = normalizeKataName(kataName);
+  const history = (slot === 1 ? match.previousKatas1 : match.previousKatas2)
+    .map(normalizeKataName)
+    .filter(Boolean);
+  const warnings = [];
+  const usedCount = history.filter((item) => item === kata).length;
+  if (history.at(-1) === kata) warnings.push("Trùng Kata với vòng ngay trước.");
+  if (usedCount === 1)
+    warnings.push("Kata đã sử dụng 1 lần và đây là lần thứ 2.");
+  else if (usedCount > 1)
+    warnings.push(`Kata đã sử dụng ${usedCount} lần trước đó.`);
+  return warnings;
+}
+
+function sendKataReceiveJson(res, status, payload) {
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(payload));
+}
 
 function readBodyJson(req) {
   return new Promise((resolve, reject) => {
-    let body = '';
-    req.on('data', chunk => { body += chunk.toString(); if (body.length > 512*1024) req.destroy(); });
-    req.on('end', () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
-    req.on('error', reject);
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+      if (body.length > 512 * 1024) req.destroy();
+    });
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(body));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    req.on("error", reject);
   });
 }
 
 function startKataReceiveServer(matId, pin) {
-  if (kataReceiveServer) return { success: true, message: 'Đã chạy' };
-  kataReceiveState.matId = matId || '1';
-  kataReceiveState.pin = pin || '';
+  if (kataReceiveServer) {
+    const sameConfig =
+      String(kataReceiveState.matId) === String(matId || "1") &&
+      kataReceiveState.pin === (pin || "");
+    return sameConfig
+      ? { success: true, message: "Đã chạy", ip: getLocalIp(), port: 3002 }
+      : {
+          success: false,
+          error:
+            "Máy chủ đang chạy cho thảm hoặc PIN khác. Hãy tắt trước khi đổi.",
+        };
+  }
+  kataReceiveState.matId = matId || "1";
+  kataReceiveState.pin = pin || "";
 
   kataReceiveServer = http.createServer((req, res) => {
-    const url = new URL(req.url, 'http://127.0.0.1:3002');
+    const url = new URL(req.url, "http://127.0.0.1:3002");
     const pathname = url.pathname;
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Cache-Control", "no-store");
 
-    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
 
     // Phục vụ trang HTML tiếp nhận
-    if (req.method === 'GET' && (pathname === '/' || pathname === '/kata-receive' || pathname === '/kata-receive.html')) {
+    if (
+      req.method === "GET" &&
+      (pathname === "/" ||
+        pathname === "/kata-receive" ||
+        pathname === "/kata-receive.html")
+    ) {
       try {
-        const html = fs.readFileSync(path.join(__dirname, 'public', 'kata-receive.html'), 'utf8');
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        const html = fs.readFileSync(
+          path.join(__dirname, "public", "kata-receive.html"),
+          "utf8",
+        );
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(html);
       } catch (e) {
-        res.writeHead(500); res.end('Lỗi tải trang: ' + e.message);
+        res.writeHead(500);
+        res.end("Lỗi tải trang: " + e.message);
       }
       return;
     }
 
     // API: Lấy danh sách trận của thảm
-    if (req.method === 'GET' && pathname === '/api/kata-receive/matches') {
-      const reqPin = url.searchParams.get('pin') || '';
+    if (req.method === "GET" && pathname === "/api/kata-receive/matches") {
+      const reqPin = url.searchParams.get("pin") || "";
       if (kataReceiveState.pin && reqPin !== kataReceiveState.pin) {
-        res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ success: false, error: 'Sai mã PIN' }));
+        res.writeHead(403, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(JSON.stringify({ success: false, error: "Sai mã PIN" }));
         return;
       }
-      const matchesWithLock = kataReceiveState.matches.map(m => ({
+      const matchesWithLock = kataReceiveState.matches.map((m) => ({
         ...m,
         isLocked: kataReceiveState.lockedMatchIds.has(m.id),
       }));
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ success: true, matId: kataReceiveState.matId, revision: kataReceiveState.revision, matches: matchesWithLock }));
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(
+        JSON.stringify({
+          success: true,
+          matId: kataReceiveState.matId,
+          revision: kataReceiveState.revision,
+          matches: matchesWithLock,
+        }),
+      );
       return;
     }
 
     // API: Nhận đăng ký bài quyền từ thiết bị ngoài
-    if (req.method === 'POST' && pathname === '/api/kata-receive/submit') {
-      readBodyJson(req).then(data => {
-        // Kiểm tra PIN
-        if (kataReceiveState.pin && data.pin !== kataReceiveState.pin) {
-          res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error: 'Sai mã PIN' }));
-          return;
-        }
-        // Chống gửi trùng bằng requestId
-        if (data.requestId && kataReceiveState.receivedRequestIds.has(data.requestId)) {
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: true, duplicate: true, message: 'Đã nhận trước đó' }));
-          return;
-        }
-        // Kiểm tra khóa
-        if (kataReceiveState.lockedMatchIds.has(data.matchId)) {
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ success: false, error: 'Trận đang diễn ra – không thể đăng ký' }));
-          return;
-        }
-        // Ghi nhận requestId
-        if (data.requestId) {
-          kataReceiveState.receivedRequestIds.add(data.requestId);
-          if (kataReceiveState.receivedRequestIds.size > 5000) {
-            const arr = [...kataReceiveState.receivedRequestIds];
-            kataReceiveState.receivedRequestIds = new Set(arr.slice(-2000));
+    if (req.method === "POST" && pathname === "/api/kata-receive/submit") {
+      readBodyJson(req)
+        .then((data) => {
+          if (!data || typeof data !== "object" || Array.isArray(data)) {
+            sendKataReceiveJson(res, 400, {
+              success: false,
+              error: "Dữ liệu đăng ký không hợp lệ",
+            });
+            return;
           }
-        }
-        // Cập nhật trận trong state local
-        const m = kataReceiveState.matches.find(m => m.id === data.matchId);
-        if (m) {
-          if (data.slot === 1) m.kata1 = data.kataName;
-          else m.kata2 = data.kataName;
+          // Kiểm tra PIN
+          if (kataReceiveState.pin && data.pin !== kataReceiveState.pin) {
+            sendKataReceiveJson(res, 403, {
+              success: false,
+              error: "Sai mã PIN",
+            });
+            return;
+          }
+          if (
+            data.requestId &&
+            (typeof data.requestId !== "string" || data.requestId.length > 128)
+          ) {
+            sendKataReceiveJson(res, 400, {
+              success: false,
+              error: "Mã yêu cầu không hợp lệ",
+            });
+            return;
+          }
+          // Chống gửi trùng bằng requestId
+          if (
+            data.requestId &&
+            kataReceiveState.receivedRequestIds.has(data.requestId)
+          ) {
+            sendKataReceiveJson(res, 200, {
+              success: true,
+              duplicate: true,
+              message: "Đã nhận trước đó",
+            });
+            return;
+          }
+          if (String(data.matId || "") !== String(kataReceiveState.matId)) {
+            sendKataReceiveJson(res, 409, {
+              success: false,
+              error: "Đăng ký không thuộc thảm đang tiếp nhận",
+            });
+            return;
+          }
+          if (data.slot !== 1 && data.slot !== 2) {
+            sendKataReceiveJson(res, 400, {
+              success: false,
+              error: "Vị trí VĐV không hợp lệ",
+            });
+            return;
+          }
+          const match = kataReceiveState.matches.find(
+            (item) => item.id === data.matchId,
+          );
+          if (!match) {
+            sendKataReceiveJson(res, 404, {
+              success: false,
+              error: "Không tìm thấy trận đấu",
+            });
+            return;
+          }
+          if (match.isCompleted) {
+            sendKataReceiveJson(res, 409, {
+              success: false,
+              error: "Trận đã hoàn thành – không thể đăng ký",
+            });
+            return;
+          }
+          // Kiểm tra khóa
+          if (kataReceiveState.lockedMatchIds.has(data.matchId)) {
+            sendKataReceiveJson(res, 409, {
+              success: false,
+              error: "Trận đang diễn ra – không thể đăng ký",
+            });
+            return;
+          }
+          if (
+            (data.slot === 1 && !match.athlete1) ||
+            (data.slot === 2 && !match.athlete2)
+          ) {
+            sendKataReceiveJson(res, 409, {
+              success: false,
+              error: "Vị trí VĐV đang trống",
+            });
+            return;
+          }
+          const kataName =
+            typeof data.kataName === "string" ? data.kataName.trim() : "";
+          if (!kataName || kataName.length > 120) {
+            sendKataReceiveJson(res, 400, {
+              success: false,
+              error: "Tên bài quyền không hợp lệ",
+            });
+            return;
+          }
+          const kataWarnings = getKataWarnings(match, data.slot, kataName);
+          // Ghi nhận requestId
+          if (data.requestId) {
+            kataReceiveState.receivedRequestIds.add(data.requestId);
+            if (kataReceiveState.receivedRequestIds.size > 5000) {
+              const arr = [...kataReceiveState.receivedRequestIds];
+              kataReceiveState.receivedRequestIds = new Set(arr.slice(-2000));
+            }
+          }
+          // Cập nhật trận trong state local
+          if (data.slot === 1) match.kata1 = kataName;
+          else match.kata2 = kataName;
           kataReceiveState.revision += 1;
-        }
-        // Forward sang renderer
-        if (mainWindow && mainWindow.webContents) {
-          mainWindow.webContents.send('kata-receive:kata-registered', {
-            matchId: data.matchId,
-            slot: data.slot,
-            kataName: data.kataName,
-            requestId: data.requestId,
-            registeredBy: data.registeredBy || '',
-            registeredAt: data.registeredAt || new Date().toISOString(),
-            source: 'remote',
+          // Forward sang renderer
+          if (mainWindow && mainWindow.webContents) {
+            mainWindow.webContents.send("kata-receive:kata-registered", {
+              matchId: data.matchId,
+              slot: data.slot,
+              kataName,
+              requestId: data.requestId,
+              registeredBy:
+                typeof data.registeredBy === "string"
+                  ? data.registeredBy.trim().slice(0, 100)
+                  : "",
+              registeredAt: new Date().toISOString(),
+              source: "remote",
+              warning: kataWarnings.join(" "),
+            });
+          }
+          sendKataReceiveJson(res, 200, {
+            success: true,
+            message: "Thư ký đã nhận",
+            warning: kataWarnings.join(" "),
           });
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ success: true, message: 'Thư ký đã nhận' }));
-      }).catch(e => {
-        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ success: false, error: e.message }));
-      });
+        })
+        .catch((e) => {
+          res.writeHead(400, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          res.end(JSON.stringify({ success: false, error: e.message }));
+        });
       return;
     }
 
-    res.writeHead(404); res.end(JSON.stringify({ success: false, error: 'Not found' }));
+    res.writeHead(404);
+    res.end(JSON.stringify({ success: false, error: "Not found" }));
   });
 
-  kataReceiveServer.listen(3002, '0.0.0.0', () => console.log('Kata Receive Server on port 3002'));
-  kataReceiveServer.on('error', err => { console.error('KataReceive error:', err); kataReceiveServer = null; });
+  kataReceiveServer.listen(3002, "0.0.0.0", () =>
+    console.log("Kata Receive Server on port 3002"),
+  );
+  kataReceiveServer.on("error", (err) => {
+    console.error("KataReceive error:", err);
+    kataReceiveServer = null;
+  });
   return { success: true, ip: getLocalIp(), port: 3002 };
 }
 
@@ -176,6 +436,8 @@ function stopKataReceiveServer() {
   }
   kataReceiveState.matches = [];
   kataReceiveState.lockedMatchIds.clear();
+  kataReceiveState.receivedRequestIds.clear();
+  kataReceiveState.pin = "";
 }
 
 // =============================================
@@ -195,10 +457,10 @@ function getFilePathFromArgs(argv) {
   const args = argv.slice(app.isPackaged ? 1 : 2);
   for (const arg of args) {
     // Bỏ qua các flag bắt đầu bằng '--'
-    if (arg.startsWith('--')) continue;
+    if (arg.startsWith("--")) continue;
     // Kiểm tra xem arg có phải là đường dẫn file .krt hoặc .kmatch không
     const ext = path.extname(arg).toLowerCase();
-    if ((ext === '.krt' || ext === '.kmatch') && fs.existsSync(arg)) {
+    if ((ext === ".krt" || ext === ".kmatch") && fs.existsSync(arg)) {
       return arg;
     }
   }
@@ -209,29 +471,32 @@ function getFilePathFromArgs(argv) {
 startupFilePath = getFilePathFromArgs(process.argv);
 
 // macOS: Xử lý event 'open-file' (user drop file lên dock icon)
-app.on('open-file', (event, filePath) => {
+app.on("open-file", (event, filePath) => {
   event.preventDefault();
   const ext = path.extname(filePath).toLowerCase();
-  if (ext === '.krt' || ext === '.kmatch') {
+  if (ext === ".krt" || ext === ".kmatch") {
     startupFilePath = filePath;
     // Nếu window đã mở, gửi file path ngay
     if (mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.send('app:open-file', { filePath, content: fs.readFileSync(filePath, 'utf8') });
+      mainWindow.webContents.send("app:open-file", {
+        filePath,
+        content: fs.readFileSync(filePath, "utf8"),
+      });
     }
   }
 });
 
 // Windows: Xử lý second-instance (app đã mở, user click file khác)
-app.on('second-instance', (event, argv) => {
+app.on("second-instance", (event, argv) => {
   const filePath = getFilePathFromArgs(argv);
   if (filePath && mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
     try {
-      const content = fs.readFileSync(filePath, 'utf8');
-      mainWindow.webContents.send('app:open-file', { filePath, content });
+      const content = fs.readFileSync(filePath, "utf8");
+      mainWindow.webContents.send("app:open-file", { filePath, content });
     } catch (err) {
-      console.error('Error reading file:', err);
+      console.error("Error reading file:", err);
     }
   }
 });
@@ -335,7 +600,7 @@ ipcMain.handle(
     } catch (error) {
       return { success: false, error: error.message };
     }
-  }
+  },
 );
 
 // Mở file HLV (JSON/Excel) cho Admin import
@@ -456,21 +721,21 @@ function createWindow() {
   });
 
   // Gửi startup file tới renderer sau khi load xong
-  mainWindow.webContents.once('did-finish-load', () => {
+  mainWindow.webContents.once("did-finish-load", () => {
     if (startupFilePath) {
       try {
-        const content = fs.readFileSync(startupFilePath, 'utf8');
+        const content = fs.readFileSync(startupFilePath, "utf8");
         // Gửi sau 500ms để đảm bảo React đã mount xong
         setTimeout(() => {
           if (mainWindow && mainWindow.webContents) {
-            mainWindow.webContents.send('app:open-file', {
+            mainWindow.webContents.send("app:open-file", {
               filePath: startupFilePath,
-              content
+              content,
             });
           }
         }, 800);
       } catch (err) {
-        console.error('Error reading startup file:', err);
+        console.error("Error reading startup file:", err);
       }
     }
   });
@@ -480,26 +745,34 @@ function createWindow() {
   });
 }
 
-// Xử lý mở cửa sổ mới (popup) cho tất cả webContents 
+// Xử lý mở cửa sổ mới (popup) cho tất cả webContents
 app.on("web-contents-created", (event, contents) => {
   contents.setWindowOpenHandler(({ url }) => {
     // Cho phép mở scoreboard windows bên trong Electron
-    if (url.includes("kata-scoreboard") || url.includes("kumite-scoreboard") || url.includes("display.html") || url.includes("medals.html")) {
-      const { screen } = require('electron');
+    if (
+      url.includes("kata-scoreboard") ||
+      url.includes("kumite-scoreboard") ||
+      url.includes("display.html") ||
+      url.includes("medals.html")
+    ) {
+      const { screen } = require("electron");
       const displays = screen.getAllDisplays();
-      
+
       let x = undefined;
       let y = undefined;
       let fullscreen = false;
       let width = 1400;
       let height = 900;
-      
+
       // CHỈ bắn luồng thẳng ra màn hình thứ 2 nếu là màn hình DISPLAY (Dành cho khán giả)
-      const isDisplayWindow = url.includes("display.html") || url.includes("display_new.html");
-      
+      const isDisplayWindow =
+        url.includes("display.html") || url.includes("display_new.html");
+
       if (isDisplayWindow && displays.length > 1) {
         // Tìm màn hình phụ
-        const externalDisplay = displays.find(d => d.bounds.x !== 0 || d.bounds.y !== 0) || displays[1];
+        const externalDisplay =
+          displays.find((d) => d.bounds.x !== 0 || d.bounds.y !== 0) ||
+          displays[1];
         if (externalDisplay) {
           x = externalDisplay.bounds.x;
           y = externalDisplay.bounds.y;
@@ -536,10 +809,10 @@ app.on("web-contents-created", (event, contents) => {
 // =============================================
 // IPC Handler: Lấy thông tin startup file
 // =============================================
-ipcMain.handle('app:getStartupFile', () => {
+ipcMain.handle("app:getStartupFile", () => {
   if (!startupFilePath) return { success: false };
   try {
-    const content = fs.readFileSync(startupFilePath, 'utf8');
+    const content = fs.readFileSync(startupFilePath, "utf8");
     const result = { success: true, filePath: startupFilePath, content };
     return result;
   } catch (err) {
@@ -548,9 +821,9 @@ ipcMain.handle('app:getStartupFile', () => {
 });
 
 // IPC Handler: Đọc nội dung file từ đường dẫn
-ipcMain.handle('app:readFile', (event, filePath) => {
+ipcMain.handle("app:readFile", (event, filePath) => {
   try {
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = fs.readFileSync(filePath, "utf8");
     return { success: true, content, filePath };
   } catch (err) {
     return { success: false, error: err.message };
@@ -680,11 +953,65 @@ ipcMain.handle("lan:getServerStatus", () => {
     ip: getLocalIp(),
     port: 3000,
     liveStatuses: lanLiveStatusStore.list(),
+    checkIn: {
+      enabled: lanCheckInAccess.enabled,
+      tournamentId: lanCheckInAccess.tournamentId,
+      url: `http://${getLocalIp()}:3000/check-in`,
+      pin: lanCheckInAccess.enabled ? lanCheckInAccess.pin : "",
+    },
+  };
+});
+
+ipcMain.handle("lan:setCheckInData", (event, data) => {
+  const tournaments = Array.isArray(data?.tournaments) ? data.tournaments : [];
+  lanCheckInSnapshot = {
+    currentTournamentId: String(data?.currentTournamentId || ""),
+    tournaments,
+    updatedAt: new Date().toISOString(),
+  };
+  if (
+    lanCheckInAccess.enabled &&
+    !tournaments.some(
+      (item) => String(item.id) === String(lanCheckInAccess.tournamentId),
+    )
+  ) {
+    lanCheckInAccess = { enabled: false, pin: "", tournamentId: "" };
+    lanCheckInSessions.clear();
+  }
+  return { success: true };
+});
+
+ipcMain.handle("lan:configureCheckIn", (event, config) => {
+  if (!config?.enabled) {
+    lanCheckInAccess = { enabled: false, pin: "", tournamentId: "" };
+    lanCheckInSessions.clear();
+    lanCheckInLoginAttempts.clear();
+    return { success: true, enabled: false };
+  }
+  const pin = String(config.pin || "").trim();
+  const tournamentId = String(config.tournamentId || "");
+  if (!/^\d{6}$/.test(pin))
+    return { success: false, error: "Mã PIN phải có đúng 6 chữ số" };
+  if (
+    !lanCheckInSnapshot.tournaments.some(
+      (item) => String(item.id) === tournamentId,
+    )
+  ) {
+    return { success: false, error: "Không tìm thấy dữ liệu giải để chia sẻ" };
+  }
+  lanCheckInAccess = { enabled: true, pin, tournamentId };
+  lanCheckInSessions.clear();
+  lanCheckInLoginAttempts.clear();
+  return {
+    success: true,
+    enabled: true,
+    url: `http://${getLocalIp()}:3000/check-in`,
   };
 });
 
 ipcMain.handle("lan:openTvDisplay", async () => {
-  if (!lanServer) return { success: false, error: "Hãy bật máy chủ nhận điểm trước" };
+  if (!lanServer)
+    return { success: false, error: "Hãy bật máy chủ nhận điểm trước" };
   const displayId = "all";
 
   const existingWindow = tvDisplayWindows.get(displayId);
@@ -697,7 +1024,9 @@ ipcMain.handle("lan:openTvDisplay", async () => {
 
   const { screen } = require("electron");
   const displays = screen.getAllDisplays();
-  const externalDisplay = displays.find((display) => display.bounds.x !== 0 || display.bounds.y !== 0);
+  const externalDisplay = displays.find(
+    (display) => display.bounds.x !== 0 || display.bounds.y !== 0,
+  );
   const bounds = externalDisplay?.bounds;
   const tvWindow = new BrowserWindow({
     width: bounds?.width || 1400,
@@ -728,7 +1057,10 @@ ipcMain.handle("lan:startServer", (event) => {
       const pathname = requestUrl.pathname;
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, X-Check-In-Token",
+      );
       res.setHeader("Cache-Control", "no-store");
 
       if (req.method === "OPTIONS") {
@@ -739,27 +1071,54 @@ ipcMain.handle("lan:startServer", (event) => {
 
       // DISPLAY is read-only. Keep this before all routes so future writes are denied by default.
       if (isDisplayRequest(req, requestUrl) && isWriteMethod(req.method)) {
-        res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ success: false, error: "DISPLAY chỉ có quyền xem" }));
+        res.writeHead(403, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(
+          JSON.stringify({ success: false, error: "DISPLAY chỉ có quyền xem" }),
+        );
         return;
       }
 
       if (req.method === "GET" && pathname === "/api/live-status") {
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ success: true, data: lanLiveStatusStore.list(requestUrl.searchParams.get("tournamentId")) }));
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: lanLiveStatusStore.list(
+              requestUrl.searchParams.get("tournamentId"),
+            ),
+          }),
+        );
         return;
       }
 
       if (req.method === "GET" && pathname === "/api/display/snapshot") {
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ success: true, data: lanLiveStatusStore.snapshot(requestUrl.searchParams.get("tournamentId")) }));
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: lanLiveStatusStore.snapshot(
+              requestUrl.searchParams.get("tournamentId"),
+            ),
+          }),
+        );
         return;
       }
 
       if (req.method === "GET" && pathname === "/assets/ksport-logo.png") {
         try {
-          const logo = fs.readFileSync(path.join(__dirname, "public", "icon.png"));
-          res.writeHead(200, { "Content-Type": "image/png", "Content-Length": logo.length });
+          const logo = fs.readFileSync(
+            path.join(__dirname, "public", "icon.png"),
+          );
+          res.writeHead(200, {
+            "Content-Type": "image/png",
+            "Content-Length": logo.length,
+          });
           res.end(logo);
         } catch (error) {
           res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
@@ -768,10 +1127,237 @@ ipcMain.handle("lan:startServer", (event) => {
         return;
       }
 
-      if (req.method === "GET" && (pathname === "/display" || /^\/tv\/[A-Za-z0-9_-]+$/.test(pathname))) {
+      if (req.method === "GET" && pathname === "/check-in") {
+        try {
+          const html = fs.readFileSync(
+            path.join(__dirname, "public", "lan-checkin.html"),
+            "utf8",
+          );
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(html);
+        } catch (error) {
+          res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+          res.end(`Không thể mở bàn Check-in: ${error.message}`);
+        }
+        return;
+      }
+
+      if (req.method === "GET" && pathname === "/api/check-in/status") {
+        const sharedTournament = lanCheckInSnapshot.tournaments.find(
+          (item) => String(item.id) === String(lanCheckInAccess.tournamentId),
+        );
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(
+          JSON.stringify({
+            success: true,
+            enabled: lanCheckInAccess.enabled,
+            tournamentName: lanCheckInAccess.enabled
+              ? sharedTournament?.name || "Giải đấu"
+              : "",
+          }),
+        );
+        return;
+      }
+
+      if (req.method === "POST" && pathname === "/api/check-in/login") {
+        const ip = getLanRequestIp(req);
+        const now = Date.now();
+        const currentAttempt = lanCheckInLoginAttempts.get(ip);
+        const attempt =
+          !currentAttempt ||
+          now - currentAttempt.startedAt >= CHECK_IN_LOGIN_WINDOW_MS
+            ? { count: 0, startedAt: now }
+            : currentAttempt;
+        if (attempt.count >= CHECK_IN_MAX_LOGIN_ATTEMPTS) {
+          res.writeHead(429, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: "Nhập sai quá nhiều lần. Vui lòng chờ 1 phút.",
+            }),
+          );
+          return;
+        }
+        readBodyJson(req)
+          .then((data) => {
+            if (!lanCheckInAccess.enabled)
+              throw new Error("Admin chưa bật bàn Check-in");
+            if (String(data?.pin || "") !== lanCheckInAccess.pin) {
+              attempt.count += 1;
+              lanCheckInLoginAttempts.set(ip, attempt);
+              const error = new Error("Mã PIN không đúng");
+              error.statusCode =
+                attempt.count >= CHECK_IN_MAX_LOGIN_ATTEMPTS ? 429 : 403;
+              throw error;
+            }
+            lanCheckInLoginAttempts.delete(ip);
+            const token = crypto.randomBytes(24).toString("hex");
+            lanCheckInSessions.set(token, {
+              ip,
+              tournamentId: lanCheckInAccess.tournamentId,
+              expiresAt: now + CHECK_IN_SESSION_MS,
+            });
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: true,
+                token,
+                expiresIn: CHECK_IN_SESSION_MS,
+              }),
+            );
+          })
+          .catch((error) => {
+            res.writeHead(error.statusCode || 400, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error: error.message || "Không thể đăng nhập",
+              }),
+            );
+          });
+        return;
+      }
+
+      if (req.method === "GET" && pathname === "/api/check-in/snapshot") {
+        if (!authorizeCheckInRequest(req)) {
+          res.writeHead(401, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: "Phiên Check-in không hợp lệ hoặc đã hết hạn",
+            }),
+          );
+          return;
+        }
+        const tournament = lanCheckInSnapshot.tournaments.find(
+          (item) => String(item.id) === String(lanCheckInAccess.tournamentId),
+        );
+        if (!tournament) {
+          res.writeHead(404, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: "Giải đang chia sẻ không còn tồn tại",
+            }),
+          );
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: { tournament, updatedAt: lanCheckInSnapshot.updatedAt },
+          }),
+        );
+        return;
+      }
+
+      if (req.method === "POST" && pathname === "/api/check-in/update") {
+        if (!authorizeCheckInRequest(req)) {
+          res.writeHead(401, {
+            "Content-Type": "application/json; charset=utf-8",
+          });
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: "Phiên Check-in không hợp lệ hoặc đã hết hạn",
+            }),
+          );
+          return;
+        }
+        readBodyJson(req)
+          .then((data) => {
+            const tournamentId = String(data?.tournamentId || "");
+            const tournament = lanCheckInSnapshot.tournaments.find(
+              (item) => String(item.id) === tournamentId,
+            );
+            if (
+              !tournament ||
+              tournamentId !== String(lanCheckInAccess.tournamentId)
+            )
+              throw new Error("Giải đấu không hợp lệ");
+            if (!["card", "weigh"].includes(data?.updateType))
+              throw new Error("Thao tác Check-in không hợp lệ");
+            const allowedKeys = getAllowedCheckInKeys(tournament);
+            if (
+              data.updateType === "card" &&
+              !allowedKeys.identities.has(String(data.identityKey || ""))
+            ) {
+              throw new Error("VĐV không tồn tại trong giải đang chia sẻ");
+            }
+            if (
+              data.updateType === "weigh" &&
+              (!allowedKeys.registrations.has(
+                String(data.registrationKey || ""),
+              ) ||
+                !["actualWeight", "note"].includes(data.field))
+            ) {
+              throw new Error("Dữ liệu cân không hợp lệ");
+            }
+            const rawValue = String(data.value ?? "");
+            if (
+              data.field === "actualWeight" &&
+              rawValue !== "" &&
+              !/^\d{1,3}(?:[,.]\d{0,2})?$/.test(rawValue)
+            ) {
+              throw new Error("Số cân không hợp lệ");
+            }
+            const safeData = {
+              tournamentId,
+              updateType: data.updateType,
+              identityKey: String(data.identityKey || ""),
+              registrationKey: String(data.registrationKey || ""),
+              checked: data.checked === true,
+              field: data.field,
+              value: rawValue.slice(0, data.field === "note" ? 500 : 30),
+              updatedAt: new Date().toISOString(),
+            };
+            updateLanCheckInSnapshot(safeData);
+            if (mainWindow)
+              mainWindow.webContents.send("lan:receive-check-in", safeData);
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(JSON.stringify({ success: true, data: safeData }));
+          })
+          .catch((error) => {
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error: error.message || "Dữ liệu không hợp lệ",
+              }),
+            );
+          });
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        (pathname === "/display" || /^\/tv\/[A-Za-z0-9_-]+$/.test(pathname))
+      ) {
         // The TV route is a single dashboard showing every active mat.
         try {
-          const html = fs.readFileSync(path.join(__dirname, "public", "lan-tv.html"), "utf8");
+          const html = fs.readFileSync(
+            path.join(__dirname, "public", "lan-tv.html"),
+            "utf8",
+          );
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
           res.end(html);
         } catch (error) {
@@ -784,14 +1370,21 @@ ipcMain.handle("lan:startServer", (event) => {
       if (req.method === "GET" && pathname === "/api/live-status/events") {
         res.writeHead(200, {
           "Content-Type": "text/event-stream; charset=utf-8",
-          "Connection": "keep-alive",
+          Connection: "keep-alive",
           "X-Accel-Buffering": "no",
         });
         res.write("retry: 1500\n\n");
         const tournamentId = requestUrl.searchParams.get("tournamentId");
         lanLiveStatusClients.set(res, tournamentId || "");
-        sendLanLiveStatusEvent(res, "live-status", lanLiveStatusStore.list(tournamentId));
-        const heartbeatId = setInterval(() => res.write(": heartbeat\n\n"), 10000);
+        sendLanLiveStatusEvent(
+          res,
+          "live-status",
+          lanLiveStatusStore.list(tournamentId),
+        );
+        const heartbeatId = setInterval(
+          () => res.write(": heartbeat\n\n"),
+          10000,
+        );
         req.on("close", () => {
           clearInterval(heartbeatId);
           lanLiveStatusClients.delete(res);
@@ -799,7 +1392,11 @@ ipcMain.handle("lan:startServer", (event) => {
         return;
       }
 
-      const jsonPostRoutes = ["/api/match-result", "/api/category-medals", "/api/live-status"];
+      const jsonPostRoutes = [
+        "/api/match-result",
+        "/api/category-medals",
+        "/api/live-status",
+      ];
       if (req.method === "POST" && jsonPostRoutes.includes(pathname)) {
         let body = "";
         req.on("data", (chunk) => {
@@ -816,25 +1413,40 @@ ipcMain.handle("lan:startServer", (event) => {
               }
               const liveRow = lanLiveStatusStore.upsert(data);
               broadcastLanLiveStatuses(liveRow);
-              if (mainWindow) mainWindow.webContents.send("lan:live-status", liveRow);
-              res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+              if (mainWindow)
+                mainWindow.webContents.send("lan:live-status", liveRow);
+              res.writeHead(200, {
+                "Content-Type": "application/json; charset=utf-8",
+              });
               res.end(JSON.stringify({ success: true, data: liveRow }));
               return;
             }
 
-            if (mainWindow) mainWindow.webContents.send("lan:receive-result", data);
-            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+            if (mainWindow)
+              mainWindow.webContents.send("lan:receive-result", data);
+            res.writeHead(200, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
             res.end(JSON.stringify({ success: true }));
           } catch (error) {
-            res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ success: false, error: error.message || "Dữ liệu không hợp lệ" }));
+            res.writeHead(400, {
+              "Content-Type": "application/json; charset=utf-8",
+            });
+            res.end(
+              JSON.stringify({
+                success: false,
+                error: error.message || "Dữ liệu không hợp lệ",
+              }),
+            );
           }
         });
         return;
       }
 
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ success: false, error: "Không tìm thấy đường dẫn" }));
+      res.end(
+        JSON.stringify({ success: false, error: "Không tìm thấy đường dẫn" }),
+      );
     });
     lanServer.listen(3000, "0.0.0.0", () => {
       console.log("LAN Score Server running on port 3000");
@@ -860,6 +1472,9 @@ ipcMain.handle("lan:stopServer", () => {
     for (const client of lanLiveStatusClients.keys()) client.end();
     lanLiveStatusClients.clear();
     lanLiveStatusStore.clear();
+    lanCheckInAccess = { enabled: false, pin: "", tournamentId: "" };
+    lanCheckInSessions.clear();
+    lanCheckInLoginAttempts.clear();
     lanServer.close();
     lanServer = null;
     return { success: true };
@@ -870,16 +1485,16 @@ ipcMain.handle("lan:stopServer", () => {
 // IPC Handlers cho Kata Receive Server
 // =============================================
 
-ipcMain.handle('kata-receive:start', (event, { matId, pin }) => {
+ipcMain.handle("kata-receive:start", (event, { matId, pin }) => {
   return startKataReceiveServer(matId, pin);
 });
 
-ipcMain.handle('kata-receive:stop', () => {
+ipcMain.handle("kata-receive:stop", () => {
   stopKataReceiveServer();
   return { success: true };
 });
 
-ipcMain.handle('kata-receive:getStatus', () => {
+ipcMain.handle("kata-receive:getStatus", () => {
   return {
     running: kataReceiveServer !== null,
     ip: getLocalIp(),
@@ -890,36 +1505,40 @@ ipcMain.handle('kata-receive:getStatus', () => {
   };
 });
 
-ipcMain.handle('kata-receive:updateMatches', (event, matches) => {
-  kataReceiveState.matches = (matches || []).map(m => ({
+ipcMain.handle("kata-receive:updateMatches", (event, matches) => {
+  kataReceiveState.matches = (matches || []).map((m) => ({
     id: m.id,
-    matchCode: m.matchCode || '',
-    roundName: m.roundName || '',
-    categoryId: m.categoryId || '',
-    categoryName: m.categoryName || '',
-    ageGroup: m.ageGroup || '',
+    matchCode: m.matchCode || "",
+    roundName: m.roundName || "",
+    categoryId: m.categoryId || "",
+    categoryName: m.categoryName || "",
+    ageGroup: m.ageGroup || "",
     round: Number(m.round) || 1,
     isFinal: !!m.isFinal,
     previousKatas1: Array.isArray(m.previousKatas1) ? m.previousKatas1 : [],
     previousKatas2: Array.isArray(m.previousKatas2) ? m.previousKatas2 : [],
     isCompleted: !!m.isCompleted,
-    athlete1: m.athlete1 ? { id: m.athlete1.id, name: m.athlete1.name, club: m.athlete1.club } : null,
-    athlete2: m.athlete2 ? { id: m.athlete2.id, name: m.athlete2.name, club: m.athlete2.club } : null,
-    kata1: m.kata1 || '',
-    kata2: m.kata2 || '',
+    athlete1: m.athlete1
+      ? { id: m.athlete1.id, name: m.athlete1.name, club: m.athlete1.club }
+      : null,
+    athlete2: m.athlete2
+      ? { id: m.athlete2.id, name: m.athlete2.name, club: m.athlete2.club }
+      : null,
+    kata1: m.kata1 || "",
+    kata2: m.kata2 || "",
   }));
   kataReceiveState.revision += 1;
   return { success: true, revision: kataReceiveState.revision };
 });
 
-ipcMain.handle('kata-receive:lockMatch', (event, matchId) => {
+ipcMain.handle("kata-receive:lockMatch", (event, matchId) => {
   kataReceiveState.lockedMatchIds.clear();
   if (matchId) kataReceiveState.lockedMatchIds.add(matchId);
   kataReceiveState.revision += 1;
   return { success: true, revision: kataReceiveState.revision };
 });
 
-ipcMain.handle('kata-receive:unlockMatch', (event, matchId) => {
+ipcMain.handle("kata-receive:unlockMatch", (event, matchId) => {
   kataReceiveState.lockedMatchIds.delete(matchId);
   kataReceiveState.revision += 1;
   return { success: true, revision: kataReceiveState.revision };
@@ -936,15 +1555,22 @@ ipcMain.handle('kata-receive:unlockMatch', (event, matchId) => {
  * base64 images easily exceeds this.
  */
 function writeTempHtml(htmlContent) {
-  const tmpDir = path.join(os.tmpdir(), 'karate-pdf-export');
+  const tmpDir = path.join(os.tmpdir(), "karate-pdf-export");
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-  const tmpFile = path.join(tmpDir, `bracket_${Date.now()}_${Math.random().toString(36).slice(2)}.html`);
-  fs.writeFileSync(tmpFile, htmlContent, 'utf-8');
+  const tmpFile = path.join(
+    tmpDir,
+    `bracket_${Date.now()}_${Math.random().toString(36).slice(2)}.html`,
+  );
+  fs.writeFileSync(tmpFile, htmlContent, "utf-8");
   return tmpFile;
 }
 
 function cleanupTempFile(filePath) {
-  try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch (e) {
+    /* ignore */
+  }
 }
 
 /**
@@ -953,40 +1579,42 @@ function cleanupTempFile(filePath) {
  * using executeJavaScript, then set the PDF page to match exactly.
  * This prevents any shrinking or mismatched scaling.
  */
-ipcMain.handle('pdf:printBracket', async (event, { htmlContent, widthMM, heightMM, filename }) => {
-  let tmpFile = null;
-  try {
-    const result = await dialog.showSaveDialog(mainWindow, {
-      title: 'Lưu sơ đồ thi đấu PDF',
-      defaultPath: filename || 'so_do_thi_dau.pdf',
-      filters: [{ name: 'PDF File', extensions: ['pdf'] }],
-    });
+ipcMain.handle(
+  "pdf:printBracket",
+  async (event, { htmlContent, widthMM, heightMM, filename }) => {
+    let tmpFile = null;
+    try {
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: "Lưu sơ đồ thi đấu PDF",
+        defaultPath: filename || "so_do_thi_dau.pdf",
+        filters: [{ name: "PDF File", extensions: ["pdf"] }],
+      });
 
-    if (result.canceled || !result.filePath) {
-      return { success: false, canceled: true };
-    }
+      if (result.canceled || !result.filePath) {
+        return { success: false, canceled: true };
+      }
 
-    // Create hidden window — very wide so content never wraps
-    const printWin = new BrowserWindow({
-      show: false,
-      width: 4000,
-      height: 3000,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        offscreen: true,
-      },
-    });
+      // Create hidden window — very wide so content never wraps
+      const printWin = new BrowserWindow({
+        show: false,
+        width: 4000,
+        height: 3000,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          offscreen: true,
+        },
+      });
 
-    // Write HTML to temp file and load
-    tmpFile = writeTempHtml(htmlContent);
-    await printWin.loadFile(tmpFile);
+      // Write HTML to temp file and load
+      tmpFile = writeTempHtml(htmlContent);
+      await printWin.loadFile(tmpFile);
 
-    // Wait for content to fully render
-    await new Promise(resolve => setTimeout(resolve, 1200));
+      // Wait for content to fully render
+      await new Promise((resolve) => setTimeout(resolve, 1200));
 
-    // Measure ACTUAL content size inside the hidden window (in CSS px)
-    const measured = await printWin.webContents.executeJavaScript(`
+      // Measure ACTUAL content size inside the hidden window (in CSS px)
+      const measured = await printWin.webContents.executeJavaScript(`
       (function() {
         var el = document.querySelector('.pdf-bracket');
         if (!el) return JSON.stringify({ width: document.body.scrollWidth, height: document.body.scrollHeight });
@@ -996,23 +1624,23 @@ ipcMain.handle('pdf:printBracket', async (event, { htmlContent, widthMM, heightM
         });
       })()
     `);
-    const contentSize = JSON.parse(measured);
+      const contentSize = JSON.parse(measured);
 
-    // A3 landscape: 420x297mm
-    const A3_W_IN = 420 / 25.4;
-    const A3_H_IN = 297 / 25.4;
-    const MARGIN_IN = 0.15;
-    const printableW_px = (A3_W_IN - MARGIN_IN * 2) * 96;
-    const printableH_px = (A3_H_IN - MARGIN_IN * 2) * 96;
+      // A3 landscape: 420x297mm
+      const A3_W_IN = 420 / 25.4;
+      const A3_H_IN = 297 / 25.4;
+      const MARGIN_IN = 0.15;
+      const printableW_px = (A3_W_IN - MARGIN_IN * 2) * 96;
+      const printableH_px = (A3_H_IN - MARGIN_IN * 2) * 96;
 
-    // Compute zoom to fit content into A3 (scale uniformly, no 2nd blank page)
-    const zoomX = printableW_px / contentSize.width;
-    const zoomY = printableH_px / contentSize.height;
-    const zoom = Math.min(zoomX, zoomY);
-    const zoomPct = (zoom * 100).toFixed(3) + '%';
+      // Compute zoom to fit content into A3 (scale uniformly, no 2nd blank page)
+      const zoomX = printableW_px / contentSize.width;
+      const zoomY = printableH_px / contentSize.height;
+      const zoom = Math.min(zoomX, zoomY);
+      const zoomPct = (zoom * 100).toFixed(3) + "%";
 
-    // Apply CSS zoom + overflow:hidden to enforce single-page
-    await printWin.webContents.executeJavaScript(`
+      // Apply CSS zoom + overflow:hidden to enforce single-page
+      await printWin.webContents.executeJavaScript(`
       (function() {
         var el = document.querySelector('.pdf-bracket') || document.body.firstElementChild;
         if (el) el.style.zoom = '${zoomPct}';
@@ -1022,39 +1650,45 @@ ipcMain.handle('pdf:printBracket', async (event, { htmlContent, widthMM, heightM
         document.documentElement.style.overflow = 'hidden';
       })()
     `);
-    await new Promise(resolve => setTimeout(resolve, 400));
+      await new Promise((resolve) => setTimeout(resolve, 400));
 
-    // Always output single A3 landscape page
-    const pdfBuffer = await printWin.webContents.printToPDF({
-      printBackground: true,
-      pageSize: { width: A3_W_IN, height: A3_H_IN },
-      margins: { top: MARGIN_IN, bottom: MARGIN_IN, left: MARGIN_IN, right: MARGIN_IN },
-      scale: 1,
-    });
+      // Always output single A3 landscape page
+      const pdfBuffer = await printWin.webContents.printToPDF({
+        printBackground: true,
+        pageSize: { width: A3_W_IN, height: A3_H_IN },
+        margins: {
+          top: MARGIN_IN,
+          bottom: MARGIN_IN,
+          left: MARGIN_IN,
+          right: MARGIN_IN,
+        },
+        scale: 1,
+      });
 
-    printWin.close();
-    cleanupTempFile(tmpFile);
+      printWin.close();
+      cleanupTempFile(tmpFile);
 
-    fs.writeFileSync(result.filePath, pdfBuffer);
-    return { success: true, filePath: result.filePath };
-  } catch (error) {
-    if (tmpFile) cleanupTempFile(tmpFile);
-    console.error('Error in pdf:printBracket:', error);
-    return { success: false, error: error.message };
-  }
-});
+      fs.writeFileSync(result.filePath, pdfBuffer);
+      return { success: true, filePath: result.filePath };
+    } catch (error) {
+      if (tmpFile) cleanupTempFile(tmpFile);
+      console.error("Error in pdf:printBracket:", error);
+      return { success: false, error: error.message };
+    }
+  },
+);
 
 /**
  * Render multiple bracket HTML pages into a single merged PDF.
  * Each page is measured individually in its hidden window.
  */
-ipcMain.handle('pdf:printBracketMulti', async (event, { pages, filename }) => {
+ipcMain.handle("pdf:printBracketMulti", async (event, { pages, filename }) => {
   const tmpFiles = [];
   try {
     const result = await dialog.showSaveDialog(mainWindow, {
-      title: 'Lưu tất cả sơ đồ thi đấu PDF',
-      defaultPath: filename || 'tat_ca_so_do.pdf',
-      filters: [{ name: 'PDF File', extensions: ['pdf'] }],
+      title: "Lưu tất cả sơ đồ thi đấu PDF",
+      defaultPath: filename || "tat_ca_so_do.pdf",
+      filters: [{ name: "PDF File", extensions: ["pdf"] }],
     });
 
     if (result.canceled || !result.filePath) {
@@ -1088,7 +1722,7 @@ ipcMain.handle('pdf:printBracketMulti', async (event, { pages, filename }) => {
       const tmpFile = writeTempHtml(htmlContent);
       tmpFiles.push(tmpFile);
       await printWin.loadFile(tmpFile);
-      await new Promise(resolve => setTimeout(resolve, 1200));
+      await new Promise((resolve) => setTimeout(resolve, 1200));
 
       // Measure content size
       const measured = await printWin.webContents.executeJavaScript(`
@@ -1107,7 +1741,7 @@ ipcMain.handle('pdf:printBracketMulti', async (event, { pages, filename }) => {
       const zoomX = printableW_px / contentSize.width;
       const zoomY = printableH_px / contentSize.height;
       const zoom = Math.min(zoomX, zoomY);
-      const zoomPct = (zoom * 100).toFixed(3) + '%';
+      const zoomPct = (zoom * 100).toFixed(3) + "%";
 
       // Apply CSS zoom + overflow:hidden to enforce single-page output
       await printWin.webContents.executeJavaScript(`
@@ -1120,12 +1754,17 @@ ipcMain.handle('pdf:printBracketMulti', async (event, { pages, filename }) => {
           document.documentElement.style.overflow = 'hidden';
         })()
       `);
-      await new Promise(resolve => setTimeout(resolve, 400));
+      await new Promise((resolve) => setTimeout(resolve, 400));
 
       const pdfBuffer = await printWin.webContents.printToPDF({
         printBackground: true,
         pageSize: { width: A3_W_IN, height: A3_H_IN },
-        margins: { top: MARGIN_IN, bottom: MARGIN_IN, left: MARGIN_IN, right: MARGIN_IN },
+        margins: {
+          top: MARGIN_IN,
+          bottom: MARGIN_IN,
+          left: MARGIN_IN,
+          right: MARGIN_IN,
+        },
         scale: 1,
       });
 
@@ -1133,24 +1772,34 @@ ipcMain.handle('pdf:printBracketMulti', async (event, { pages, filename }) => {
 
       // Merge this page into the combined PDF
       const pagePdf = await PDFDocument.load(pdfBuffer);
-      const copiedPages = await mergedPdf.copyPages(pagePdf, pagePdf.getPageIndices());
-      copiedPages.forEach(page => mergedPdf.addPage(page));
+      const copiedPages = await mergedPdf.copyPages(
+        pagePdf,
+        pagePdf.getPageIndices(),
+      );
+      copiedPages.forEach((page) => mergedPdf.addPage(page));
 
       // Notify renderer of progress
       if (mainWindow && mainWindow.webContents) {
-        mainWindow.webContents.send('pdf:progress', { current: i + 1, total: pages.length });
+        mainWindow.webContents.send("pdf:progress", {
+          current: i + 1,
+          total: pages.length,
+        });
       }
     }
 
     // Cleanup temp files
-    tmpFiles.forEach(f => cleanupTempFile(f));
+    tmpFiles.forEach((f) => cleanupTempFile(f));
 
     const mergedBytes = await mergedPdf.save();
     fs.writeFileSync(result.filePath, Buffer.from(mergedBytes));
-    return { success: true, filePath: result.filePath, pageCount: pages.length };
+    return {
+      success: true,
+      filePath: result.filePath,
+      pageCount: pages.length,
+    };
   } catch (error) {
-    tmpFiles.forEach(f => cleanupTempFile(f));
-    console.error('Error in pdf:printBracketMulti:', error);
+    tmpFiles.forEach((f) => cleanupTempFile(f));
+    console.error("Error in pdf:printBracketMulti:", error);
     return { success: false, error: error.message };
   }
 });

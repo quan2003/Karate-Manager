@@ -608,10 +608,12 @@ export default function TournamentPage() {
     return count;
   };
 
-  const isMedalEligibleCategory = (cat) =>
-    isTeamCategoryMeta(cat)
-      ? getTeamCountFromAthletes(cat.athletes || [], cat, tournament) >= 2
+  const isMedalEligibleCategory = (cat) => {
+    const minTeams = Number(cat.minTeamsForDraw) || 3;
+    return isTeamCategoryMeta(cat)
+      ? getTeamCountFromAthletes(cat.athletes || [], cat, tournament) >= minTeams
       : (cat.athletes?.length || 0) >= 3;
+  };
 
   const getEstimatedMedals = (categories = tournament.categories) => {
     let gold = 0, silver = 0, bronze = 0;
@@ -1149,14 +1151,15 @@ export default function TournamentPage() {
     const results = { success: [], failed: [], skipped: [] };
 
     for (const cat of cats) {
-      const athleteCount = cat.athletes?.length || 0;
       const isTeamCategory = isTeamCategoryForDraw(cat);
+      const athleteCount = (cat.athletes || []).length;
 
       if (isTeamCategory) {
         // Team category: group by club
         const teams = getTeamsFromAthletes(cat.athletes || [], cat, tournament);
-        if (teams.length < 2) {
-          results.skipped.push({ name: cat.name, reason: `Chỉ có ${teams.length} đội (cần ≥ 2 đội)` });
+        const minTeams = Number(cat.minTeamsForDraw) || 3;
+        if (teams.length < minTeams) {
+          results.skipped.push({ name: cat.name, reason: `Chỉ có ${teams.length} đội (cần ≥ ${minTeams} đội)` });
           continue;
         }
         try {
@@ -1230,7 +1233,15 @@ export default function TournamentPage() {
   const bulkDrawableCategories = tournament.categories.filter(canBulkDrawCategory);
   const drawableCount = bulkDrawableCategories.length;
   const handlePublishTournament = async () => {
-    setPublishing(true);
+      if (!linkStartTime || !linkEndTime) {
+    toast.error("Vui lòng nhập đủ thời gian bắt đầu và kết thúc.");
+    return;
+  }
+  if (new Date(linkEndTime) <= new Date(linkStartTime)) {
+    toast.error("Thời gian kết thúc phải sau thời gian bắt đầu.");
+    return;
+  }
+  setPublishing(true);
     try {
       const result = await publishTournament(tournament, linkStartTime, linkEndTime);
       if (result.success) {
@@ -1459,7 +1470,7 @@ export default function TournamentPage() {
             className={`tournament-action-btn action-link ${activeHint === "direct_link" ? "hint-pulse" : ""}`}
             onClick={() => {
               clearHint();
-              handlePublishTournament();
+              setShowLinkModal(true);
             }}
             disabled={publishing}
             title="Tạo link gửi cho HLV đăng ký trực tuyến"
@@ -1536,48 +1547,32 @@ export default function TournamentPage() {
                   )}
                   {teamCategoryAvailability.kumite && (
                     <>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        Số VĐV Kumite Nam/đội:
-                        <input
-                          type="number"
-                          min="1"
-                          value={tournament.teamMedalsSettings?.kumiteMale ?? tournament.teamMedalsSettings?.kumite ?? 3}
-                          onChange={(e) => {
-                            dispatch({
-                              type: ACTIONS.UPDATE_TOURNAMENT,
-                              payload: {
-                                id: tournament.id,
-                                teamMedalsSettings: {
-                                  ...(tournament.teamMedalsSettings || {}),
-                                  kumiteMale: parseInt(e.target.value) || 3
-                                }
-                              }
-                            });
-                          }}
-                          style={{ width: '45px', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center' }}
-                        />
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        Số VĐV Kumite Nữ/đội:
-                        <input
-                          type="number"
-                          min="1"
-                          value={tournament.teamMedalsSettings?.kumiteFemale ?? tournament.teamMedalsSettings?.kumite ?? 3}
-                          onChange={(e) => {
-                            dispatch({
-                              type: ACTIONS.UPDATE_TOURNAMENT,
-                              payload: {
-                                id: tournament.id,
-                                teamMedalsSettings: {
-                                  ...(tournament.teamMedalsSettings || {}),
-                                  kumiteFemale: parseInt(e.target.value) || 3
-                                }
-                              }
-                            });
-                          }}
-                          style={{ width: '45px', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center' }}
-                        />
-                      </label>
+                      {[
+                        { label: "Kumite Nam", mainKey: "kumiteMaleMain", reserveKey: "kumiteMaleReserve", legacyKey: "kumiteMale" },
+                        { label: "Kumite Nữ", mainKey: "kumiteFemaleMain", reserveKey: "kumiteFemaleReserve", legacyKey: "kumiteFemale" },
+                      ].map(({ label, mainKey, reserveKey, legacyKey }) => {
+                        const settings = tournament.teamMedalsSettings || {};
+                        const main = settings[mainKey] ?? 3;
+                        const reserve = settings[reserveKey] ?? Math.max(0, Number(settings[legacyKey] ?? settings.kumite ?? 3) - 3);
+                        const updateSetting = (key, value) => dispatch({
+                          type: ACTIONS.UPDATE_TOURNAMENT,
+                          payload: {
+                            id: tournament.id,
+                            teamMedalsSettings: { ...settings, [key]: value },
+                          },
+                        });
+                        return (
+                          <div key={label} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <strong>{label}:</strong>
+                            <label>Chính
+                              <input type="number" min="1" value={main} onChange={(e) => updateSetting(mainKey, Math.max(1, parseInt(e.target.value) || 1))} style={{ width: "45px", marginLeft: "4px" }} />
+                            </label>
+                            <label>Dự bị
+                              <input type="number" min="0" value={reserve} onChange={(e) => updateSetting(reserveKey, Math.max(0, parseInt(e.target.value) || 0))} style={{ width: "45px", marginLeft: "4px" }} />
+                            </label>
+                          </div>
+                        );
+                      })}
                     </>
                   )}
                 </div>

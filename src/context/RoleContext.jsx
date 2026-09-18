@@ -35,6 +35,48 @@ const getMatchSessionId = (data) => {
   return `legacy_${data?.tournamentId || 'unknown'}_${(hash >>> 0).toString(36)}`;
 };
 
+const applySecretaryLineupsToCategory = (category, lineups = []) => {
+  if (!category || !Array.isArray(lineups) || lineups.length === 0) return category;
+  const findLineup = (participant) => {
+    if (!participant?.isTeam) return null;
+    return lineups.find((lineup) =>
+      (lineup.teamId && String(lineup.teamId) === String(participant.id)) ||
+      (lineup.teamName === participant.name && lineup.club === participant.club)
+    );
+  };
+  const updateParticipant = (participant) => {
+    const lineup = findLineup(participant);
+    if (!lineup) return participant;
+    const members = (lineup.members || []).map((member) => ({ ...member }));
+    return {
+      ...participant,
+      members,
+      mainMembers: members.filter((member) => !member.isReserve),
+      reserveMembers: members.filter((member) => member.isReserve),
+      lineupConfirmedAt: lineup.confirmedAt,
+      lineupConfirmedBy: lineup.confirmedBy,
+    };
+  };
+  const updateMatch = (match) => ({
+    ...match,
+    athlete1: updateParticipant(match.athlete1),
+    athlete2: updateParticipant(match.athlete2),
+    winner: updateParticipant(match.winner),
+  });
+  const bracket = category.bracket
+    ? {
+        ...category.bracket,
+        matches: (category.bracket.matches || []).map(updateMatch),
+        auxiliaryMatches: (category.bracket.auxiliaryMatches || []).map(updateMatch),
+      }
+    : category.bracket;
+  return {
+    ...category,
+    bracket,
+    matches: (category.matches || []).map(updateMatch),
+  };
+};
+
 /**
  * Trạng thái thời gian nhập liệu
  * - 'before': Chưa đến thời gian nhập
@@ -395,6 +437,35 @@ export function RoleProvider({ children }) {
 
   // ============ SECRETARY FUNCTIONS ============
 
+  const updateSecretaryTeamLineups = useCallback((categoryId, lineups) => {
+    setMatchData((current) => {
+      if (!current) return current;
+      const confirmedLineups = lineups.map((lineup) => ({
+        ...lineup,
+        confirmedAt: lineup.confirmedAt || new Date().toISOString(),
+        confirmedBy: lineup.confirmedBy || "Thư ký",
+      }));
+      const updated = {
+        ...current,
+        teamLineups: {
+          ...(current.teamLineups || {}),
+          [categoryId]: confirmedLineups,
+        },
+        categories: (current.categories || []).map((category) =>
+          category.id === categoryId
+            ? applySecretaryLineupsToCategory(category, confirmedLineups)
+            : category
+        ),
+      };
+      dbSetSessionData('system', `match_json_${getMatchSessionId(updated)}`, JSON.stringify(updated));
+      return updated;
+    });
+    // Đội hình là một phần của kết quả huy chương. Tăng revision để LAN tự gửi
+    // lại snapshot mới, kể cả khi thư ký sửa sau khi các trận đã hoàn tất.
+    setMatchResultsRevision((revision) => revision + 1);
+    return { success: true };
+  }, []);
+
   /**
    * Cập nhật kết quả trận đấu (Secretary)
    */
@@ -727,6 +798,19 @@ export function RoleProvider({ children }) {
           bronzeMedalists.splice(0, bronzeMedalists.length);
         }
 
+        const toMedalEntry = (participant) => participant
+          ? {
+              name: participant.name,
+              club: participant.club || "",
+              teamId: participant.isTeam ? participant.id : null,
+              members: participant.isTeam
+                ? (participant.members || []).map((member) => ({ ...member }))
+                : [],
+              lineupConfirmedAt: participant.lineupConfirmedAt || null,
+              lineupConfirmedBy: participant.lineupConfirmedBy || null,
+            }
+          : null;
+
         categoryMedals.push({
           categoryName: cat.name,
           categoryId: cat.id,
@@ -737,24 +821,10 @@ export function RoleProvider({ children }) {
               : cat.gender === "female"
               ? "Nữ"
               : "Hỗn hợp",
-          gold: champion
-            ? { name: champion.name, club: champion.club || "" }
-            : null,
-          silver: silverMedalist
-            ? { name: silverMedalist.name, club: silverMedalist.club || "" }
-            : null,
-          bronze1: bronzeMedalists[0]
-            ? {
-                name: bronzeMedalists[0].name,
-                club: bronzeMedalists[0].club || "",
-              }
-            : null,
-          bronze2: bronzeMedalists[1]
-            ? {
-                name: bronzeMedalists[1].name,
-                club: bronzeMedalists[1].club || "",
-              }
-            : null,
+          gold: toMedalEntry(champion),
+          silver: toMedalEntry(silverMedalist),
+          bronze1: toMedalEntry(bronzeMedalists[0]),
+          bronze2: toMedalEntry(bronzeMedalists[1]),
         });
       });
     }
@@ -936,6 +1006,7 @@ export function RoleProvider({ children }) {
       exportTime: new Date().toISOString(),
       results: enrichedResults,
       categoryMedals,
+      teamLineups: matchData?.teamLineups || {},
     };
   }, [matchData, matchResults]);
 
@@ -1035,6 +1106,7 @@ export function RoleProvider({ children }) {
     clearAthletes,
     getExportData, // Secretary Actions
     updateMatchResult,
+    updateSecretaryTeamLineups,
     removeMatchResult,
     getMatchResult,
     getMatchExportData,

@@ -3,6 +3,7 @@ import XLSX from "xlsx-js-style";
 export const REFEREE_TEMPLATE_HEADERS = [
   "Họ và tên",
   "Đơn vị",
+  "Thảm",
   "Cấp bậc",
   "Nội dung phụ trách",
   "Trọng tài chính/phụ",
@@ -28,6 +29,7 @@ const HEADER_ALIASES = {
   code: ["ma trong tai", "ma", "referee code", "code"],
   name: ["ho va ten", "ho ten", "ten trong tai", "name"],
   unit: ["don vi", "clb", "quoc gia", "tinh thanh", "unit", "country"],
+  assignedMat: ["tham", "san", "tham thi dau", "san thi dau", "mat", "tatami"],
   grade: ["cap bac", "cap", "rank", "grade"],
   specialty: ["noi dung phu trach", "noi dung", "chuyen mon", "specialty"],
   refereeRole: ["trong tai chinh/phu", "trong tai chinh phu", "vai tro trong tai", "vai tro", "referee role", "role"],
@@ -46,18 +48,26 @@ function getCell(row, field) {
   return matchedKey ? String(row[matchedKey] ?? "").trim() : "";
 }
 
+function parseAssignedMat(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) return "";
+  const match = normalized.match(/^(?:tham|san)?\s*(\d+)$/);
+  const mat = match ? Number(match[1]) : 0;
+  return Number.isInteger(mat) && mat >= 1 && mat <= 20 ? mat : null;
+}
+
 export function downloadRefereeTemplate() {
   const rows = [
     REFEREE_TEMPLATE_HEADERS,
-    ["Nguyễn Văn An", "Hà Nội", "Quốc gia", "Kata", "TTC", "0900000001", ""],
-    ["Trần Thị Bình", "Hà Nội", "Quốc gia", "Kumite", "TTP", "0900000002", ""],
+    ["Nguyễn Văn An", "Hà Nội", 1, "Quốc gia", "Kata", "TTC", "0900000001", ""],
+    ["Trần Thị Bình", "Hà Nội", "", "Quốc gia", "Kumite", "TTP", "0900000002", ""],
   ];
   const worksheet = XLSX.utils.aoa_to_sheet(rows);
   worksheet["!cols"] = [
-    { wch: 30 }, { wch: 22 }, { wch: 18 },
+    { wch: 30 }, { wch: 22 }, { wch: 12 }, { wch: 18 },
     { wch: 24 }, { wch: 22 }, { wch: 18 }, { wch: 32 },
   ];
-  worksheet["!autofilter"] = { ref: "A1:G3" };
+  worksheet["!autofilter"] = { ref: "A1:H3" };
 
   const instructions = XLSX.utils.aoa_to_sheet([
     ["HƯỚNG DẪN NHẬP DANH SÁCH TRỌNG TÀI"],
@@ -65,8 +75,10 @@ export function downloadRefereeTemplate() {
     ["2", "Chỉ cần nhập Họ và tên và Đơn vị; hệ thống sẽ tự cấp Mã trọng tài."],
     ["3", "Nội dung phụ trách: Kata, Kumite hoặc Cả hai."],
     ["4", "Trọng tài chính/phụ: nhập TTC (trọng tài chính) hoặc TTP (trọng tài phụ)."],
-    ["5", "Có thể xóa hai dòng ví dụ trước khi nhập dữ liệu thật."],
-    ["6", "Khi import lại, người trùng Họ và tên + Đơn vị sẽ được cập nhật, không tạo bản sao."],
+    ["5", "Cột Thảm: nhập số từ 1 đến 20 để xếp thẳng trọng tài vào thảm; để trống nếu muốn random."],
+    ["6", "Trưởng sàn và Phó sàn vẫn được chọn riêng trên phần mềm, không nhập trong cột Thảm."],
+    ["7", "Có thể xóa hai dòng ví dụ trước khi nhập dữ liệu thật."],
+    ["8", "Khi import lại, người trùng Họ và tên + Đơn vị sẽ được cập nhật, không tạo bản sao."],
   ]);
   instructions["!cols"] = [{ wch: 8 }, { wch: 85 }];
   instructions["!merges"] = [XLSX.utils.decode_range("A1:B1")];
@@ -100,6 +112,11 @@ export async function parseRefereeExcelFile(file) {
     }
 
     const rawCode = getCell(row, "code");
+    const rawAssignedMat = getCell(row, "assignedMat");
+    const assignedMat = parseAssignedMat(rawAssignedMat);
+    if (assignedMat === null) {
+      errors.push(`Dòng ${excelRow}: Thảm “${rawAssignedMat}” không hợp lệ; để trống để random hoặc nhập số từ 1 đến 20.`);
+    }
     const normalizedCode = normalizeText(rawCode);
     const personKey = `${normalizeText(name)}|${normalizeText(unit)}`;
     if (rawCode && seenCodes.has(normalizedCode)) {
@@ -118,6 +135,7 @@ export async function parseRefereeExcelFile(file) {
       code: rawCode,
       name,
       unit,
+      assignedMat: assignedMat || "",
       grade: getCell(row, "grade"),
       specialty: getCell(row, "specialty") || "Cả hai",
       refereeRole: getCell(row, "refereeRole") || "TTP",
@@ -171,8 +189,23 @@ export function randomizeRefereeAssignments(referees, fixedByMat, matCount, rand
   );
   const duplicateFixedIds = [...new Set(selectedFixedIds.filter((id, i, all) => all.indexOf(id) !== i))];
   const fixedIds = new Set(selectedFixedIds);
-  const available = referees.filter((item) => item.active !== false && !fixedIds.has(item.id));
+  const isValidAssignedMat = (item) => Number.isInteger(Number(item.assignedMat)) && Number(item.assignedMat) >= 1 && Number(item.assignedMat) <= count;
+  const imported = referees.filter((item) => item.active !== false && !fixedIds.has(item.id) && isValidAssignedMat(item));
+  const available = referees.filter((item) => item.active !== false && !fixedIds.has(item.id) && !isValidAssignedMat(item));
   const byUnit = new Map();
+
+  const mats = Array.from({ length: count }, (_, index) => ({
+    mat: index + 1,
+    randomIds: [],
+    unitCounts: {},
+    tie: random(),
+  }));
+  imported.forEach((item) => {
+    const target = mats[Number(item.assignedMat) - 1];
+    const unit = item.unit?.trim() || "Chưa có đơn vị";
+    target.randomIds.push(item.id);
+    target.unitCounts[unit] = (target.unitCounts[unit] || 0) + 1;
+  });
 
   available.forEach((item) => {
     const key = item.unit?.trim() || "Chưa có đơn vị";
@@ -192,13 +225,6 @@ export function randomizeRefereeAssignments(referees, fixedByMat, matCount, rand
   });
 
   chunks.sort((a, b) => b.members.length - a.members.length || a.tie - b.tie);
-  const mats = Array.from({ length: count }, (_, index) => ({
-    mat: index + 1,
-    randomIds: [],
-    unitCounts: {},
-    tie: random(),
-  }));
-
   chunks.forEach((chunk) => {
     const target = [...mats].sort((a, b) => {
       const aHasUnit = a.unitCounts[chunk.unit] ? 1 : 0;
@@ -214,13 +240,30 @@ export function randomizeRefereeAssignments(referees, fixedByMat, matCount, rand
   if (oddUnits.length) {
     warnings.push(`Các đơn vị có số người lẻ nên còn người không ghép đủ cặp: ${[...new Set(oddUnits)].join(", ")}.`);
   }
-  if (!available.length) warnings.push("Không còn trọng tài trong danh sách random sau khi trừ các vị trí cố định.");
 
   return {
     assignments: mats.map(({ mat, randomIds }) => ({ mat, randomIds })),
     warnings,
     generatedAt: new Date().toISOString(),
+    randomizedCount: available.length,
+    importedCount: imported.length,
   };
+}
+
+export function buildImportedRefereeAssignments(referees, fixedByMat, matCount) {
+  const count = Math.max(1, Number(matCount) || 1);
+  const fixed = normalizeFixedAssignments(fixedByMat, count);
+  const fixedIds = new Set(Object.values(fixed).flatMap((item) =>
+    [item.chiefId, item.deputy1Id, item.deputy2Id].filter(Boolean)
+  ));
+  const assignments = Array.from({ length: count }, (_, index) => ({ mat: index + 1, randomIds: [] }));
+  referees.forEach((item) => {
+    const mat = Number(item.assignedMat);
+    if (item.active !== false && !fixedIds.has(item.id) && Number.isInteger(mat) && mat >= 1 && mat <= count) {
+      assignments[mat - 1].randomIds.push(item.id);
+    }
+  });
+  return assignments;
 }
 
 export function mergeImportedReferees(current, imported) {

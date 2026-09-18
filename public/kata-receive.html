@@ -345,6 +345,11 @@ function formatMatchCode(matchCode, index) {
 
 function selectMatch(i) {
   selectedMatch = matches[i];
+  if (selectedMatch.isCompleted) {
+    showToast('Trận đã hoàn thành – không thể thay đổi bài quyền', 'error');
+    selectedMatch = null;
+    return;
+  }
   const isLocked = selectedMatch.isLocked;
   document.getElementById('formSection').classList.add('show');
   document.body.style.overflow = 'hidden';
@@ -409,28 +414,16 @@ function pickKata(val) {
   renderKataGrid(document.getElementById('kataSearch').value);
 }
 
-function validateKataByAge(match, slot, kataName) {
-  const age = String(match.ageGroup || '').replace(/[–—]/g, '-');
-  const nums = (age.match(/\d+/g) || []).map(Number);
-  const min = nums[0], max = nums[1] == null ? min : nums[1];
-  let group = '', limit = 0;
-  if (min === 8 && max === 9) { group = '8–9'; limit = 2; }
-  else if (min === 10 && max === 11) { group = '10–11'; limit = 3; }
-  else if (min === 12 && max === 14) { group = '12–14'; limit = 4; }
-  else if (min >= 15) { group = '15+'; limit = 5; }
-  if (!limit) return 'Không nhận diện được lứa tuổi; hãy báo thư ký kiểm tra.';
-
+function getKataWarnings(match, slot, kataName) {
   const norm = value => String(value || '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
   const kata = norm(kataName);
   const history = (slot === 1 ? (match.previousKatas1 || []) : (match.previousKatas2 || [])).map(norm).filter(Boolean);
-  if (history[history.length - 1] === kata) return 'Không được lặp lại bài vừa trình diễn ở vòng trước.';
-  if (group === '8–9' && match.round === 2 && history[0] === kata) return 'Lứa tuổi 8–9: vòng 2 phải dùng bài B, khác bài A.';
-  if (group === '8–9' && match.round >= 3 && history.length >= 2 && (match.round % 2 === 1 ? history[0] : history[1]) !== kata) return 'Lứa tuổi 8–9: phải luân phiên bài A và B, vòng lẻ dùng A, vòng chẵn dùng B.';
-  if (group === '10–11' && match.round <= 3 && history.includes(kata)) return 'Ba vòng đầu của lứa tuổi 10–11 phải dùng ba bài A, B, C khác nhau.';
-  const resetAtFinal = match.isFinal && (group === '12–14' || group === '15+');
-  if (!resetAtFinal && new Set([...history, kata]).size > limit) return `Lứa tuổi ${group} chỉ được đăng ký tối đa ${limit} bài.`;
-  if (!match.isFinal && (group === '12–14' || group === '15+') && history.includes(kata)) return 'Trước chung kết phải dùng bài chưa trình diễn.';
-  return '';
+  const warnings = [];
+  const usedCount = history.filter(item => item === kata).length;
+  if (history[history.length - 1] === kata) warnings.push('Trùng Kata với vòng ngay trước.');
+  if (usedCount === 1) warnings.push('Kata đã sử dụng 1 lần và đây là lần thứ 2.');
+  else if (usedCount > 1) warnings.push(`Kata đã sử dụng ${usedCount} lần trước đó.`);
+  return warnings;
 }
 
 // ===== SUBMIT =====
@@ -439,8 +432,11 @@ async function submitKata() {
   const kataName = selectedKataName;
   const registeredBy = document.getElementById('registrarInput').value.trim();
   if (!kataName) { showToast('Vui lòng chọn bài quyền', 'error'); return; }
-  const ruleWarning = validateKataByAge(selectedMatch, selectedSlot, kataName);
-  if (ruleWarning) { showToast('⚠️ ' + ruleWarning, 'error'); return; }
+  const kataWarnings = getKataWarnings(selectedMatch, selectedSlot, kataName);
+  if (
+    kataWarnings.length > 0
+    && !window.confirm(`⚠️ ${kataWarnings.join('\n')}\n\nVẫn xác nhận đăng ký?`)
+  ) return;
   localStorage.setItem('kata_registrar_name', registeredBy);
 
   const generateId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2);
@@ -464,12 +460,12 @@ async function submitKata() {
   btn.innerHTML = '<span class="spinner"></span>Đang gửi...';
   btn.disabled = true;
 
-  const sent = await trySend(payload);
+  const sendResult = await trySend(payload);
   submitting = false;
   btn.innerHTML = '✅ Xác nhận đăng ký';
   btn.disabled = false;
 
-  if (sent) {
+  if (sendResult.ok) {
     // Update local match state for instant feedback
     if (selectedSlot === 1) selectedMatch.kata1 = kataName;
     else selectedMatch.kata2 = kataName;
@@ -478,8 +474,8 @@ async function submitKata() {
     selectedKataName = '';
     renderKataGrid(document.getElementById('kataSearch').value);
     closeRegistrationModal();
-  } else {
-    // Offline: queue
+  } else if (sendResult.retryable) {
+    // Chỉ xếp hàng khi thực sự mất kết nối hoặc server gặp lỗi tạm thời.
     pendingQueue.push(payload);
     savePendingQueue();
     updatePendingBar();
@@ -488,23 +484,34 @@ async function submitKata() {
     else selectedMatch.kata2 = kataName;
     renderMatchList();
     closeRegistrationModal();
+  } else {
+    showToast('⚠️ ' + (sendResult.error || 'Thư ký từ chối đăng ký'), 'error');
   }
 }
 
 async function trySend(payload) {
+  let timeoutId;
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    timeoutId = setTimeout(() => controller.abort(), 5000);
     const r = await fetch(`${SERVER_URL}/api/kata-receive/submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
     const json = await r.json();
-    return json.success;
-  } catch { return false; }
+    if (json.success) return { ok: true, retryable: false, warning: json.warning || '' };
+    return {
+      ok: false,
+      retryable: r.status >= 500,
+      error: json.error || `HTTP ${r.status}`,
+    };
+  } catch {
+    return { ok: false, retryable: true, error: 'Không thể kết nối Thư ký' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // ===== PENDING QUEUE =====
@@ -517,13 +524,22 @@ function updatePendingBar() {
 async function flushPendingQueue() {
   if (!isOnline || pendingQueue.length === 0) return;
   const toSend = [...pendingQueue];
+  let sentCount = 0;
+  let rejectedCount = 0;
   for (const payload of toSend) {
-    const ok = await trySend(payload);
-    if (ok) pendingQueue = pendingQueue.filter(p => p.requestId !== payload.requestId);
+    const result = await trySend(payload);
+    if (result.ok || !result.retryable) {
+      pendingQueue = pendingQueue.filter(p => p.requestId !== payload.requestId);
+      if (result.ok) sentCount += 1;
+      else rejectedCount += 1;
+    }
   }
   savePendingQueue();
   updatePendingBar();
-  if (toSend.length > pendingQueue.length) showToast('✅ Đã gửi lại ' + (toSend.length - pendingQueue.length) + ' yêu cầu');
+  if (sentCount > 0) showToast('✅ Đã gửi lại ' + sentCount + ' yêu cầu');
+  if (rejectedCount > 0) {
+    showToast('⚠️ Đã loại ' + rejectedCount + ' yêu cầu không còn hợp lệ', 'error');
+  }
 }
 
 // ===== TOAST =====

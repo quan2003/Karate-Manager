@@ -11,16 +11,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // =============================================
 
   // Lấy file được mở khi khởi động app
-  getStartupFile: () => ipcRenderer.invoke('app:getStartupFile'),
+  getStartupFile: () => ipcRenderer.invoke("app:getStartupFile"),
 
   // Đọc nội dung file từ đường dẫn
-  readFile: (filePath) => ipcRenderer.invoke('app:readFile', filePath),
+  readFile: (filePath) => ipcRenderer.invoke("app:readFile", filePath),
 
   // Lắng nghe khi user mở file trong khi app đang chạy
   onOpenFile: (callback) => {
     const handler = (event, data) => callback(data);
-    ipcRenderer.on('app:open-file', handler);
-    return () => ipcRenderer.removeListener('app:open-file', handler);
+    ipcRenderer.on("app:open-file", handler);
+    return () => ipcRenderer.removeListener("app:open-file", handler);
   },
 
   // Phiên bản
@@ -99,76 +99,91 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // =============================================
   db: {
     // Tournaments
-    getTournaments: () => ipcRenderer.invoke('db:getTournaments'),
-    saveTournaments: (tournaments) => ipcRenderer.invoke('db:saveTournaments', tournaments),
-    deleteTournament: (id) => ipcRenderer.invoke('db:deleteTournament', id),
+    getTournaments: () => ipcRenderer.invoke("db:getTournaments"),
+    saveTournaments: (tournaments) =>
+      ipcRenderer.invoke("db:saveTournaments", tournaments),
+    deleteTournament: (id) => ipcRenderer.invoke("db:deleteTournament", id),
 
     // Settings
-    getSetting: (key) => ipcRenderer.invoke('db:getSetting', key),
-    setSetting: (key, value) => ipcRenderer.invoke('db:setSetting', key, value),
-    deleteSetting: (key) => ipcRenderer.invoke('db:deleteSetting', key),
+    getSetting: (key) => ipcRenderer.invoke("db:getSetting", key),
+    setSetting: (key, value) => ipcRenderer.invoke("db:setSetting", key, value),
+    deleteSetting: (key) => ipcRenderer.invoke("db:deleteSetting", key),
 
     // Auto backups
-    saveAutoBackup: (id, reason, data, size) => ipcRenderer.invoke('db:saveAutoBackup', id, reason, data, size),
-    getAutoBackups: () => ipcRenderer.invoke('db:getAutoBackups'),
-    getAutoBackupById: (id) => ipcRenderer.invoke('db:getAutoBackupById', id),
+    saveAutoBackup: (id, reason, data, size) =>
+      ipcRenderer.invoke("db:saveAutoBackup", id, reason, data, size),
+    getAutoBackups: () => ipcRenderer.invoke("db:getAutoBackups"),
+    getAutoBackupById: (id) => ipcRenderer.invoke("db:getAutoBackupById", id),
 
     // Backup history
-    saveBackupHistory: (meta) => ipcRenderer.invoke('db:saveBackupHistory', meta),
-    getBackupHistory: () => ipcRenderer.invoke('db:getBackupHistory'),
+    saveBackupHistory: (meta) =>
+      ipcRenderer.invoke("db:saveBackupHistory", meta),
+    getBackupHistory: () => ipcRenderer.invoke("db:getBackupHistory"),
 
     // Session data (Coach / Secretary)
-    getSessionData: (tournamentId, key) => ipcRenderer.invoke('db:getSessionData', tournamentId, key),
-    setSessionData: (tournamentId, key, value) => ipcRenderer.invoke('db:setSessionData', tournamentId, key, value),
-    deleteSessionData: (tournamentId, key) => ipcRenderer.invoke('db:deleteSessionData', tournamentId, key),
+    getSessionData: (tournamentId, key) =>
+      ipcRenderer.invoke("db:getSessionData", tournamentId, key),
+    setSessionData: (tournamentId, key, value) =>
+      ipcRenderer.invoke("db:setSessionData", tournamentId, key, value),
+    deleteSessionData: (tournamentId, key) =>
+      ipcRenderer.invoke("db:deleteSessionData", tournamentId, key),
 
     // Migration
-    importFromLocalStorage: (lsData) => ipcRenderer.invoke('db:importFromLocalStorage', lsData),
-    isMigrationDone: () => ipcRenderer.invoke('db:isMigrationDone'),
-    markMigrationDone: () => ipcRenderer.invoke('db:markMigrationDone'),
+    importFromLocalStorage: (lsData) =>
+      ipcRenderer.invoke("db:importFromLocalStorage", lsData),
+    isMigrationDone: () => ipcRenderer.invoke("db:isMigrationDone"),
+    markMigrationDone: () => ipcRenderer.invoke("db:markMigrationDone"),
 
     // Stats
-    getDataStats: () => ipcRenderer.invoke('db:getDataStats'),
+    getDataStats: () => ipcRenderer.invoke("db:getDataStats"),
   },
 
   // =============================================
   // LAN Server Operations (Dual Combat)
   // =============================================
   lan: {
-    startServer: () => ipcRenderer.invoke('lan:startServer'),
-    stopServer: () => ipcRenderer.invoke('lan:stopServer'),
-    getServerStatus: () => ipcRenderer.invoke('lan:getServerStatus'),
-    openTvDisplay: (matId) => ipcRenderer.invoke('lan:openTvDisplay', matId),
+    startServer: () => ipcRenderer.invoke("lan:startServer"),
+    stopServer: () => ipcRenderer.invoke("lan:stopServer"),
+    getServerStatus: () => ipcRenderer.invoke("lan:getServerStatus"),
+    setCheckInData: (data) => ipcRenderer.invoke("lan:setCheckInData", data),
+    configureCheckIn: (config) =>
+      ipcRenderer.invoke("lan:configureCheckIn", config),
+    openTvDisplay: (matId) => ipcRenderer.invoke("lan:openTvDisplay", matId),
   },
 
   kataReceive: {
-    start: (matId, pin) => ipcRenderer.invoke('kata-receive:start', { matId, pin }),
-    stop: () => ipcRenderer.invoke('kata-receive:stop'),
-    getStatus: () => ipcRenderer.invoke('kata-receive:getStatus'),
-    updateMatches: (matches) => ipcRenderer.invoke('kata-receive:updateMatches', matches),
-    lockMatch: (matchId) => ipcRenderer.invoke('kata-receive:lockMatch', matchId),
-    unlockMatch: (matchId) => ipcRenderer.invoke('kata-receive:unlockMatch', matchId),
+    start: (matId, pin) =>
+      ipcRenderer.invoke("kata-receive:start", { matId, pin }),
+    stop: () => ipcRenderer.invoke("kata-receive:stop"),
+    getStatus: () => ipcRenderer.invoke("kata-receive:getStatus"),
+    updateMatches: (matches) =>
+      ipcRenderer.invoke("kata-receive:updateMatches", matches),
+    lockMatch: (matchId) =>
+      ipcRenderer.invoke("kata-receive:lockMatch", matchId),
+    unlockMatch: (matchId) =>
+      ipcRenderer.invoke("kata-receive:unlockMatch", matchId),
     onKataRegistered: (callback) => {
       const handler = (event, data) => callback(data);
-      ipcRenderer.on('kata-receive:kata-registered', handler);
-      return () => ipcRenderer.removeListener('kata-receive:kata-registered', handler);
+      ipcRenderer.on("kata-receive:kata-registered", handler);
+      return () =>
+        ipcRenderer.removeListener("kata-receive:kata-registered", handler);
     },
   },
-
 
   // =============================================
   // Vector PDF Export (printToPDF) Operations
   // =============================================
   pdf: {
     // Export a single bracket to PDF (vector, custom page size)
-    printBracket: (data) => ipcRenderer.invoke('pdf:printBracket', data),
+    printBracket: (data) => ipcRenderer.invoke("pdf:printBracket", data),
     // Export multiple brackets into one merged PDF
-    printBracketMulti: (data) => ipcRenderer.invoke('pdf:printBracketMulti', data),
+    printBracketMulti: (data) =>
+      ipcRenderer.invoke("pdf:printBracketMulti", data),
     // Listen for progress updates during multi-page export
     onProgress: (callback) => {
       const handler = (event, data) => callback(data);
-      ipcRenderer.on('pdf:progress', handler);
-      return () => ipcRenderer.removeListener('pdf:progress', handler);
+      ipcRenderer.on("pdf:progress", handler);
+      return () => ipcRenderer.removeListener("pdf:progress", handler);
     },
   },
 
@@ -183,7 +198,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   receive: (channel, func) => {
-    const validChannels = ["app:update-available", "lan:receive-result", "app:open-file", "pdf:progress"];
+    const validChannels = [
+      "app:update-available",
+      "lan:receive-result",
+      "lan:receive-check-in",
+      "app:open-file",
+      "pdf:progress",
+    ];
     if (validChannels.includes(channel)) {
       const subscription = (event, ...args) => func(...args);
       ipcRenderer.on(channel, subscription);

@@ -20,6 +20,7 @@ import excelLogo from "../assets/excel-logo.svg";
 import wordLogo from "../assets/word-logo.svg";
 import "./StatisticsPage.css";
 import { getComputedCategoryResults, getSavedResultWarnings } from "../domain/bronzeIntegration.js";
+import AthleteCheckPanel from "../components/AthleteCheck/AthleteCheckPanel";
 
 export default function StatisticsPage() {
   const { id } = useParams();
@@ -336,6 +337,7 @@ export default function StatisticsPage() {
       categories: tournament.categories,
       clubs,
       feeSettings,
+      tournament,
     });
   };
 
@@ -344,6 +346,16 @@ export default function StatisticsPage() {
       style: "currency",
       currency: "VND",
     }).format(amount);
+  };
+
+  const formatFeeInput = (amount) =>
+    new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(
+      Number(amount) || 0
+    );
+
+  const handleFeeInputChange = (field, inputValue) => {
+    const numericValue = Number(inputValue.replace(/\D/g, "")) || 0;
+    handleFeeSettingsChange(field, numericValue);
   };
 
   const getClubs = () => {
@@ -535,10 +547,42 @@ export default function StatisticsPage() {
       merged[f] =
         saved[f] && saved[f].trim() !== "" ? saved[f] : computed[f] || "";
     });
+    merged.awardTeams = saved.awardTeams || computed.awardTeams || null;
     return merged;
   };
 
   const handleSaveResult = (categoryId) => {
+    const category = tournament.categories.find((item) => item.id === categoryId);
+    const isTeam =
+      category?.name?.toLowerCase().includes("đồng đội") ||
+      category?.isTeam ||
+      (category?.athletes || []).some((athlete) => athlete.isTeam);
+    let normalizedForm = { ...resultForm };
+
+    if (isTeam) {
+      const teams = getTeamsFromAthletes(category?.athletes || [], category, tournament);
+      const positions = [
+        ["first", "club1"],
+        ["second", "club2"],
+        ["third1", "club3a"],
+        ["third2", "club3b"],
+      ];
+      for (const [resultField, clubField] of positions) {
+        const value = String(normalizedForm[resultField] || "").trim();
+        if (!value) continue;
+        const team = teams.find((entry) => entry.name === value);
+        if (!team) {
+          toast.error(`Hãy chọn đúng đội cho ${value}; không thể trao huy chương chung cho cả CLB.`);
+          return;
+        }
+        normalizedForm = {
+          ...normalizedForm,
+          [resultField]: team.name,
+          [clubField]: team.club,
+        };
+      }
+    }
+
     dispatch({
       type: ACTIONS.UPDATE_TOURNAMENT,
       payload: {
@@ -546,14 +590,14 @@ export default function StatisticsPage() {
         categoryResults: {
           ...(tournament.categoryResults || {}),
           [categoryId]: {
-            first: resultForm.first,
-            second: resultForm.second,
-            third1: resultForm.third1,
-            third2: resultForm.third2,
-            club1: resultForm.club1,
-            club2: resultForm.club2,
-            club3a: resultForm.club3a,
-            club3b: resultForm.club3b,
+            first: normalizedForm.first,
+            second: normalizedForm.second,
+            third1: normalizedForm.third1,
+            third2: normalizedForm.third2,
+            club1: normalizedForm.club1,
+            club2: normalizedForm.club2,
+            club3a: normalizedForm.club3a,
+            club3b: normalizedForm.club3b,
           },
         },
       },
@@ -620,26 +664,22 @@ export default function StatisticsPage() {
         "HCV (Vàng)": result?.first || "",
         "CLB HCV": result?.club1 || "",
         "Thành viên HCV":
-          getTeamMemberNames(cat, result?.first) ||
-          getTeamMemberNames(cat, result?.club1) ||
+          getAwardedTeamMemberNames(cat, result, "first", result?.first, result?.club1) ||
           "",
         "HCB (Bạc)": result?.second || "",
         "CLB HCB": result?.club2 || "",
         "Thành viên HCB":
-          getTeamMemberNames(cat, result?.second) ||
-          getTeamMemberNames(cat, result?.club2) ||
+          getAwardedTeamMemberNames(cat, result, "second", result?.second, result?.club2) ||
           "",
         "HCĐ 1 (Đồng)": result?.third1 || "",
         "CLB HCĐ 1": result?.club3a || "",
         "Thành viên HCĐ 1":
-          getTeamMemberNames(cat, result?.third1) ||
-          getTeamMemberNames(cat, result?.club3a) ||
+          getAwardedTeamMemberNames(cat, result, "third1", result?.third1, result?.club3a) ||
           "",
         "HCĐ 2 (Đồng)": result?.third2 || "",
         "CLB HCĐ 2": result?.club3b || "",
         "Thành viên HCĐ 2":
-          getTeamMemberNames(cat, result?.third2) ||
-          getTeamMemberNames(cat, result?.club3b) ||
+          getAwardedTeamMemberNames(cat, result, "third2", result?.third2, result?.club3b) ||
           "",
       };
       data.push(row);
@@ -739,6 +779,13 @@ export default function StatisticsPage() {
       .filter(Boolean)
       .join(", ");
   };
+  const getAwardedTeamMemberNames = (cat, result, position, teamName, clubName = "") => {
+    const snapshot = result?.awardTeams?.[position]?.members;
+    if (Array.isArray(snapshot) && snapshot.length > 0) {
+      return snapshot.map((member) => member.name).filter(Boolean).join(", ");
+    }
+    return getTeamMemberNames(cat, teamName, clubName);
+  };
   const formatAthleteBirthYear = (athlete) => {
     if (!athlete) return "";
     if (athlete.birthYear) return String(athlete.birthYear);
@@ -766,12 +813,7 @@ export default function StatisticsPage() {
       );
     }
 
-    const teamName = String(clubName || athleteName || "").trim().toLowerCase();
-    return (cat.athletes || [])
-      .filter(
-        (athlete) =>
-          String(athlete.club || "").trim().toLowerCase() === teamName
-      )
+    return getTeamMembers(cat, athleteName, clubName)
       .map(formatAthleteBirthYear)
       .filter(Boolean)
       .join(", ");
@@ -807,15 +849,12 @@ export default function StatisticsPage() {
       (cat.athletes || []).some((a) => a.isTeam);
 
     // Build member names for team categories
-    const getMemberList = (clubName) => {
-      if (!isTeamCat || !clubName) return "";
-      const members = (cat.athletes || []).filter(
-        (a) =>
-          (a.club || "").trim().toLowerCase() === clubName.trim().toLowerCase()
-      );
+    const getMemberList = (teamName, clubName = "") => {
+      if (!isTeamCat || !teamName) return "";
+      const members = getTeamMembers(cat, teamName, clubName);
       if (members.length === 0) return "";
       return `<div class="member-list">${members
-        .map((m, i) => `${i + 1}. ${m.name}`)
+        .map((m, i) => `${i + 1}. ${m.name}${m.isReserve ? " (Dự bị)" : ""}`)
         .join("<br/>")}</div>`;
     };
 
@@ -1016,26 +1055,22 @@ export default function StatisticsPage() {
         "HCV (Vàng)": result?.first || "",
         "CLB HCV": result?.club1 || "",
         "Thành viên HCV":
-          getTeamMemberNames(cat, result?.first) ||
-          getTeamMemberNames(cat, result?.club1) ||
+          getAwardedTeamMemberNames(cat, result, "first", result?.first, result?.club1) ||
           "",
         "HCB (Bạc)": result?.second || "",
         "CLB HCB": result?.club2 || "",
         "Thành viên HCB":
-          getTeamMemberNames(cat, result?.second) ||
-          getTeamMemberNames(cat, result?.club2) ||
+          getAwardedTeamMemberNames(cat, result, "second", result?.second, result?.club2) ||
           "",
         "HCĐ 1 (Đồng)": result?.third1 || "",
         "CLB HCĐ 1": result?.club3a || "",
         "Thành viên HCĐ 1":
-          getTeamMemberNames(cat, result?.third1) ||
-          getTeamMemberNames(cat, result?.club3a) ||
+          getAwardedTeamMemberNames(cat, result, "third1", result?.third1, result?.club3a) ||
           "",
         "HCĐ 2 (Đồng)": result?.third2 || "",
         "CLB HCĐ 2": result?.club3b || "",
         "Thành viên HCĐ 2":
-          getTeamMemberNames(cat, result?.third2) ||
-          getTeamMemberNames(cat, result?.club3b) ||
+          getAwardedTeamMemberNames(cat, result, "third2", result?.third2, result?.club3b) ||
           "",
       });
     });
@@ -1077,13 +1112,15 @@ export default function StatisticsPage() {
       const result = getCategoryResults(cat.id);
       if (!result) return;
 
-      const addResult = (clubName, medalType, athleteName) => {
+      const addResult = (clubName, medalType, athleteName, awardedTeam = null) => {
         if (!clubName) return;
         const club = clubName.trim();
         if (!clubMap[club]) {
           clubMap[club] = [];
         }
-        const memberNames = getTeamMemberNames(cat, clubName);
+        const memberNames = Array.isArray(awardedTeam?.members) && awardedTeam.members.length > 0
+          ? awardedTeam.members.map((member) => member.name).filter(Boolean).join(", ")
+          : getTeamMemberNames(cat, athleteName, clubName);
         clubMap[club].push({
           categoryName: cat.name,
           medal: medalType,
@@ -1092,10 +1129,10 @@ export default function StatisticsPage() {
         });
       };
 
-      if (result.club1) addResult(result.club1, "🥇 HCV", result.first);
-      if (result.club2) addResult(result.club2, "🥈 HCB", result.second);
-      if (result.club3a) addResult(result.club3a, "🥉 HCĐ", result.third1);
-      if (result.club3b) addResult(result.club3b, "🥉 HCĐ", result.third2);
+      if (result.club1) addResult(result.club1, "🥇 HCV", result.first, result.awardTeams?.first);
+      if (result.club2) addResult(result.club2, "🥈 HCB", result.second, result.awardTeams?.second);
+      if (result.club3a) addResult(result.club3a, "🥉 HCĐ", result.third1, result.awardTeams?.third1);
+      if (result.club3b) addResult(result.club3b, "🥉 HCĐ", result.third2, result.awardTeams?.third2);
     });
 
     return clubMap;
@@ -1298,7 +1335,16 @@ export default function StatisticsPage() {
       .trim();
     if (!catName) return null;
 
-    return {
+    const parseMembers = (value) => {
+      if (!value) return [];
+      try {
+        const parsed = JSON.parse(String(value));
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    };
+    const result = {
       catName,
       first: (
         row["HCV (Vàng)"] ||
@@ -1373,6 +1419,13 @@ export default function StatisticsPage() {
         .toString()
         .trim(),
     };
+    result.awardTeams = {
+      first: result.first ? { name: result.first, club: result.club1, members: parseMembers(row["Đội hình HCV"]) } : null,
+      second: result.second ? { name: result.second, club: result.club2, members: parseMembers(row["Đội hình HCB"]) } : null,
+      third1: result.third1 ? { name: result.third1, club: result.club3a, members: parseMembers(row["Đội hình HCĐ 1"]) } : null,
+      third2: result.third2 ? { name: result.third2, club: result.club3b, members: parseMembers(row["Đội hình HCĐ 2"]) } : null,
+    };
+    return result;
   };
 
   /**
@@ -1687,7 +1740,9 @@ export default function StatisticsPage() {
         const winnerName = (row["Người thắng"] || row["winnerName"] || "")
           .toString()
           .trim();
-        if (!catName || !winnerName) return;
+        const kata1 = (row["Bài quyền VĐV 1"] || "").toString().trim();
+        const kata2 = (row["Bài quyền VĐV 2"] || "").toString().trim();
+        if (!catName || (!winnerName && !kata1 && !kata2)) return;
 
         matchDetails.push({
           catName,
@@ -1699,6 +1754,14 @@ export default function StatisticsPage() {
           athlete2Name: (row["VĐV 2"] || "").toString().trim(),
           athlete2Club: (row["CLB 2"] || "").toString().trim(),
           score2: row["Điểm 2"] ?? null,
+          kata1,
+          kata1Source: (row["Nguồn đăng ký VĐV 1"] || "").toString().trim(),
+          kata1RegisteredBy: (row["Người đăng ký VĐV 1"] || "").toString().trim(),
+          kata1RegisteredAt: (row["Thời gian đăng ký VĐV 1"] || "").toString().trim(),
+          kata2,
+          kata2Source: (row["Nguồn đăng ký VĐV 2"] || "").toString().trim(),
+          kata2RegisteredBy: (row["Người đăng ký VĐV 2"] || "").toString().trim(),
+          kata2RegisteredAt: (row["Thời gian đăng ký VĐV 2"] || "").toString().trim(),
           winnerName,
           winnerClub: (row["CLB thắng"] || "").toString().trim(),
           notes: (row["Ghi chú"] || "").toString().trim(),
@@ -1858,6 +1921,7 @@ export default function StatisticsPage() {
           club2: existing.club2 || newData.club2 || "",
           club3a: existing.club3a || newData.club3a || "",
           club3b: existing.club3b || newData.club3b || "",
+          awardTeams: existing.awardTeams || newData.awardTeams || null,
         };
         imported++;
       } else {
@@ -1871,6 +1935,7 @@ export default function StatisticsPage() {
           club2: newData.club2 || "",
           club3a: newData.club3a || "",
           club3b: newData.club3b || "",
+          awardTeams: newData.awardTeams || null,
         };
         imported++;
       }
@@ -1944,8 +2009,55 @@ export default function StatisticsPage() {
             );
           }
 
-          if (!match || !match.athlete1 || !match.athlete2) return;
-          if (match.winner) return; // Đã có kết quả rồi, bỏ qua
+          if (!match) return;
+
+          const reversed = md.athlete1Name
+            && match.athlete2?.name === md.athlete1Name
+            && match.athlete1?.name === md.athlete2Name;
+          const kataForSlot1 = reversed
+            ? {
+                name: md.kata2,
+                source: md.kata2Source,
+                registeredBy: md.kata2RegisteredBy,
+                registeredAt: md.kata2RegisteredAt,
+              }
+            : {
+                name: md.kata1,
+                source: md.kata1Source,
+                registeredBy: md.kata1RegisteredBy,
+                registeredAt: md.kata1RegisteredAt,
+              };
+          const kataForSlot2 = reversed
+            ? {
+                name: md.kata1,
+                source: md.kata1Source,
+                registeredBy: md.kata1RegisteredBy,
+                registeredAt: md.kata1RegisteredAt,
+              }
+            : {
+                name: md.kata2,
+                source: md.kata2Source,
+                registeredBy: md.kata2RegisteredBy,
+                registeredAt: md.kata2RegisteredAt,
+              };
+
+          if (kataForSlot1.name) {
+            match.kata1 = kataForSlot1.name;
+            match.kata1Source = kataForSlot1.source;
+            match.kata1RegisteredBy = kataForSlot1.registeredBy;
+            match.kata1RegisteredAt = kataForSlot1.registeredAt;
+            hasUpdates = true;
+          }
+          if (kataForSlot2.name) {
+            match.kata2 = kataForSlot2.name;
+            match.kata2Source = kataForSlot2.source;
+            match.kata2RegisteredBy = kataForSlot2.registeredBy;
+            match.kata2RegisteredAt = kataForSlot2.registeredAt;
+            hasUpdates = true;
+          }
+
+          if (!match.athlete1 || !match.athlete2 || !md.winnerName) return;
+          if (match.winner) return; // Đã có kết quả rồi, chỉ cập nhật bài quyền
 
           // Xác định winnerId từ winnerName
           let winnerId = null;
@@ -2681,8 +2793,9 @@ export default function StatisticsPage() {
   const clubs = getClubs();
   const isDelegationCategoryEligible = (category) => {
     const { isTeamCategory } = getCategoryMedalMeta(category);
+    const minTeams = Number(category.minTeamsForDraw) || 3;
     return isTeamCategory
-      ? getTeamsFromAthletes(category.athletes || [], category, tournament).length >= 2
+      ? getTeamsFromAthletes(category.athletes || [], category, tournament).length >= minTeams
       : (category.athletes?.length || 0) >= 3;
   };
   const delegationCategories = tournament.categories.filter(
@@ -2834,26 +2947,45 @@ export default function StatisticsPage() {
     // ===== Sheet 1: Thống kê (official format) =====
     const titleRows = [["THỐNG KÊ"], [tournament.name], []];
     // Header row 1 (merged)
-    const headerRow1 = ["TT", "ĐƠN VỊ", "CÁN BỘ", "", "VĐV", ""];
+    const headerRow1 = ["TT", "ĐƠN VỊ", "CÁN BỘ", "", "", "VĐV", "", "", "TỔNG CỘNG"];
     // Header row 2
-    const headerRow2 = ["", "", "TĐ", "HLV", "Nam", "Nữ"];
+    const headerRow2 = ["", "", "TĐ", "HLV", "Cộng", "Nam", "Nữ", "Cộng", ""];
 
-    const dataRows = delegations.map((d, i) => [
-      i + 1,
-      d.club,
-      d.teamLeaderCount,
-      d.coachCount,
-      d.maleCount,
-      d.femaleCount,
-    ]);
+    const dataRows = delegations.map((d, i) => {
+      const cbTotal = d.teamLeaderCount + d.coachCount;
+      const vdvTotal = d.maleCount + d.femaleCount;
+      const grandTotal = cbTotal + vdvTotal;
+      return [
+        i + 1,
+        d.club,
+        d.teamLeaderCount,
+        d.coachCount,
+        cbTotal,
+        d.maleCount,
+        d.femaleCount,
+        vdvTotal,
+        grandTotal,
+      ];
+    });
     // Totals
+    const totalTD = delegations.reduce((s, d) => s + d.teamLeaderCount, 0);
+    const totalHLV = delegations.reduce((s, d) => s + d.coachCount, 0);
+    const totalCB = totalTD + totalHLV;
+    const totalMale = delegations.reduce((s, d) => s + d.maleCount, 0);
+    const totalFemale = delegations.reduce((s, d) => s + d.femaleCount, 0);
+    const totalVDV = totalMale + totalFemale;
+    const totalAll = totalCB + totalVDV;
+
     dataRows.push([
       "",
       "TỔNG CỘNG",
-      delegations.reduce((s, d) => s + d.teamLeaderCount, 0),
-      delegations.reduce((s, d) => s + d.coachCount, 0),
-      delegations.reduce((s, d) => s + d.maleCount, 0),
-      delegations.reduce((s, d) => s + d.femaleCount, 0),
+      totalTD,
+      totalHLV,
+      totalCB,
+      totalMale,
+      totalFemale,
+      totalVDV,
+      totalAll,
     ]);
 
     const ws1 = XLSX.utils.aoa_to_sheet([
@@ -2864,20 +2996,24 @@ export default function StatisticsPage() {
     ]);
     // Merge cells for headers
     ws1["!merges"] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, // Title
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }, // Tournament name
-      { s: { r: 3, c: 2 }, e: { r: 3, c: 3 } }, // CÁN BỘ
-      { s: { r: 3, c: 4 }, e: { r: 3, c: 5 } }, // VĐV
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } }, // Title
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 8 } }, // Tournament name
+      { s: { r: 3, c: 2 }, e: { r: 3, c: 4 } }, // CÁN BỘ (cols 2, 3, 4)
+      { s: { r: 3, c: 5 }, e: { r: 3, c: 7 } }, // VĐV (cols 5, 6, 7)
       { s: { r: 3, c: 0 }, e: { r: 4, c: 0 } }, // TT
       { s: { r: 3, c: 1 }, e: { r: 4, c: 1 } }, // ĐƠN VỊ
+      { s: { r: 3, c: 8 }, e: { r: 4, c: 8 } }, // TỔNG CỘNG
     ];
     ws1["!cols"] = [
       { wch: 5 },
       { wch: 30 },
-      { wch: 8 },
-      { wch: 8 },
-      { wch: 8 },
-      { wch: 8 },
+      { wch: 7 },
+      { wch: 7 },
+      { wch: 9 },
+      { wch: 7 },
+      { wch: 7 },
+      { wch: 9 },
+      { wch: 12 },
     ];
     XLSX.utils.book_append_sheet(wb, ws1, "Thống kê");
 
@@ -3431,8 +3567,11 @@ export default function StatisticsPage() {
 
     const totalTD = delegations.reduce((s, d) => s + d.teamLeaderCount, 0);
     const totalHLV = delegations.reduce((s, d) => s + d.coachCount, 0);
+    const totalCB = totalTD + totalHLV;
     const totalMale = delegations.reduce((s, d) => s + d.maleCount, 0);
     const totalFemale = delegations.reduce((s, d) => s + d.femaleCount, 0);
+    const totalVDV = totalMale + totalFemale;
+    const totalAll = totalCB + totalVDV;
 
     const htmlContent = `
       ${logoHeaderHTML}
@@ -3441,16 +3580,19 @@ export default function StatisticsPage() {
       <table>
         <thead>
           <tr>
-            <th rowspan="2" style="text-align:center;width:40px">TT</th>
+            <th rowspan="2" style="text-align:center;width:35px">TT</th>
             <th rowspan="2">ĐƠN VỊ</th>
-            <th colspan="2" style="text-align:center">CÁN BỘ</th>
-            <th colspan="2" style="text-align:center">VĐV</th>
+            <th colspan="3" style="text-align:center">CÁN BỘ</th>
+            <th colspan="3" style="text-align:center">VĐV</th>
+            <th rowspan="2" style="text-align:center;width:75px">TỔNG CỘNG</th>
           </tr>
           <tr>
-            <th style="text-align:center;width:50px">TĐ</th>
-            <th style="text-align:center;width:50px">HLV</th>
-            <th style="text-align:center;width:50px">Nam</th>
-            <th style="text-align:center;width:50px">Nữ</th>
+            <th style="text-align:center;width:40px">TĐ</th>
+            <th style="text-align:center;width:40px">HLV</th>
+            <th style="text-align:center;width:45px">Cộng</th>
+            <th style="text-align:center;width:40px">Nam</th>
+            <th style="text-align:center;width:40px">Nữ</th>
+            <th style="text-align:center;width:45px">Cộng</th>
           </tr>
         </thead>
         <tbody>
@@ -3462,8 +3604,11 @@ export default function StatisticsPage() {
               <td>${d.club}</td>
               <td style="text-align:center">${d.teamLeaderCount}</td>
               <td style="text-align:center">${d.coachCount}</td>
+              <td style="text-align:center;font-weight:bold">${d.teamLeaderCount + d.coachCount}</td>
               <td style="text-align:center">${d.maleCount}</td>
               <td style="text-align:center">${d.femaleCount}</td>
+              <td style="text-align:center;font-weight:bold">${d.maleCount + d.femaleCount}</td>
+              <td style="text-align:center;font-weight:bold">${d.teamLeaderCount + d.coachCount + d.maleCount + d.femaleCount}</td>
             </tr>
           `
             )
@@ -3474,8 +3619,11 @@ export default function StatisticsPage() {
             <td colspan="2" style="font-weight:bold;text-align:center">TỔNG CỘNG</td>
             <td style="text-align:center;font-weight:bold">${totalTD}</td>
             <td style="text-align:center;font-weight:bold">${totalHLV}</td>
+            <td style="text-align:center;font-weight:bold">${totalCB}</td>
             <td style="text-align:center;font-weight:bold">${totalMale}</td>
             <td style="text-align:center;font-weight:bold">${totalFemale}</td>
+            <td style="text-align:center;font-weight:bold">${totalVDV}</td>
+            <td style="text-align:center;font-weight:bold">${totalAll}</td>
           </tr>
         </tfoot>
       </table>
@@ -3618,6 +3766,12 @@ export default function StatisticsPage() {
             🏢 Thống kê đoàn
           </button>
           <button
+            className={`stats-tab ${activeTab === "athlete-check" ? "active" : ""}`}
+            onClick={() => setActiveTab("athlete-check")}
+          >
+            🪪 Kiểm tra VĐV
+          </button>
+          <button
             className={`stats-tab ${activeTab === "results" ? "active" : ""}`}
             onClick={() => setActiveTab("results")}
           >
@@ -3636,6 +3790,13 @@ export default function StatisticsPage() {
             💰 Thống kê lệ phí
           </button>
         </div>
+
+        {/* ===== TAB: ATHLETE CHECK ===== */}
+        {activeTab === "athlete-check" && (
+          <div className="stats-content">
+            <AthleteCheckPanel tournament={tournament} dispatch={dispatch} toast={toast} />
+          </div>
+        )}
 
         {/* ===== TAB: OVERVIEW ===== */}
         {activeTab === "overview" && (
@@ -3911,7 +4072,7 @@ export default function StatisticsPage() {
                         ĐƠN VỊ
                       </th>
                       <th
-                        colSpan={2}
+                        colSpan={3}
                         style={{
                           textAlign: "center",
                           background: "#f59e0b",
@@ -3922,7 +4083,7 @@ export default function StatisticsPage() {
                         CÁN BỘ
                       </th>
                       <th
-                        colSpan={2}
+                        colSpan={3}
                         style={{
                           textAlign: "center",
                           background: "#22c55e",
@@ -3932,6 +4093,18 @@ export default function StatisticsPage() {
                       >
                         VĐV
                       </th>
+                      <th
+                        rowSpan={2}
+                        style={{
+                          textAlign: "center",
+                          verticalAlign: "middle",
+                          background: "#1e3a5f",
+                          color: "#fff",
+                          width: "80px",
+                        }}
+                      >
+                        TỔNG CỘNG
+                      </th>
                     </tr>
                     <tr>
                       <th
@@ -3939,7 +4112,7 @@ export default function StatisticsPage() {
                           textAlign: "center",
                           background: "#fbbf24",
                           color: "#000",
-                          width: "55px",
+                          width: "50px",
                         }}
                       >
                         TĐ
@@ -3949,7 +4122,7 @@ export default function StatisticsPage() {
                           textAlign: "center",
                           background: "#fbbf24",
                           color: "#000",
-                          width: "55px",
+                          width: "50px",
                         }}
                       >
                         HLV
@@ -3957,9 +4130,20 @@ export default function StatisticsPage() {
                       <th
                         style={{
                           textAlign: "center",
+                          background: "#d97706",
+                          color: "#fff",
+                          fontWeight: 700,
+                          width: "55px",
+                        }}
+                      >
+                        Cộng
+                      </th>
+                      <th
+                        style={{
+                          textAlign: "center",
                           background: "#4ade80",
                           color: "#000",
-                          width: "60px",
+                          width: "50px",
                         }}
                       >
                         Nam
@@ -3969,64 +4153,141 @@ export default function StatisticsPage() {
                           textAlign: "center",
                           background: "#4ade80",
                           color: "#000",
-                          width: "60px",
+                          width: "50px",
                         }}
                       >
                         Nữ
                       </th>
+                      <th
+                        style={{
+                          textAlign: "center",
+                          background: "#16a34a",
+                          color: "#fff",
+                          fontWeight: 700,
+                          width: "55px",
+                        }}
+                      >
+                        Cộng
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {getClubDelegationSummary().map((d, i) => (
-                      <tr key={d.club}>
-                        <td style={{ textAlign: "center" }}>{i + 1}</td>
-                        <td style={{ fontWeight: 500 }}>{d.club}</td>
-                        <td style={{ textAlign: "center" }}>
-                          {d.teamLeaderCount}
-                        </td>
-                        <td style={{ textAlign: "center" }}>{d.coachCount}</td>
-                        <td style={{ textAlign: "center", fontWeight: 600 }}>
-                          {d.maleCount}
-                        </td>
-                        <td style={{ textAlign: "center", fontWeight: 600 }}>
-                          {d.femaleCount}
-                        </td>
-                      </tr>
-                    ))}
+                    {getClubDelegationSummary().map((d, i) => {
+                      const cbTotal = d.teamLeaderCount + d.coachCount;
+                      const vdvTotal = d.maleCount + d.femaleCount;
+                      const grandTotal = cbTotal + vdvTotal;
+                      return (
+                        <tr key={d.club}>
+                          <td style={{ textAlign: "center" }}>{i + 1}</td>
+                          <td style={{ fontWeight: 500 }}>{d.club}</td>
+                          <td style={{ textAlign: "center" }}>
+                            {d.teamLeaderCount}
+                          </td>
+                          <td style={{ textAlign: "center" }}>{d.coachCount}</td>
+                          <td
+                            style={{
+                              textAlign: "center",
+                              fontWeight: 700,
+                              background: "#fef3c7",
+                              color: "#92400e",
+                            }}
+                          >
+                            {cbTotal}
+                          </td>
+                          <td style={{ textAlign: "center", fontWeight: 600 }}>
+                            {d.maleCount}
+                          </td>
+                          <td style={{ textAlign: "center", fontWeight: 600 }}>
+                            {d.femaleCount}
+                          </td>
+                          <td
+                            style={{
+                              textAlign: "center",
+                              fontWeight: 700,
+                              background: "#dcfce7",
+                              color: "#15803d",
+                            }}
+                          >
+                            {vdvTotal}
+                          </td>
+                          <td
+                            style={{
+                              textAlign: "center",
+                              fontWeight: 800,
+                              background: "#e0f2fe",
+                              color: "#0369a1",
+                            }}
+                          >
+                            {grandTotal}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                   <tfoot>
-                    <tr style={{ fontWeight: 700, background: "#fef9c3" }}>
-                      <td
-                        colSpan={2}
-                        style={{ textAlign: "center", fontWeight: 800 }}
-                      >
-                        TỔNG CỘNG
-                      </td>
-                      <td style={{ textAlign: "center" }}>
-                        {getClubDelegationSummary().reduce(
-                          (s, d) => s + d.teamLeaderCount,
-                          0
-                        )}
-                      </td>
-                      <td style={{ textAlign: "center" }}>
-                        {getClubDelegationSummary().reduce(
-                          (s, d) => s + d.coachCount,
-                          0
-                        )}
-                      </td>
-                      <td style={{ textAlign: "center" }}>
-                        {getClubDelegationSummary().reduce(
-                          (s, d) => s + d.maleCount,
-                          0
-                        )}
-                      </td>
-                      <td style={{ textAlign: "center" }}>
-                        {getClubDelegationSummary().reduce(
-                          (s, d) => s + d.femaleCount,
-                          0
-                        )}
-                      </td>
-                    </tr>
+                    {(() => {
+                      const list = getClubDelegationSummary();
+                      const sumTD = list.reduce(
+                        (s, d) => s + d.teamLeaderCount,
+                        0
+                      );
+                      const sumHLV = list.reduce(
+                        (s, d) => s + d.coachCount,
+                        0
+                      );
+                      const sumCB = sumTD + sumHLV;
+                      const sumMale = list.reduce(
+                        (s, d) => s + d.maleCount,
+                        0
+                      );
+                      const sumFemale = list.reduce(
+                        (s, d) => s + d.femaleCount,
+                        0
+                      );
+                      const sumVDV = sumMale + sumFemale;
+                      const sumAll = sumCB + sumVDV;
+                      return (
+                        <tr style={{ fontWeight: 700, background: "#fef9c3" }}>
+                          <td
+                            colSpan={2}
+                            style={{ textAlign: "center", fontWeight: 800 }}
+                          >
+                            TỔNG CỘNG
+                          </td>
+                          <td style={{ textAlign: "center" }}>{sumTD}</td>
+                          <td style={{ textAlign: "center" }}>{sumHLV}</td>
+                          <td
+                            style={{
+                              textAlign: "center",
+                              background: "#fde68a",
+                              fontWeight: 800,
+                            }}
+                          >
+                            {sumCB}
+                          </td>
+                          <td style={{ textAlign: "center" }}>{sumMale}</td>
+                          <td style={{ textAlign: "center" }}>{sumFemale}</td>
+                          <td
+                            style={{
+                              textAlign: "center",
+                              background: "#bbf7d0",
+                              fontWeight: 800,
+                            }}
+                          >
+                            {sumVDV}
+                          </td>
+                          <td
+                            style={{
+                              textAlign: "center",
+                              background: "#bae6fd",
+                              fontWeight: 800,
+                            }}
+                          >
+                            {sumAll}
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </tfoot>
                 </table>
               </div>
@@ -4616,14 +4877,13 @@ export default function StatisticsPage() {
                 >
                   <label>Lệ phí cá nhân (VNĐ/01 nội dung)</label>
                   <input
-                    type="number"
-                    min="0"
-                    step="10000"
-                    value={feeSettings.individualFee}
+                    type="text"
+                    inputMode="numeric"
+                    value={formatFeeInput(feeSettings.individualFee)}
                     onChange={(e) =>
-                      handleFeeSettingsChange(
+                      handleFeeInputChange(
                         "individualFee",
-                        parseInt(e.target.value) || 0
+                        e.target.value
                       )
                     }
                     className="form-input"
@@ -4635,14 +4895,13 @@ export default function StatisticsPage() {
                 >
                   <label>Lệ phí đồng đội/hỗn hợp (VNĐ/đội)</label>
                   <input
-                    type="number"
-                    min="0"
-                    step="10000"
-                    value={feeSettings.teamFee}
+                    type="text"
+                    inputMode="numeric"
+                    value={formatFeeInput(feeSettings.teamFee)}
                     onChange={(e) =>
-                      handleFeeSettingsChange(
+                      handleFeeInputChange(
                         "teamFee",
-                        parseInt(e.target.value) || 0
+                        e.target.value
                       )
                     }
                     className="form-input"
@@ -4679,14 +4938,13 @@ export default function StatisticsPage() {
                     Phụ thu VĐV thi &ge; 2 nội dung
                   </label>
                   <input
-                    type="number"
-                    min="0"
-                    step="10000"
-                    value={feeSettings.surchargeFee}
+                    type="text"
+                    inputMode="numeric"
+                    value={formatFeeInput(feeSettings.surchargeFee)}
                     onChange={(e) =>
-                      handleFeeSettingsChange(
+                      handleFeeInputChange(
                         "surchargeFee",
-                        parseInt(e.target.value) || 0
+                        e.target.value
                       )
                     }
                     className="form-input"
@@ -4733,7 +4991,7 @@ export default function StatisticsPage() {
                     <tr>
                       <th style={{ width: "40px" }}>STT</th>
                       <th>CLB/Đơn vị</th>
-                      <th style={{ textAlign: "center" }}>Số lượt nội dung cá nhân</th>
+                      <th style={{ textAlign: "center" }}>VĐV / lượt nội dung cá nhân</th>
                       <th style={{ textAlign: "center" }}>Số Đội tham gia</th>
                       <th style={{ textAlign: "center" }}>
                         Nội dung cá nhân thi thêm
@@ -4748,7 +5006,7 @@ export default function StatisticsPage() {
                         <td style={{ textAlign: "center" }}>{i + 1}</td>
                         <td style={{ fontWeight: 600 }}>{d.club}</td>
                         <td style={{ textAlign: "center" }}>
-                          {d.individualCount} <br />
+                          {d.individualAthleteCount} VĐV / {d.individualCount} lượt <br />
                           <small style={{ color: "#94a3b8" }}>
                             {formatCurrency(d.individualFeeTotal)}
                           </small>
@@ -5269,8 +5527,7 @@ export default function StatisticsPage() {
                               HCV: result?.first || "",
                               "CLB HCV": result?.club1 || "",
                               "Thành viên HCV":
-                                getTeamMemberNames(cat, result?.first) ||
-                                getTeamMemberNames(cat, result?.club1) ||
+                                getAwardedTeamMemberNames(cat, result, "first", result?.first, result?.club1) ||
                                 "",
                               ...(exportBirthYear
                                 ? {
@@ -5284,8 +5541,7 @@ export default function StatisticsPage() {
                               HCB: result?.second || "",
                               "CLB HCB": result?.club2 || "",
                               "Thành viên HCB":
-                                getTeamMemberNames(cat, result?.second) ||
-                                getTeamMemberNames(cat, result?.club2) ||
+                                getAwardedTeamMemberNames(cat, result, "second", result?.second, result?.club2) ||
                                 "",
                               ...(exportBirthYear
                                 ? {
@@ -5299,8 +5555,7 @@ export default function StatisticsPage() {
                               "HCĐ 1": result?.third1 || "",
                               "CLB HCĐ 1": result?.club3a || "",
                               "Thành viên HCĐ 1":
-                                getTeamMemberNames(cat, result?.third1) ||
-                                getTeamMemberNames(cat, result?.club3a) ||
+                                getAwardedTeamMemberNames(cat, result, "third1", result?.third1, result?.club3a) ||
                                 "",
                               ...(exportBirthYear
                                 ? {
@@ -5314,8 +5569,7 @@ export default function StatisticsPage() {
                               "HCĐ 2": result?.third2 || "",
                               "CLB HCĐ 2": result?.club3b || "",
                               "Thành viên HCĐ 2":
-                                getTeamMemberNames(cat, result?.third2) ||
-                                getTeamMemberNames(cat, result?.club3b) ||
+                                getAwardedTeamMemberNames(cat, result, "third2", result?.third2, result?.club3b) ||
                                 "",
                               ...(exportBirthYear
                                 ? {
@@ -6038,31 +6292,52 @@ export default function StatisticsPage() {
               clubGroups[club].push(a);
             });
             const clubs = Object.keys(clubGroups).sort();
+            const teamEntries = isTeam
+              ? getTeamsFromAthletes(athletes, cat, tournament)
+              : [];
+            const resultGroups = isTeam
+              ? teamEntries.map((team) => ({
+                  key: team.id,
+                  label: team.name,
+                  club: team.club,
+                  members: team.members || [],
+                  team,
+                }))
+              : clubs.map((club) => ({
+                  key: club,
+                  label: club,
+                  club,
+                  members: clubGroups[club],
+                  team: null,
+                }));
 
-            // For team events: select CLB and show all members
-            const handleSelectTeam = (club, position) => {
+            // A team result keeps the distinct team name for certificates, while
+            // the owner club remains separate for the overall medal tally.
+            const handleSelectTeam = (team, position) => {
+              const teamName = team.name;
+              const club = team.club;
               if (position === "first")
                 setResultForm((prev) => ({
                   ...prev,
-                  first: club,
+                  first: teamName,
                   club1: club,
                 }));
               else if (position === "second")
                 setResultForm((prev) => ({
                   ...prev,
-                  second: club,
+                  second: teamName,
                   club2: club,
                 }));
               else if (position === "third1")
                 setResultForm((prev) => ({
                   ...prev,
-                  third1: club,
+                  third1: teamName,
                   club3a: club,
                 }));
               else if (position === "third2")
                 setResultForm((prev) => ({
                   ...prev,
-                  third2: club,
+                  third2: teamName,
                   club3b: club,
                 }));
             };
@@ -6098,7 +6373,10 @@ export default function StatisticsPage() {
             // Auto-fill CLB when typing name matches an athlete
             const handleNameChange = (value, field, clubField) => {
               const update = { [field]: value };
-              const match = athletes.find((a) => a.name === value);
+              const matchedTeam = isTeam
+                ? teamEntries.find((team) => team.name === value)
+                : null;
+              const match = matchedTeam || athletes.find((a) => a.name === value);
               if (match) update[clubField] = match.club?.trim() || "";
               setResultForm((prev) => ({ ...prev, ...update }));
             };
@@ -6129,7 +6407,7 @@ export default function StatisticsPage() {
                     >
                       {isTeam ? "👥" : "📝"}{" "}
                       {isTeam ? "Danh sách Đội" : "Danh sách VĐV"} (
-                      {athletes.length}) — Click để điền nhanh
+                      {isTeam ? teamEntries.length : athletes.length}) — Click để điền nhanh
                     </div>
                     <div
                       style={{
@@ -6188,9 +6466,9 @@ export default function StatisticsPage() {
                         🥉 Đồng 2
                       </span>
                     </div>
-                    {clubs.map((club) => (
+                    {resultGroups.map((group) => (
                       <div
-                        key={club}
+                        key={group.key}
                         style={{
                           marginBottom: "10px",
                           padding: "6px",
@@ -6217,7 +6495,7 @@ export default function StatisticsPage() {
                               gap: "4px",
                             }}
                           >
-                            🏢 {club}
+                            🏢 {group.label}
                             <span
                               style={{
                                 fontSize: "10px",
@@ -6225,14 +6503,14 @@ export default function StatisticsPage() {
                                 fontWeight: 400,
                               }}
                             >
-                              ({clubGroups[club].length} VĐV)
+                              ({group.members.length} VĐV)
                             </span>
                           </div>
                           {isTeam && (
                             <div style={{ display: "flex", gap: "2px" }}>
                               <button
                                 type="button"
-                                onClick={() => handleSelectTeam(club, "first")}
+                                onClick={() => handleSelectTeam(group.team, "first")}
                                 style={{
                                   fontSize: "9px",
                                   padding: "2px 6px",
@@ -6248,7 +6526,7 @@ export default function StatisticsPage() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleSelectTeam(club, "second")}
+                                onClick={() => handleSelectTeam(group.team, "second")}
                                 style={{
                                   fontSize: "9px",
                                   padding: "2px 6px",
@@ -6264,7 +6542,7 @@ export default function StatisticsPage() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleSelectTeam(club, "third1")}
+                                onClick={() => handleSelectTeam(group.team, "third1")}
                                 style={{
                                   fontSize: "9px",
                                   padding: "2px 6px",
@@ -6280,7 +6558,7 @@ export default function StatisticsPage() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleSelectTeam(club, "third2")}
+                                onClick={() => handleSelectTeam(group.team, "third2")}
                                 style={{
                                   fontSize: "9px",
                                   padding: "2px 6px",
@@ -6305,7 +6583,7 @@ export default function StatisticsPage() {
                             paddingLeft: "4px",
                           }}
                         >
-                          {clubGroups[club].map((a) => (
+                          {group.members.map((a) => (
                             <div
                               key={a.id}
                               style={{
@@ -6322,14 +6600,14 @@ export default function StatisticsPage() {
                                   padding: "2px 4px",
                                 }}
                               >
-                                {a.name}
+                                {a.name}{a.isReserve ? " (Dự bị)" : ""}
                               </span>
                               {!isTeam && (
                                 <>
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      handleSelectAthlete(a.name, club, "first")
+                                      handleSelectAthlete(a.name, group.club, "first")
                                     }
                                     style={{
                                       fontSize: "9px",
@@ -6349,7 +6627,7 @@ export default function StatisticsPage() {
                                     onClick={() =>
                                       handleSelectAthlete(
                                         a.name,
-                                        club,
+                                        group.club,
                                         "second"
                                       )
                                     }
@@ -6371,7 +6649,7 @@ export default function StatisticsPage() {
                                     onClick={() =>
                                       handleSelectAthlete(
                                         a.name,
-                                        club,
+                                        group.club,
                                         "third1"
                                       )
                                     }
@@ -6393,7 +6671,7 @@ export default function StatisticsPage() {
                                     onClick={() =>
                                       handleSelectAthlete(
                                         a.name,
-                                        club,
+                                        group.club,
                                         "third2"
                                       )
                                     }
@@ -6540,8 +6818,8 @@ export default function StatisticsPage() {
                 </div>
                 {/* Datalists for autocomplete */}
                 <datalist id="athletes-list">
-                  {athletes.map((a) => (
-                    <option key={a.id} value={a.name} />
+                  {(isTeam ? teamEntries : athletes).map((entry) => (
+                    <option key={entry.id} value={entry.name} />
                   ))}
                 </datalist>
                 <datalist id="clubs-list">

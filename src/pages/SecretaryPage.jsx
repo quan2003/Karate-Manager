@@ -65,6 +65,58 @@ const WKF_KATA_LIST = [
 const getAthleteKey = (athlete) =>
   String(athlete?.id || athlete?.name || "").trim().toLowerCase();
 
+const getCategoryTeamParticipants = (category) => {
+  const teams = new Map();
+  const matches = [
+    ...(category?.bracket?.matches || []),
+    ...(category?.bracket?.auxiliaryMatches || []),
+    ...(category?.matches || []),
+  ];
+  matches.forEach((match) => {
+    [match?.athlete1, match?.athlete2, match?.winner].forEach((participant) => {
+      if (!participant?.isTeam || !participant.id || teams.has(participant.id)) return;
+      teams.set(participant.id, participant);
+    });
+  });
+  return Array.from(teams.values()).sort((left, right) =>
+    String(left.name || "").localeCompare(String(right.name || ""), "vi", { numeric: true })
+  );
+};
+
+const getKataRegistrationStorageKey = (data) => {
+  const sessionId = data?.exportId
+    || data?.exportSessionId
+    || data?.matchSessionId
+    || data?.tournamentId
+    || "default";
+  return `secretary_kata_registrations_${sessionId}`;
+};
+
+const readKataRegistrations = (data) => {
+  try {
+    const scopedKey = getKataRegistrationStorageKey(data);
+    const scoped = localStorage.getItem(scopedKey);
+    if (scoped) return JSON.parse(scoped);
+
+    // Migrate only rows that belong to the currently opened file.
+    const legacy = JSON.parse(localStorage.getItem("secretary_kata_registrations") || "{}");
+    const validMatchIds = new Set(
+      (data?.categories || []).flatMap((category) =>
+        (category?.bracket?.matches || category?.matches || []).map((match) => match.id)
+      )
+    );
+    const migrated = Object.fromEntries(
+      Object.entries(legacy).filter(([matchId]) => validMatchIds.has(matchId))
+    );
+    if (Object.keys(migrated).length > 0) {
+      localStorage.setItem(scopedKey, JSON.stringify(migrated));
+    }
+    return migrated;
+  } catch {
+    return {};
+  }
+};
+
 const getKataHistory = (category, currentMatch, athlete, registrations) => {
   const athleteKey = getAthleteKey(athlete);
   return (category?.bracket?.matches || [])
@@ -83,6 +135,32 @@ const getKataHistory = (category, currentMatch, athlete, registrations) => {
     })
     .filter(Boolean);
 };
+
+const buildKataExportRows = (data, registrations) =>
+  (data?.categories || []).flatMap((category) => {
+    const matches = category?.bracket?.matches || category?.matches || [];
+    return matches.flatMap((match) => {
+      const kataInfo = registrations[match.id];
+      if (!kataInfo?.kata1 && !kataInfo?.kata2) return [];
+      return [{
+        categoryName: category.name || "",
+        matchId: match.id,
+        roundName: category.bracket?.roundNames?.[Number(match.round) - 1] || `Vòng ${match.round || 1}`,
+        athlete1Name: match.athlete1?.name || "",
+        athlete1Club: match.athlete1?.club || "",
+        athlete2Name: match.athlete2?.name || "",
+        athlete2Club: match.athlete2?.club || "",
+        kata1: kataInfo.kata1 || "",
+        kata1Source: kataInfo.kata1Source || "",
+        kata1RegisteredBy: kataInfo.kata1RegisteredBy || "",
+        kata1RegisteredAt: kataInfo.kata1RegisteredAt || "",
+        kata2: kataInfo.kata2 || "",
+        kata2Source: kataInfo.kata2Source || "",
+        kata2RegisteredBy: kataInfo.kata2RegisteredBy || "",
+        kata2RegisteredAt: kataInfo.kata2RegisteredAt || "",
+      }];
+    });
+  });
 
 const removeVietnameseAccents = (str) => {
   if (!str) return "";
@@ -162,6 +240,7 @@ function SecretaryPage() {
     canScore,
     loadMatchData,
     updateMatchResult,
+    updateSecretaryTeamLineups,
     removeMatchResult,
     getMatchExportData,
     resetRole,
@@ -172,6 +251,8 @@ function SecretaryPage() {
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState("");
   const [finishedMatch, setFinishedMatch] = useState(null);
+  const [showTeamLineupEditor, setShowTeamLineupEditor] = useState(false);
+  const [teamLineupDraft, setTeamLineupDraft] = useState([]);
   const [syncing, setSyncing] = useState(false);
   const [adminIp, setAdminIp] = useState(localStorage.getItem("adminIp") || "");
   const [autoMedalStatus, setAutoMedalStatus] = useState({ synced: 0, complete: 0 });
@@ -179,12 +260,107 @@ function SecretaryPage() {
   const liveExtraRef = useRef({});
   const { activeHint, clearHint } = useOnboarding();
   // Lưu tên bài quyền đã đăng ký: { [matchId]: { kata1, kata2 } }
-  const [kataRegistrations, setKataRegistrations] = useState(() => {
-    try {
-      const saved = localStorage.getItem("secretary_kata_registrations");
-      return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
-  });
+  const kataRegistrationStorageKey = useMemo(
+    () => getKataRegistrationStorageKey(matchData),
+    [matchData]
+  );
+  const [kataRegistrations, setKataRegistrations] = useState(() => readKataRegistrations(matchData));
+  const selectedCategoryTeams = useMemo(
+    () => getCategoryTeamParticipants(selectedCategory),
+    [selectedCategory]
+  );
+
+  useEffect(() => {
+    if (!selectedCategory?.id) return;
+    const refreshed = matchData?.categories?.find((category) => category.id === selectedCategory.id);
+    if (!refreshed || refreshed === selectedCategory) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setSelectedCategory(refreshed);
+    });
+    return () => { cancelled = true; };
+  }, [matchData, selectedCategory]);
+
+  const openTeamLineupEditor = () => {
+    const seen = new Set();
+    const draft = selectedCategoryTeams.flatMap((team) =>
+      (team.members || []).flatMap((member, memberIndex) => {
+        const athleteKey = getAthleteKey(member);
+        if (!athleteKey || seen.has(athleteKey)) return [];
+        seen.add(athleteKey);
+        return [{
+          athlete: { ...member, club: member.club || team.club },
+          teamId: team.id,
+          role: member.isReserve || memberIndex >= Number(team.targetTeamSize || 3)
+            ? "reserve"
+            : "main",
+        }];
+      })
+    );
+    setTeamLineupDraft(draft);
+    setShowTeamLineupEditor(true);
+  };
+
+  const saveTeamLineups = () => {
+    const inferredReserveLimit = Math.max(
+      0,
+      ...selectedCategoryTeams.map((team) =>
+        Math.max(0, (team.members || []).length - Number(team.targetTeamSize || 3))
+      )
+    );
+    const lineups = selectedCategoryTeams.map((team) => {
+      const assignments = teamLineupDraft.filter(
+        (item) => String(item.teamId) === String(team.id)
+      );
+      const members = assignments.map((item) => ({
+        ...item.athlete,
+        isReserve: item.role === "reserve",
+        teamRole: item.role,
+      }));
+      return {
+        teamId: team.id,
+        teamName: team.name,
+        club: team.club,
+        members,
+        confirmedAt: new Date().toISOString(),
+        confirmedBy: "Thư ký",
+      };
+    });
+
+    for (const team of selectedCategoryTeams) {
+      const lineup = lineups.find((item) => String(item.teamId) === String(team.id));
+      const requiredMain = Number(selectedCategory?.teamConfig?.main || team.targetTeamSize || 3);
+      const reserveLimit = Number(
+        selectedCategory?.teamConfig?.reserve ??
+        team.reserveTeamSize ??
+        inferredReserveLimit
+      );
+      const mainCount = lineup.members.filter((member) => !member.isReserve).length;
+      const reserveCount = lineup.members.filter((member) => member.isReserve).length;
+      if (mainCount !== requiredMain || reserveCount > reserveLimit) {
+        setError(
+          `${team.name}: cần đúng ${requiredMain} VĐV chính và tối đa ${reserveLimit} dự bị. ` +
+          `Hiện có ${mainCount} chính, ${reserveCount} dự bị.`
+        );
+        return;
+      }
+    }
+
+    updateSecretaryTeamLineups(selectedCategory.id, lineups);
+    setShowTeamLineupEditor(false);
+    setNotification("✅ Đã chốt đội hình. Dữ liệu này sẽ đi theo kết quả về máy Admin.");
+    setTimeout(() => setNotification(""), 5000);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const registrations = readKataRegistrations(matchData);
+    queueMicrotask(() => {
+      if (!cancelled) setKataRegistrations(registrations);
+    });
+    return () => { cancelled = true; };
+  }, [kataRegistrationStorageKey, matchData]);
+
   const saveKataRegistration = useCallback((matchId, slot, kataName) => {
     setKataRegistrations((prev) => {
       const prefix = slot === 1 ? "kata1" : "kata2";
@@ -198,10 +374,10 @@ function SecretaryPage() {
           [`${prefix}RegisteredAt`]: new Date().toISOString(),
         },
       };
-      localStorage.setItem("secretary_kata_registrations", JSON.stringify(updated));
+      localStorage.setItem(kataRegistrationStorageKey, JSON.stringify(updated));
       return updated;
     });
-  }, []);
+  }, [kataRegistrationStorageKey]);
 
 
   // Sidebar search/filter
@@ -242,7 +418,11 @@ function SecretaryPage() {
 
   const startKataReceiveServer = useCallback(async (forceNewPin = false) => {
     if (!isElectron) return;
-    const matId = activeSelectedMat === 'all' ? '1' : activeSelectedMat;
+    if (activeSelectedMat === "all") {
+      setError("Vui lòng chọn một thảm cụ thể trước khi bật tiếp nhận bài quyền.");
+      return;
+    }
+    const matId = activeSelectedMat;
     const pin = getOrCreateKataPin(matId, forceNewPin);
     try {
       const result = await window.electronAPI.kataReceive.start(matId, pin);
@@ -307,14 +487,16 @@ function SecretaryPage() {
             [data.slot === 1 ? 'kata1RegisteredAt' : 'kata2RegisteredAt']: data.registeredAt || new Date().toISOString(),
           },
         };
-        localStorage.setItem('secretary_kata_registrations', JSON.stringify(updated));
+        localStorage.setItem(kataRegistrationStorageKey, JSON.stringify(updated));
         return updated;
       });
-      setNotification(`📱 Nhận từ thiết bị: ${data.kataName}${data.registeredBy ? ' (' + data.registeredBy + ')' : ''}`);
+      setNotification(
+        `📱 Nhận từ thiết bị: ${data.kataName}${data.registeredBy ? ' (' + data.registeredBy + ')' : ''}${data.warning ? ` — ⚠️ ${data.warning}` : ''}`
+      );
       setTimeout(() => setNotification(''), 4000);
     });
     return cleanup;
-  }, [isElectron]);
+  }, [isElectron, kataRegistrationStorageKey]);
 
   // Đồng bộ danh sách trận lên Kata Receive Server
   const forceSyncKata = useCallback(() => {
@@ -548,6 +730,11 @@ function SecretaryPage() {
     publishCategoryLive(category);
   };
   const handleMatChange = (matId) => {
+    if (kataReceive.running && matId !== activeSelectedMat) {
+      setError("Vui lòng tắt tiếp nhận bài quyền trước khi đổi thảm.");
+      setTimeout(() => setError(""), 5000);
+      return;
+    }
     setSelectedMat(matId);
     localStorage.setItem("secretary_selected_mat", matId);
     const categoriesOnMat = (matchData?.categories || []).filter(
@@ -727,6 +914,18 @@ function SecretaryPage() {
     switch (action) {
       case "set_kata": {
         const athlete = athleteSlot === 1 ? match.athlete1 : match.athlete2;
+        const isCompleted = !!match.winner || matchResults.some(
+          (result) => result.matchId === match.id && (result.winnerId || result.disqualification)
+        );
+        if (!athlete) {
+          setError("Không thể đăng ký bài quyền khi vị trí VĐV còn trống.");
+          return;
+        }
+        if (isCompleted || activeMatchId === match.id) {
+          setError("Trận đang diễn ra hoặc đã hoàn thành nên không thể đổi bài quyền.");
+          setTimeout(() => setError(""), 5000);
+          return;
+        }
         const currentKata = (kataRegistrations[match.id] || {})[athleteSlot === 1 ? "kata1" : "kata2"] || "";
         setDialog({
           type: "prompt",
@@ -738,15 +937,9 @@ function SecretaryPage() {
             setDialog(null);
             if (kataName === null || kataName === undefined) return;
             const trimmedKata = kataName.trim();
-            const maxRound = Math.max(
-              ...(selectedCategory.bracket.matches || []).map((item) => Number(item.round) || 0)
-            );
             const validation = validateKataRegistration({
-              ageGroup: selectedCategory.ageGroup || selectedCategory.name,
               kataName: trimmedKata,
               previousKatas: getKataHistory(selectedCategory, match, athlete, kataRegistrations),
-              round: Number(match.round) || 1,
-              isFinal: Number(match.round) === maxRound,
             });
             if (!validation.valid) {
               setError(`⚠️ ${validation.message}`);
@@ -870,6 +1063,38 @@ function SecretaryPage() {
 
     if (!selectedCategory) return;
 
+    const categoryType = String(selectedCategory.type || "").toLowerCase();
+    const categoryName = String(selectedCategory.name || "").toLowerCase();
+    const isKataCategory = categoryType === "kata"
+      || categoryName.includes("kata")
+      || categoryName.includes("quyền");
+    if (isKataCategory) {
+      const kataInfo = kataRegistrations[match.id] || {};
+      const missingSlots = [
+        match.athlete1 && !kataInfo.kata1 && !match.kata1 ? 1 : 0,
+        match.athlete2 && !kataInfo.kata2 && !match.kata2 ? 2 : 0,
+      ].filter(Boolean);
+      if (missingSlots.length > 0) {
+        const missingNames = missingSlots.map((slot) =>
+          slot === 1 ? match.athlete1?.name : match.athlete2?.name
+        ).filter(Boolean);
+        setDialog({
+          type: "reminder",
+          intent: "reminder",
+          title: "⚠️ Chưa nhập Kata gần thời điểm khóa",
+          message: `${missingNames.join(", ")} chưa đăng ký bài quyền. Hãy nhắc nhập trước khi khóa và mở trận.`,
+          confirmLabel: "Nhắc nhập",
+          cancelLabel: "Để sau",
+          onOk: () => {
+            setDialog(null);
+            handleContextAction("set_kata", match, missingSlots[0]);
+          },
+          onCancel: () => setDialog(null),
+        });
+        return;
+      }
+    }
+
     // Determine round name
     const roundName =
       selectedCategory.bracket?.roundNames?.[match.round - 1] ||
@@ -952,7 +1177,21 @@ function SecretaryPage() {
 
   // Export results
   const handleExport = async (format) => {
-    const data = getMatchExportData();
+    const baseData = getMatchExportData();
+    const kataRows = buildKataExportRows(matchData, kataRegistrations);
+    const kataByMatchId = new Map(kataRows.map((row) => [row.matchId, row]));
+    const resultMatchIds = new Set((baseData.results || []).map((result) => result.matchId));
+    const data = {
+      ...baseData,
+      kataRegistrations,
+      results: [
+        ...(baseData.results || []).map((result) => ({
+          ...result,
+          ...(kataByMatchId.get(result.matchId) || {}),
+        })),
+        ...kataRows.filter((row) => !resultMatchIds.has(row.matchId)),
+      ],
+    };
     try {
       if (format === "json") {
         await exportResultsToJson(data);
@@ -976,9 +1215,10 @@ function SecretaryPage() {
       {/* Match End Modal (Dual Combat Sync) */}
       {finishedMatch && (
         <Modal
+          isOpen={Boolean(finishedMatch)}
           title="🏆 TRẬN ĐẤU KẾT THÚC"
           onClose={() => setFinishedMatch(null)}
-          maxWidth="500px"
+          size="medium"
         >
           <div style={{ textAlign: 'center', padding: '10px 0' }}>
             <h3 style={{ margin: '0 0 15px 0', color: '#1e293b' }}>
@@ -1034,7 +1274,10 @@ function SecretaryPage() {
                     match: undefined,
                     winner: undefined,
                     categoryId: finishedMatch.categoryId || selectedCategory?.id || null,
-                    tournamentId: finishedMatch.tournamentId || matchData?.tournamentId
+                    tournamentId: finishedMatch.tournamentId || matchData?.tournamentId,
+                    teamLineups: matchData?.teamLineups?.[
+                      finishedMatch.categoryId || selectedCategory?.id
+                    ] || [],
                   };
                   
                   const result = await sendMatchResult(adminIp, 3000, syncData);
@@ -1429,6 +1672,16 @@ function SecretaryPage() {
                     }`}>
                       <h2>{selectedCategory.name}</h2>
                       <div className="bracket-stats">
+                        {selectedCategoryTeams.length > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={openTeamLineupEditor}
+                            title="Đổi VĐV chính, dự bị hoặc chuyển VĐV giữa các đội cùng CLB"
+                          >
+                            👥 Chỉnh đội hình
+                          </button>
+                        )}
                         {isCategoryCompleted(selectedCategory, matchResults) && (
                           <span className="completed-badge">Đã hoàn thành</span>
                         )}
@@ -1619,7 +1872,8 @@ function SecretaryPage() {
                                                 ...result,
                                                 matchCode: info.match.matchCode,
                                                 categoryId: info.category.id,
-                                                tournamentId: matchData?.tournamentId
+                                                tournamentId: matchData?.tournamentId,
+                                                teamLineups: matchData?.teamLineups?.[info.category.id] || [],
                                               });
                                               count++;
                                             }
@@ -1763,7 +2017,8 @@ function SecretaryPage() {
                         ...result,
                         matchCode: info?.match.matchCode,
                         categoryId: info?.category.id,
-                        tournamentId: matchData?.tournamentId
+                        tournamentId: matchData?.tournamentId,
+                        teamLineups: matchData?.teamLineups?.[info?.category.id] || [],
                       });
                       if (res.success) successCount++;
                     }
@@ -1787,6 +2042,84 @@ function SecretaryPage() {
           </>
         )}{" "}
       </div>
+
+      {showTeamLineupEditor && (
+        <Modal
+          isOpen={showTeamLineupEditor}
+          title={`👥 Chỉnh đội hình: ${selectedCategory?.name || ""}`}
+          onClose={() => setShowTeamLineupEditor(false)}
+          size="large"
+        >
+          <div style={{ maxHeight: "70vh", overflowY: "auto" }}>
+            <div className="alert alert-info" style={{ marginBottom: "12px" }}>
+              Chọn đội và vai trò thực tế. VĐV chính và dự bị của đội đoạt giải đều nhận huy chương;
+              bảng toàn đoàn vẫn cộng một huy chương cho CLB.
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+              <thead>
+                <tr style={{ background: "#f1f5f9" }}>
+                  <th style={{ padding: "8px", textAlign: "left" }}>VĐV</th>
+                  <th style={{ padding: "8px", textAlign: "left" }}>CLB</th>
+                  <th style={{ padding: "8px", textAlign: "left" }}>Đội</th>
+                  <th style={{ padding: "8px", textAlign: "left" }}>Vai trò</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamLineupDraft.map((item, index) => {
+                  const availableTeams = selectedCategoryTeams.filter(
+                    (team) => String(team.club || "") === String(item.athlete.club || "")
+                  );
+                  return (
+                    <tr key={getAthleteKey(item.athlete)} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "8px", fontWeight: 600 }}>{item.athlete.name}</td>
+                      <td style={{ padding: "8px" }}>{item.athlete.club || "-"}</td>
+                      <td style={{ padding: "8px" }}>
+                        <select
+                          className="input"
+                          value={item.teamId}
+                          onChange={(event) => setTeamLineupDraft((current) =>
+                            current.map((row, rowIndex) => rowIndex === index
+                              ? { ...row, teamId: event.target.value }
+                              : row
+                            )
+                          )}
+                        >
+                          {availableTeams.map((team) => (
+                            <option key={team.id} value={team.id}>{team.name}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={{ padding: "8px" }}>
+                        <select
+                          className="input"
+                          value={item.role}
+                          onChange={(event) => setTeamLineupDraft((current) =>
+                            current.map((row, rowIndex) => rowIndex === index
+                              ? { ...row, role: event.target.value }
+                              : row
+                            )
+                          )}
+                        >
+                          <option value="main">Chính thức</option>
+                          <option value="reserve">Dự bị</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="modal-actions" style={{ marginTop: "16px" }}>
+              <button className="btn btn-secondary" onClick={() => setShowTeamLineupEditor(false)}>
+                Hủy
+              </button>
+              <button className="btn btn-primary" onClick={saveTeamLineups}>
+                💾 Chốt đội hình
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* ===== CUSTOM DIALOG (replaces window.prompt / window.confirm) ===== */}
       {dialog && (
@@ -1826,11 +2159,11 @@ function SecretaryPage() {
                 className="secretary-dialog-btn cancel"
                 onClick={dialog.onCancel}
               >
-                Hủy
+                {dialog.cancelLabel || "Hủy"}
               </button>
               <button
                 className={`secretary-dialog-btn ok ${
-                  dialog.type === "confirm" ? "danger" : "primary"
+                  dialog.type === "confirm" && dialog.intent !== "reminder" ? "danger" : "primary"
                 }`}
                 onClick={() => {
                   if (dialog.type === "prompt") {
@@ -1844,7 +2177,7 @@ function SecretaryPage() {
                   }
                 }}
               >
-                {dialog.type === "confirm" ? "Xác nhận" : "OK"}
+                {dialog.confirmLabel || (dialog.type === "confirm" ? "Xác nhận" : "OK")}
               </button>
             </div>
           </div>

@@ -1,3 +1,5 @@
+import { getTeamsFromAthletes } from "./teamDraw.js";
+
 const normalizeText = (value) =>
   String(value || "")
     .replace(/\s+/g, " ")
@@ -16,7 +18,7 @@ export const isTeamFeeCategory = (category) => {
   );
 };
 
-export const calculateClubFeeSummary = ({ categories = [], clubs = [], feeSettings = {} }) => {
+export const calculateClubFeeSummary = ({ categories = [], clubs = [], feeSettings = {}, tournament = {} }) => {
   const individualFee = Number(feeSettings.individualFee) || 0;
   const teamFee = Number(feeSettings.teamFee) || 0;
   const surchargeFee = Number(feeSettings.surchargeFee) || 0;
@@ -33,7 +35,13 @@ export const calculateClubFeeSummary = ({ categories = [], clubs = [], feeSettin
         (athlete) => String(athlete?.club || "").trim() === normalizedClub
       );
       if (isTeamFeeCategory(category)) {
-        if (clubAthletes.length > 0) teamEntries += 1;
+        teamEntries += getTeamsFromAthletes(
+          category?.athletes || [],
+          category,
+          tournament
+        ).filter(
+          (team) => String(team?.club || "").trim() === normalizedClub
+        ).length;
         return;
       }
       individualCount += clubAthletes.length;
@@ -52,9 +60,10 @@ export const calculateClubFeeSummary = ({ categories = [], clubs = [], feeSettin
         extraEventsForSurcharge += Math.max(0, events.size - 1);
       });
     }
+    const individualAthleteCount = individualEventsByAthlete.size;
     const teamFeeTotal = teamEntries * teamFee;
-    const individualFeeTotal = individualCount * individualFee;
+    const individualFeeTotal = individualAthleteCount * individualFee;
     const surchargeTotal = extraEventsForSurcharge * surchargeFee;
-    return { club: normalizedClub, teamEntries, teamFeeTotal, individualCount, individualFeeTotal, extraEventsForSurcharge, surchargeTotal, totalFee: teamFeeTotal + individualFeeTotal + surchargeTotal };
+    return { club: normalizedClub, teamEntries, teamFeeTotal, individualCount, individualAthleteCount, individualFeeTotal, extraEventsForSurcharge, surchargeTotal, totalFee: teamFeeTotal + individualFeeTotal + surchargeTotal };
   }).sort((a, b) => a.club.localeCompare(b.club, "vi"));
 };

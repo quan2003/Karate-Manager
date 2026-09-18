@@ -265,8 +265,8 @@ export default function CategoryPage() {
       if (isTeamCategory) {
         // For team categories: group athletes by club
         drawEntries = teamEntries;
-        if (drawEntries.length < 2) {
-          setDrawError('Cần ít nhất 2 đội để bốc thăm đồng đội!');
+        if (drawEntries.length < 3) {
+          setDrawError('Cần ít nhất 3 đội để bốc thăm đồng đội!');
           return;
         }
       } else {
@@ -323,9 +323,34 @@ export default function CategoryPage() {
     }
   };
 
-  const teamSize = isTeamCategory
-    ? getTeamFormationSize()
+  const categoryGender = String(category.gender || "").toLowerCase();
+  const globalTeamSettings = tournament.teamMedalsSettings || {};
+  const defaultTeamMain = category.type === "kumite"
+    ? (categoryGender === "female"
+        ? (globalTeamSettings.kumiteFemaleMain ?? 3)
+        : (globalTeamSettings.kumiteMaleMain ?? 3))
+    : (globalTeamSettings.kata ?? 3);
+  const defaultTeamReserve = category.type === "kumite"
+    ? (categoryGender === "female"
+        ? (globalTeamSettings.kumiteFemaleReserve ?? Math.max(0, Number(globalTeamSettings.kumiteFemale ?? globalTeamSettings.kumite ?? 3) - 3))
+        : (globalTeamSettings.kumiteMaleReserve ?? Math.max(0, Number(globalTeamSettings.kumiteMale ?? globalTeamSettings.kumite ?? 3) - 3)))
     : 0;
+
+  const teamMainSize = Math.max(1, Number(category.teamConfig?.main) || defaultTeamMain);
+  const teamReserveSize = Math.max(0, category.teamConfig?.reserve == null ? defaultTeamReserve : Number(category.teamConfig.reserve));
+
+  const updateTeamConfig = (updates) => {
+    const nextConfig = { main: teamMainSize, reserve: teamReserveSize, ...(category.teamConfig || {}), ...updates };
+    dispatch({
+      type: ACTIONS.UPDATE_CATEGORY,
+      payload: { id: category.id, teamConfig: nextConfig, teamSize: nextConfig.main + nextConfig.reserve },
+    });
+  };
+
+  const teamSize = isTeamCategory
+    ? getTeamFormationSize(category, tournament)
+    : 0;
+  const maxTeamRosterSize = teamSize + teamReserveSize;
   const teamClubCounts = isTeamCategory
     ? Array.from(category.athletes.reduce((clubs, athlete) => {
         const club = String(athlete.club || "Không CLB").trim().replace(/\s+/g, " ");
@@ -340,8 +365,9 @@ export default function CategoryPage() {
       })
     : [];
   const teamCount = teamEntries.length;
+  const minTeamsNeeded = Number(category.minTeamsForDraw) || 3;
   const canDraw = isTeamCategory
-    ? teamCount >= 2
+    ? teamCount >= minTeamsNeeded
     : category.athletes.length >= 3;
   const allSameClub = (() => {
     if (category.athletes.length < 3) return false;
@@ -432,7 +458,7 @@ export default function CategoryPage() {
                   clearHint();
                   if (!canDraw) {
                     if (isTeamCategory) {
-                      toast.warning("Nội dung đồng đội cần ít nhất 2 đội để bốc thăm!");
+                      toast.warning(`Nội dung đồng đội cần ít nhất ${minTeamsNeeded} đội để bốc thăm!`);
                     } else {
                       toast.warning("Cần ít nhất 3 VĐV để bốc thăm!");
                     }
@@ -486,6 +512,83 @@ export default function CategoryPage() {
             )}
           </div>
         )}
+        {/* Cấu hình Đội và Huy chương & Tùy chỉnh môn ngoại lệ */}
+        <div className="card" style={{ marginBottom: "16px", padding: "18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "10px" }}>
+            <h2 style={{ margin: 0, fontSize: "16px" }}>⚙️ Cấu hình thi đấu & Huy chương</h2>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "13px", fontWeight: 500, color: "#475569" }}>Loại hình:</span>
+              <select
+                className="input"
+                style={{ padding: "4px 8px", fontSize: "13px", width: "auto" }}
+                value={category.isTeamEvent === true ? "team" : category.isTeamEvent === false ? "individual" : (isTeamCategory ? "team" : "individual")}
+                onChange={(e) => {
+                  const val = e.target.value === "team";
+                  dispatch({
+                    type: ACTIONS.UPDATE_CATEGORY,
+                    payload: { id: category.id, isTeamEvent: val, isTeam: val },
+                  });
+                  toast.success(val ? "Đã chuyển sang chế độ Thi đấu Đồng đội!" : "Đã chuyển sang chế độ Thi đấu Cá nhân!");
+                }}
+              >
+                <option value="individual">Cá nhân</option>
+                <option value="team">Đồng đội (Tùy chỉnh nội dung ngoại lệ)</option>
+              </select>
+            </div>
+          </div>
+
+          {isTeamCategory ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "16px", alignItems: "center", background: "#f8fafc", padding: "12px 16px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+              <label style={{ fontSize: "13px", fontWeight: 500 }}>
+                {category.type === "kumite" ? "VĐV chính/đội:" : "Số VĐV/đội:"}
+                <input
+                  type="number"
+                  min="1"
+                  value={teamMainSize}
+                  onChange={(event) => updateTeamConfig({ main: Math.max(1, Number(event.target.value) || 1) })}
+                  style={{ width: "72px", marginLeft: "8px", padding: "4px 8px", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                />
+              </label>
+              {category.type === "kumite" && (
+                <label style={{ fontSize: "13px", fontWeight: 500 }}>
+                  VĐV dự bị/đội:
+                  <input
+                    type="number"
+                    min="0"
+                    value={teamReserveSize}
+                    onChange={(event) => updateTeamConfig({ reserve: Math.max(0, Number(event.target.value) || 0) })}
+                    style={{ width: "72px", marginLeft: "8px", padding: "4px 8px", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                  />
+                </label>
+              )}
+              <label style={{ fontSize: "13px", fontWeight: 500 }}>
+                Điều kiện đủ (Tối thiểu):
+                <select
+                  style={{ marginLeft: "8px", padding: "4px 8px", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                  value={minTeamsNeeded}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    dispatch({
+                      type: ACTIONS.UPDATE_CATEGORY,
+                      payload: { id: category.id, minTeamsForDraw: val },
+                    });
+                  }}
+                >
+                  <option value={3}>≥ 3 đội (Quy chuẩn 3 đội trở lên)</option>
+                  <option value={2}>≥ 2 đội (Ngoại lệ 2 đội)</option>
+                </select>
+              </label>
+              <strong style={{ fontSize: "13px" }}>Tối đa: {maxTeamRosterSize} VĐV/đội</strong>
+              <span style={{ fontSize: "12px", color: "#64748b" }}>
+                HCV: {maxTeamRosterSize} · HCB: {maxTeamRosterSize} · HCĐ: {maxTeamRosterSize * 2}
+              </span>
+            </div>
+          ) : (
+            <p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>
+              Nội dung thi đấu cá nhân tiêu chuẩn (yêu cầu tối thiểu 3 VĐV). Chuyển sang "Đồng đội" ở góc trên nếu đây là môn thi đồng đội ngoại lệ.
+            </p>
+          )}
+        </div>
         <div className="athlete-section card">
           <h2>Danh sách vận động viên ({category.athletes.length})</h2>{" "}
           <AthleteList
@@ -630,7 +733,12 @@ export default function CategoryPage() {
                 {teamEntries.map((team) => (
                   <div className="team-draw-preview-item" key={team.id}>
                     <strong>{team.name}</strong>
-                    <span>{team.members.map((member) => member.name).join(" • ")}</span>
+                    <span>
+                      Chính: {team.members.filter((member) => !member.isReserve).map((member) => member.name).join(" • ")}
+                      {team.members.some((member) => member.isReserve) && (
+                        <span> · Dự bị: {team.members.filter((member) => member.isReserve).map((member) => member.name).join(" • ")}</span>
+                      )}
+                    </span>
                   </div>
                 ))}
               </div>
