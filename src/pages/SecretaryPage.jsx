@@ -1878,8 +1878,33 @@ function SecretaryPage() {
                                               count++;
                                             }
                                           }
+                                          const medalItem = (getMatchExportData()?.categoryMedals || [])
+                                            .find((item) => item.categoryId === selectedCategory?.id);
+                                          let medalsSynced = false;
+                                          if (medalItem && isCategoryCompleted(selectedCategory, matchResults)) {
+                                            const medalResult = await sendCategoryMedals(adminIp, 3000, {
+                                              tournamentId: matchData?.tournamentId,
+                                              exportId: matchData?.exportId,
+                                              categoryId: medalItem.categoryId,
+                                              categoryName: medalItem.categoryName,
+                                              medals: {
+                                                gold: medalItem.gold,
+                                                silver: medalItem.silver,
+                                                bronze1: medalItem.bronze1,
+                                                bronze2: medalItem.bronze2,
+                                              },
+                                              syncProtocol: 2,
+                                              confirmedInCurrentRun: true,
+                                              syncedAt: new Date().toISOString(),
+                                            });
+                                            medalsSynced = medalResult.success;
+                                          }
                                           setSyncing(false);
-                                          setNotification(`✅ Đã đồng bộ ${count} trận đấu sang Admin!`);
+                                          setNotification(
+                                            medalsSynced
+                                              ? `✅ Đã đồng bộ ${count} trận và kết quả huy chương sang Admin!`
+                                              : `✅ Đã đồng bộ ${count} trận đấu sang Admin!`
+                                          );
                                           setTimeout(() => setNotification(""), 3000);
                                         }}
                                         disabled={syncing || matchResults.length === 0}
@@ -1953,6 +1978,7 @@ function SecretaryPage() {
                                       </span>
                                     </td>
                                   </tr>
+                                  {bronzeMedalists[1] && (
                                   <tr className="medal-row medal-bronze">
                                     <td>
                                       <span className="medal-icon-sm">🥉</span>
@@ -1974,6 +2000,7 @@ function SecretaryPage() {
                                       </span>
                                     </td>
                                   </tr>
+                                  )}
                                 </tbody>
                               </table>
                             </div>

@@ -56,8 +56,15 @@ export function selectDualBronzeMedalists({ bracket }) {
   if (!final.ok) return final;
   const semiRound = Number(bracket?.numRounds) - 1;
   if (!Number.isFinite(semiRound) || semiRound < 1) return fail(MEDAL_SELECTION_STATUSES.INVALID_RESULT, { reason: "INVALID_NUM_ROUNDS" });
-  const semis = bracket.matches.filter((match) => match?.round === semiRound && match?.isBye !== true);
+  // Keep BYE semifinals in the structural pair. A three-participant draw has
+  // one contested semifinal and one BYE semifinal, so it legitimately awards
+  // only one bronze medal.
+  const semis = bracket.matches.filter((match) => match?.round === semiRound);
   if (semis.length !== 2) return fail(MEDAL_SELECTION_STATUSES.INVALID_RESULT, { reason: "AMBIGUOUS_SEMIFINALS", matchIds: semis.map((match) => match.id) });
+  const semifinalParticipantIds = new Set(
+    semis.flatMap((match) => [athleteId(match?.athlete1), athleteId(match?.athlete2)]).filter(Boolean)
+  );
+  const expectedBronzeCount = Math.min(2, Math.max(0, semifinalParticipantIds.size - 2));
   const bronze = [];
   const autoAdvanceSemis = [];
   for (const semi of semis) {
@@ -89,8 +96,8 @@ export function selectDualBronzeMedalists({ bracket }) {
       if (!added.ok) return added;
     }
   }
-  if (bronze.length < 2) return fail(MEDAL_SELECTION_STATUSES.INVALID_RESULT, { reason: "BRONZE_MEDALISTS_UNDETERMINED" });
-  return ready(BRONZE_MODES.DUAL_BRONZE, final.gold, final.silver, bronze[0], bronze[1], { finalMatchId: final.finalMatch.id, bronzeMatchIds: semis.map((match) => match.id) });
+  if (bronze.length < expectedBronzeCount) return fail(MEDAL_SELECTION_STATUSES.INVALID_RESULT, { reason: "BRONZE_MEDALISTS_UNDETERMINED" });
+  return ready(BRONZE_MODES.DUAL_BRONZE, final.gold, final.silver, bronze[0] || null, bronze[1] || null, { finalMatchId: final.finalMatch.id, bronzeMatchIds: semis.map((match) => match.id) });
 }
 
 export function getExpectedSingleBronzeIdentity(categoryId) {
