@@ -9,7 +9,11 @@ import Modal from "../components/common/Modal";
 import { useToast } from "../components/common/Toast";
 import * as XLSX from "xlsx";
 import { updateMatchResult as applyMatchResult, getSeedAssignments, rebuildBracketFromSeeds } from "../utils/drawEngine";
-import { getTeamSizeForCategory, getTeamsFromAthletes } from "../utils/teamDraw";
+import {
+  getTeamSizeForCategory,
+  getTeamsFromAthletes,
+  isTeamCategory as isTeamCategoryMeta,
+} from "../utils/teamDraw";
 import { calculateClubFeeSummary } from "../utils/feeCalculation";
 import { getEstimatedMatchCount } from "../services/scheduleService";
 import { exportAchievementConfirmationDocx } from "../services/achievementConfirmationDocxService";
@@ -123,25 +127,8 @@ export default function StatisticsPage() {
   const getCategoryMedalMeta = (cat) => {
     const nameLower = cat.name?.toLowerCase() || '';
     const typeLower = cat.type?.toLowerCase() || '';
-    const hasTeamKeywords =
-      nameLower.includes('đồng đội') ||
-      nameLower.includes('hỗn hợp') ||
-      nameLower.includes('team');
-    const hasIndividualKeywords =
-      nameLower.includes('cá nhân') ||
-      nameLower.includes('individual');
-
-    let isTeamCategory = false;
-    if (hasIndividualKeywords) {
-      isTeamCategory = false;
-    } else if (cat.isTeam || hasTeamKeywords) {
-      isTeamCategory = true;
-    } else if ((cat.athletes || []).some(a => a.isTeam)) {
-      isTeamCategory = true;
-    }
-
     const type = typeLower === 'kata' || nameLower.includes('kata') ? 'kata' : 'kumite';
-    return { isTeamCategory, type };
+    return { isTeamCategory: isTeamCategoryMeta(cat), type };
   };
 
   // ===== PDF PRINT HELPER =====
@@ -553,10 +540,7 @@ export default function StatisticsPage() {
 
   const handleSaveResult = (categoryId) => {
     const category = tournament.categories.find((item) => item.id === categoryId);
-    const isTeam =
-      category?.name?.toLowerCase().includes("đồng đội") ||
-      category?.isTeam ||
-      (category?.athletes || []).some((athlete) => athlete.isTeam);
+    const isTeam = isTeamCategoryMeta(category);
     let normalizedForm = { ...resultForm };
 
     if (isTeam) {
@@ -734,10 +718,7 @@ export default function StatisticsPage() {
   // names are "<club> - Đội 1/2", while the raw athletes only store <club>.
   const getTeamMembers = (cat, teamName, clubName = "") => {
     if (!teamName && !clubName) return [];
-    const isTeamCat =
-      cat.name?.toLowerCase().includes("đồng đội") ||
-      cat.isTeam ||
-      (cat.athletes || []).some((a) => a.isTeam);
+    const isTeamCat = isTeamCategoryMeta(cat);
     if (!isTeamCat) return [];
 
     const normalize = (value) => String(value || "").trim().toLowerCase();
@@ -803,10 +784,7 @@ export default function StatisticsPage() {
   };
 
   const getResultBirthYears = (cat, athleteName, clubName) => {
-    const isTeamCat =
-      cat.name?.toLowerCase().includes("đồng đội") ||
-      cat.isTeam ||
-      (cat.athletes || []).some((athlete) => athlete.isTeam);
+    const isTeamCat = isTeamCategoryMeta(cat);
     if (!isTeamCat) {
       return formatAthleteBirthYear(
         findResultAthlete(cat, athleteName, clubName)
@@ -843,10 +821,7 @@ export default function StatisticsPage() {
         ? "Nữ"
         : "Hỗn hợp";
     const typeLabel = cat.type === "kumite" ? "Kumite" : "Kata";
-    const isTeamCat =
-      cat.name?.toLowerCase().includes("đồng đội") ||
-      cat.isTeam ||
-      (cat.athletes || []).some((a) => a.isTeam);
+    const isTeamCat = isTeamCategoryMeta(cat);
 
     // Build member names for team categories
     const getMemberList = (teamName, clubName = "") => {
@@ -5412,12 +5387,9 @@ export default function StatisticsPage() {
                             if (!result) return;
                             
                             const addMedalRow = (athleteName, clubName, medal) => {
-                              if (!athleteName && !clubName) return;
+                              if (!String(athleteName || "").trim()) return;
                               
-                              const isTeamCat =
-                                cat.name?.toLowerCase().includes("đồng đội") ||
-                                cat.isTeam ||
-                                (cat.athletes || []).some((a) => a.isTeam);
+                              const isTeamCat = isTeamCategoryMeta(cat);
 
                               const members = isTeamCat
                                 ? getTeamMembers(cat, athleteName, clubName)

@@ -23,6 +23,7 @@ let state = {
     minutes: 3,
     seconds: 0,
     deciseconds: 0,
+    durationSeconds: 180,
     hasStarted: false,
     isRunning: false,
   },
@@ -390,7 +391,24 @@ function loadState() {
     const parsedState = JSON.parse(saved);
     state = { ...state, ...parsedState };
     state.proposedWinner = null;
-    state.timer = { ...state.timer, ...parsedState.timer, hasStarted: parsedState.timer?.hasStarted === true };
+    const savedTimer = parsedState.timer || {};
+    const savedDuration = parseSecondsValue(savedTimer.durationSeconds);
+    const remainingSeconds =
+      (Number(savedTimer.minutes) || 0) * 60 +
+      (Number(savedTimer.seconds) || 0) +
+      (Number(savedTimer.deciseconds) || 0) / 10;
+    state.timer = {
+      ...state.timer,
+      ...savedTimer,
+      // Old saved states did not distinguish the configured round duration
+      // from the live countdown. Never migrate an expired 00:00 as the next
+      // round's duration.
+      durationSeconds:
+        savedDuration === null
+          ? (savedTimer.hasStarted === true ? 180 : (remainingSeconds || 180))
+          : savedDuration,
+      hasStarted: savedTimer.hasStarted === true,
+    };
     state.hantei = normalizeHanteiState(parsedState.hantei);
     if (parsedState.medicalTimer) {
       state.medicalTimer = { ...state.medicalTimer, ...parsedState.medicalTimer };
@@ -452,11 +470,11 @@ function updateUI() {
     });
   });
 
-  // Update seconds input (preserve decimal formatting and avoid overwriting while user is focused/typing)
+  // Keep the editor bound to the configured duration, not the live countdown.
+  // Otherwise it becomes 0 at the end of a round and the next round also starts at 0.
   const secondsInput = document.getElementById("secondsInput");
   if (secondsInput && document.activeElement !== secondsInput) {
-    const totalSec = (state.timer.minutes * 60 + state.timer.seconds) + ((state.timer.deciseconds || 0) / 10);
-    secondsInput.value = formatSecondsValue(totalSec);
+    secondsInput.value = formatSecondsValue(state.timer.durationSeconds ?? 180);
   }
 
   // Update error names
@@ -662,16 +680,18 @@ function formatSecondsValue(value) {
   return tenths % 10 === 0 ? String(tenths / 10) : (tenths / 10).toFixed(1);
 }
 
-function applySecondsValue(totalSeconds) {
+function applySecondsValue(totalSeconds, updateDuration = true) {
   const totalTenths = Math.max(0, Math.round(totalSeconds * 10));
   state.timer.minutes = Math.floor(totalTenths / 600);
   state.timer.seconds = Math.floor((totalTenths % 600) / 10);
   state.timer.deciseconds = totalTenths % 10;
-  state.timer.hasStarted = false;
+  state.timer.hasStarted = state.timer.isRunning === true;
+  if (updateDuration) {
+    state.timer.durationSeconds = totalTenths / 10;
+  }
 }
 
 function handleSecondsInput(event) {
-  if (state.timer.isRunning) return;
   const parsed = parseSecondsValue(event.target.value);
   if (parsed === null) return;
   applySecondsValue(parsed);
@@ -684,11 +704,9 @@ function commitSecondsInput() {
   const parsed = parseSecondsValue(input?.value);
   const totalSeconds = parsed === null ? 180 : parsed;
   if (input) input.value = formatSecondsValue(totalSeconds);
-  if (!state.timer.isRunning) {
-    applySecondsValue(totalSeconds);
-    saveState();
-    updatePreview();
-  }
+  applySecondsValue(totalSeconds);
+  saveState();
+  updatePreview();
 }
 
 function handleSecondsKeyDown(event) {
@@ -702,9 +720,11 @@ function handleSecondsKeyDown(event) {
 function resetTimer() {
   stopTimer();
   const input = document.getElementById("secondsInput");
-  const totalSeconds = parseSecondsValue(input?.value);
-  applySecondsValue(totalSeconds === null ? 180 : totalSeconds);
-  if (input) input.value = formatSecondsValue(totalSeconds === null ? 180 : totalSeconds);
+  const configuredSeconds = parseSecondsValue(state.timer.durationSeconds);
+  const totalSeconds = configuredSeconds === null ? 180 : configuredSeconds;
+  // Reset only the live countdown; preserve the configured duration for every round.
+  applySecondsValue(totalSeconds, false);
+  if (input) input.value = formatSecondsValue(totalSeconds);
   saveState();
   updatePreview();
 }
@@ -715,22 +735,29 @@ function adjustSeconds(amount) {
   const value = Math.max(0, (parsed === null ? 180 : parsed) + amount);
   input.value = formatSecondsValue(value);
 
-  if (!state.timer.isRunning) {
-    applySecondsValue(value);
-    saveState();
-    updatePreview();
-  }
+  applySecondsValue(value);
+  saveState();
+  updatePreview();
 }
 
 function setSeconds() {
   const input = document.getElementById("secondsInput");
   const totalSeconds = parseSecondsValue(input?.value);
-  if (!state.timer.isRunning) {
-    applySecondsValue(totalSeconds === null ? 180 : totalSeconds);
-    if (input) input.value = formatSecondsValue(totalSeconds === null ? 180 : totalSeconds);
-    saveState();
-    updatePreview();
-  }
+  applySecondsValue(totalSeconds === null ? 180 : totalSeconds);
+  if (input) input.value = formatSecondsValue(totalSeconds === null ? 180 : totalSeconds);
+  saveState();
+  updatePreview();
+}
+
+function setQuickTime(totalSeconds) {
+  const value = parseSecondsValue(totalSeconds);
+  if (value === null) return;
+
+  const input = document.getElementById("secondsInput");
+  if (input) input.value = formatSecondsValue(value);
+  applySecondsValue(value);
+  saveState();
+  updatePreview();
 }
 
 // Timer Speed Control
@@ -1500,6 +1527,7 @@ function resetAllSettings() {
       minutes: 3,
       seconds: 0,
       deciseconds: 0,
+      durationSeconds: 180,
       hasStarted: false,
       isRunning: false,
     },
@@ -2277,6 +2305,7 @@ async function loadPendingMatch() {
       minutes: 3,
       seconds: 0,
       deciseconds: 0,
+      durationSeconds: 180,
       hasStarted: false,
       isRunning: false,
     },

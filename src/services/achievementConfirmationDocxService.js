@@ -12,6 +12,7 @@ import {
   WidthType,
 } from "docx";
 import { getAwardedAthletes } from "./certificateService";
+import { isTeamCategory } from "../utils/teamDraw";
 
 const FONT = "Times New Roman";
 const BODY_SIZE = 26;
@@ -35,11 +36,7 @@ function buildAchievementSentence(record, category) {
     category?.type === "kumite" || categoryNameLower.includes("kumite")
       ? "Kumite"
       : "Kata";
-  const isTeam =
-    Boolean(category?.isTeam) ||
-    categoryNameLower.includes("đồng đội") ||
-    categoryNameLower.includes("hỗn hợp") ||
-    (category?.athletes || []).some((athlete) => athlete.isTeam);
+  const isTeam = isTeamCategory(category);
   const gender =
     category?.gender === "male"
       ? "nam"

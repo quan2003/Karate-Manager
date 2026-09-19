@@ -1,7 +1,10 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { getAppBaseUrl } from "./pdfService";
-import { getTeamsFromAthletes } from "../utils/teamDraw";
+import {
+  getTeamsFromAthletes,
+  isTeamCategory as isTeamCategoryMeta,
+} from "../utils/teamDraw";
 import { getComputedCategoryResults } from "../domain/bronzeIntegration.js";
 
 /**
@@ -123,13 +126,7 @@ function getCategoryResults(tournament, categoryId) {
  * Detect if a category is a team category
  */
 function isTeamCategory(cat) {
-  const name = (cat.name || "").toLowerCase();
-  return (
-    cat.isTeam ||
-    name.includes("đồng đội") ||
-    name.includes("hỗn hợp") ||
-    (cat.athletes || []).some((a) => a.isTeam)
-  );
+  return isTeamCategoryMeta(cat);
 }
 
 /**

@@ -35,6 +35,17 @@ function classifyCompetitionValue(value, booleanField = false) {
 }
 
 export function getCategoryCompetitionType(category = {}) {
+  // The explicit wording in the category name is authoritative. This protects
+  // legacy/imported individual categories whose stale metadata says isTeam=true,
+  // and team categories whose stale metadata says isTeam=false.
+  const normalizedName = normalizeText(category.name);
+  if (/\b(ca nhan|individual|single|solo)\b/.test(normalizedName)) {
+    return "individual";
+  }
+  if (/\b(dong doi|team|teams)\b/.test(normalizedName)) {
+    return "team";
+  }
+
   for (const field of TEAM_CLASSIFICATION_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(category, field)) continue;
     const classified = classifyCompetitionValue(
