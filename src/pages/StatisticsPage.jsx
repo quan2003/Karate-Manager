@@ -380,7 +380,9 @@ export default function StatisticsPage() {
       const threshold = splitSettings.threshold || 20;
       const athleteCount = cat.athletes?.length || 0;
 
-      if (cat.sigmaSplitEnabled === false) {
+      if (cat.sigmaCount && cat.sigmaCount > 1) {
+        setsCount = cat.sigmaCount;
+      } else if (cat.sigmaSplitEnabled === false) {
         setsCount = 1;
       } else if (cat.sigmaSplitEnabled === true) {
         setsCount = athleteCount > 1 ? Math.max(2, Math.floor(athleteCount / threshold)) : 1;

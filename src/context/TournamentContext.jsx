@@ -19,6 +19,10 @@ import {
   reconcileBronzeAfterMainBracketChange,
   updateAuxiliaryMatchResult,
 } from "../domain/bronzeIntegration.js";
+import {
+  isTeamCategory,
+  getTeamsFromAthletes,
+} from "../utils/teamDraw.js";
 
 // Auto-backup counter to avoid backing up too frequently
 let autoBackupCounter = 0;
@@ -101,6 +105,7 @@ function normalizeRestoredAthlete(athlete, fallbackClub = "") {
     country: athlete.country || "VN",
     weight: athlete.weight || null,
     isTeam: athlete.isTeam || false,
+    teamCode: String(athlete.teamCode || "").trim(),
     seed: athlete.seed || null,
     flagUrl: athlete.flagUrl || null,
   };
@@ -311,6 +316,8 @@ const ACTIONS = {
   SYNC_CATEGORY_MEDALS: "SYNC_CATEGORY_MEDALS",
   CLEAR_TOURNAMENT_ATHLETES: "CLEAR_TOURNAMENT_ATHLETES",
   RESTORE_ATHLETES_FROM_BRACKET: "RESTORE_ATHLETES_FROM_BRACKET",
+  SPLIT_CATEGORY_POOLS: "SPLIT_CATEGORY_POOLS",
+  MERGE_CATEGORY_POOLS: "MERGE_CATEGORY_POOLS",
 };
 
 function applySyncedTeamLineups(category, lineups = []) {
@@ -698,6 +705,7 @@ function tournamentReducer(state, action) {
         country: action.payload.country || "VN",
         weight: action.payload.weight || null,
         isTeam: action.payload.isTeam || false,
+        teamCode: String(action.payload.teamCode || "").trim(),
         seed: action.payload.seed || null,
         flagUrl: action.payload.flagUrl || null,
       };
@@ -898,6 +906,167 @@ function tournamentReducer(state, action) {
       break;
     }
 
+        case ACTIONS.SPLIT_CATEGORY_POOLS: {
+      const { categoryId, numPools } = action.payload;
+      const tournament = state.tournaments.find((t) => t.id === state.currentTournament?.id);
+      if (!tournament) return state;
+
+      const categoryIndex = tournament.categories.findIndex(c => c.id === categoryId);
+      if (categoryIndex === -1) return state;
+
+      const category = tournament.categories[categoryIndex];
+      const athletes = category.athletes || [];
+      if (athletes.length === 0 || numPools <= 1) return state;
+
+      const isTeamCat = isTeamCategory(category);
+
+      // For team categories: group by complete teams, then split teams across pools
+      // For individual categories: group by club, then split athletes across pools
+      let itemsToDistribute = [];
+      let getAthletesForPool;
+
+      if (isTeamCat) {
+        // Get complete teams from athletes list
+        const teams = getTeamsFromAthletes(athletes, category, tournament);
+        if (teams.length === 0) return state;
+
+        // Group teams by club
+        const clubMap = {};
+        teams.forEach(team => {
+          const club = team.club || 'Unknown';
+          if (!clubMap[club]) clubMap[club] = [];
+          clubMap[club].push(team);
+        });
+        const clubsSorted = Object.keys(clubMap).sort((a, b) => clubMap[b].length - clubMap[a].length);
+
+        // Interleave teams from different clubs
+        let hasMore = true;
+        while (hasMore) {
+          hasMore = false;
+          for (const club of clubsSorted) {
+            if (clubMap[club].length > 0) {
+              itemsToDistribute.push(clubMap[club].shift());
+              hasMore = true;
+            }
+          }
+        }
+
+        // For team pools: athletes of each pool = all members of the teams assigned to that pool
+        getAthletesForPool = (poolTeams) => {
+          const poolAthletes = [];
+          poolTeams.forEach(team => {
+            if (team.members && Array.isArray(team.members)) {
+              poolAthletes.push(...team.members);
+            }
+          });
+          return poolAthletes;
+        };
+      } else {
+        // Individual: group by club
+        const clubMap = {};
+        athletes.forEach(a => {
+          const club = a.club || 'Unknown';
+          if (!clubMap[club]) clubMap[club] = [];
+          clubMap[club].push(a);
+        });
+        const clubsSorted = Object.keys(clubMap).sort((a, b) => clubMap[b].length - clubMap[a].length);
+        let hasMore = true;
+        while (hasMore) {
+          hasMore = false;
+          for (const club of clubsSorted) {
+            if (clubMap[club].length > 0) {
+              itemsToDistribute.push(clubMap[club].shift());
+              hasMore = true;
+            }
+          }
+        }
+        getAthletesForPool = (poolItems) => poolItems;
+      }
+
+      // True round-robin assignment across pools
+      const pools = Array.from({ length: numPools }, () => []);
+      itemsToDistribute.forEach((item, idx) => {
+        pools[idx % numPools].push(item);
+      });
+
+      // Create new categories
+      const newCategories = [];
+      for (let i = 0; i < numPools; i++) {
+        if (pools[i].length > 0) {
+          newCategories.push({
+            ...category,
+            id: uuidv4(),
+            name: `${category.name} - Bảng ${String.fromCharCode(65 + i)}`,
+            bracket: null,
+            matches: [],
+            athletes: getAthletesForPool(pools[i])
+          });
+        }
+      }
+
+      // Insert new categories and remove the old one
+      const updatedCategories = [
+        ...tournament.categories.slice(0, categoryIndex),
+        ...newCategories,
+        ...tournament.categories.slice(categoryIndex + 1)
+      ];
+
+      const updatedTournamentSplit = { ...tournament, categories: updatedCategories };
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) =>
+          t.id === tournament.id ? updatedTournamentSplit : t
+        ),
+        currentTournament: state.currentTournament?.id === tournament.id ? updatedTournamentSplit : state.currentTournament,
+        currentCategory: state.currentCategory === categoryId ? null : state.currentCategory,
+      };
+      break;
+    }
+
+    case ACTIONS.MERGE_CATEGORY_POOLS: {
+      const { baseName, tournamentId } = action.payload;
+      const tournament = state.tournaments.find((t) => t.id === tournamentId);
+      if (!tournament) return state;
+
+      // Find all pool categories matching the base name pattern
+      const escapedBase = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const poolRegex = new RegExp(`^${escapedBase} - B\u1ea3ng [A-Z]$`);
+      const poolCategories = tournament.categories.filter(c => poolRegex.test(c.name));
+      if (poolCategories.length < 2) return state;
+
+      // Sort pools alphabetically so athletes are in consistent order
+      poolCategories.sort((a, b) => a.name.localeCompare(b.name));
+
+      // Merge all athletes back
+      const mergedAthletes = poolCategories.flatMap(c => c.athletes || []);
+
+      // Use first pool as template, restore original name
+      const mergedCategory = {
+        ...poolCategories[0],
+        id: uuidv4(),
+        name: baseName,
+        athletes: mergedAthletes,
+        bracket: null,
+        matches: [],
+      };
+
+      // Find index of first pool category, remove all pools, insert merged
+      const firstPoolIndex = tournament.categories.findIndex(c => poolRegex.test(c.name));
+      const withoutPools = tournament.categories.filter(c => !poolRegex.test(c.name));
+      withoutPools.splice(firstPoolIndex, 0, mergedCategory);
+
+      const updatedTournamentMerge = { ...tournament, categories: withoutPools };
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) =>
+          t.id === tournamentId ? updatedTournamentMerge : t
+        ),
+        currentTournament: state.currentTournament?.id === tournamentId ? updatedTournamentMerge : state.currentTournament,
+        currentCategory: null,
+      };
+      break;
+    }
+
     case ACTIONS.IMPORT_ATHLETES:
       newState = {
         ...state,
@@ -943,6 +1112,7 @@ function tournamentReducer(state, action) {
                         country: a.country || "VN",
                         weight: a.weight || null,
                         isTeam: a.isTeam || false,
+                        teamCode: String(a.teamCode || "").trim(),
                         seed: a.seed || null,
                         flagUrl: null,
                       })),

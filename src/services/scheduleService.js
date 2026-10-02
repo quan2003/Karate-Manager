@@ -874,8 +874,8 @@ export function splitBracket(category, maxAthletesPerBracket = 18) {
       athletes: splitAthletes,
       splitIndex: i,
       totalSplits: numSplits,
-      splitLabel: `Trận ${i + 1}/${numSplits}`,
-      name: `${category.name} - Trận ${i + 1}/${numSplits}`,
+      splitLabel: `Bảng ${i + 1}/${numSplits}`,
+      name: `${category.name} - Bảng ${i + 1}/${numSplits}`,
     });
   }
 

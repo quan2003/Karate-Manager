@@ -10,6 +10,7 @@ import {
   getDataSizeInfo,
   createAutoBackup,
 } from "../../services/backupService";
+import { fetchCloudTournamentsList, downloadCloudBackupData } from "../../services/cloudSyncService";
 import "./BackupManager.css";
 
 /**
@@ -17,7 +18,7 @@ import "./BackupManager.css";
  * Hỗ trợ nhiều Admin quản lý cùng giải đấu
  */
 export default function BackupManager({ isOpen, onClose, onDataRestored }) {
-  const [view, setView] = useState("main"); // main | export | import | compare | history
+  const [view, setView] = useState("main"); // main | export | import | compare | history | cloud
   const [status, setStatus] = useState(null); // { type: 'success'|'error'|'info', message }
   const [description, setDescription] = useState("");
   const [backupData, setBackupData] = useState(null);
@@ -28,6 +29,9 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
   const [tournaments, setTournaments] = useState([]);
   const [exportScope, setExportScope] = useState("all");
   const [selectedTournamentId, setSelectedTournamentId] = useState("");
+  const [cloudTournaments, setCloudTournaments] = useState([]);
+  const [loadingCloud, setLoadingCloud] = useState(false);
+  const [cloudSearch, setCloudSearch] = useState("");
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -61,6 +65,41 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
     setStatus({ type, message });
     if (type === "success") {
       setTimeout(() => setStatus(null), 5000);
+    }
+  };
+
+  // ====== CLOUD VPS ======
+  const handleOpenCloudView = async () => {
+    setView("cloud");
+    setLoadingCloud(true);
+    showStatus("info", "⏳ Đang kết nối Cloud VPS để lấy danh sách giải...");
+    const res = await fetchCloudTournamentsList();
+    setLoadingCloud(false);
+    if (res.success) {
+      setCloudTournaments(res.tournaments || []);
+      setStatus(null);
+    } else {
+      showStatus("error", `❌ ${res.message}`);
+    }
+  };
+
+  const handleDownloadFromCloud = async (tournamentId) => {
+    showStatus("info", "⏳ Đang tải gói dữ liệu từ Cloud VPS...");
+    const res = await downloadCloudBackupData(tournamentId);
+    if (!res.success || !res.data) {
+      showStatus("error", `❌ ${res.message || "Không thể tải dữ liệu"}`);
+      return;
+    }
+
+    try {
+      showStatus("info", "⏳ Đang so sánh dữ liệu với phần mềm...");
+      setBackupData(res.data);
+      const comp = await compareBackupWithCurrent(res.data);
+      setComparison(comp);
+      setView("compare");
+      setStatus(null);
+    } catch (err) {
+      showStatus("error", `❌ Lỗi đọc dữ liệu Cloud: ${err.message}`);
     }
   };
 
@@ -267,6 +306,12 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
                   <div className="backup-action-title">Lịch sử Backup</div>
                   <div className="backup-action-desc">Xem và khôi phục các bản backup cũ</div>
                 </button>
+
+                <button className="backup-action-card cloud-card" onClick={handleOpenCloudView} style={{ borderColor: '#3b82f6', background: 'linear-gradient(135deg, #eff6ff, #ffffff)', gridColumn: 'span 2' }}>
+                  <div className="backup-action-icon" style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: '#fff' }}>☁️</div>
+                  <div className="backup-action-title" style={{ color: '#1d4ed8' }}>Tải từ Cloud VPS Server</div>
+                  <div className="backup-action-desc">Xem danh sách giải đã đồng bộ trên VPS (theo Mã máy) & kéo trực tiếp về máy này</div>
+                </button>
               </div>
 
               {/* Quick tip */}
@@ -279,11 +324,124 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
                 color: "#1e40af",
                 lineHeight: 1.6,
               }}>
-                <strong>💡 Hướng dẫn đồng bộ nhiều Admin:</strong><br />
-                1. Admin chính <b>xuất backup</b> gửi file cho Admin phụ<br />
-                2. Admin phụ <b>nhập backup</b> → chọn <b>Gộp dữ liệu</b> để giữ cả hai<br />
-                3. Sau khi làm xong, Admin phụ <b>xuất backup</b> gửi lại cho Admin chính
+                <strong>💡 Hướng dẫn đồng bộ dữ liệu:</strong><br />
+                • <b>Tải từ Cloud VPS:</b> Kéo trực tiếp giải đấu đã đẩy lên VPS của các máy khác về máy tính này.<br />
+                • <b>Xuất / Nhập Backup thủ công:</b> Xuất file <code>.kbackup</code> gửi qua Zalo / USB để nhập vào máy khác.
               </div>
+            </>
+          )}
+
+          {/* ===== CLOUD VPS VIEW ===== */}
+          {view === "cloud" && (
+            <>
+              <button className="backup-back-btn" onClick={() => setView("main")}>
+                ← Quay lại
+              </button>
+              <h3 style={{ marginBottom: "0.4rem", fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "8px" }}>
+                ☁️ Khôi phục dữ liệu từ Cloud VPS
+              </h3>
+              <p style={{ color: "#64748b", fontSize: "0.85rem", marginBottom: "1rem", lineHeight: 1.5 }}>
+                Chọn giải đấu đã sao lưu trên Server VPS để tải trực tiếp về máy này.
+                Mã máy (Machine ID) hiển thị dưới tên giải giúp bạn nhận biết giải đấu thuộc về máy tính nào.
+              </p>
+
+              <div style={{ marginBottom: "1rem" }}>
+                <input
+                  type="text"
+                  placeholder="🔍 Tìm kiếm theo tên giải đấu hoặc Mã máy (vd: KRT-59EEBC32)..."
+                  value={cloudSearch}
+                  onChange={(e) => setCloudSearch(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "0.88rem",
+                    outline: "none"
+                  }}
+                />
+              </div>
+
+              {loadingCloud ? (
+                <div style={{ textAlign: "center", padding: "2.5rem", color: "#64748b" }}>
+                  ⏳ Đang tải danh sách giải từ Cloud VPS...
+                </div>
+              ) : cloudTournaments.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "2.5rem", color: "#94a3b8" }}>
+                  Chưa có giải đấu nào được lưu trên Cloud VPS Server.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "360px", overflowY: "auto", paddingRight: "4px" }}>
+                  {cloudTournaments
+                    .filter((t) => {
+                      if (!cloudSearch.trim()) return true;
+                      const q = cloudSearch.toLowerCase().trim();
+                      return (
+                        (t.name && t.name.toLowerCase().includes(q)) ||
+                        (t.machine_id && t.machine_id.toLowerCase().includes(q)) ||
+                        (t.id && t.id.toLowerCase().includes(q))
+                      );
+                    })
+                    .map((t) => (
+                      <div
+                        key={t.id}
+                        style={{
+                          background: "#f8fafc",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "12px",
+                          padding: "14px 16px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "12px",
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.02)"
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#1e293b", marginBottom: "6px" }}>
+                            {t.name}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", fontSize: "0.78rem" }}>
+                            <span style={{
+                              background: "#e0e7ff",
+                              color: "#3730a3",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              fontWeight: 600,
+                              fontFamily: "monospace"
+                            }}>
+                              Machine ID: {t.machine_id || "KRT-UNKNOWN"}
+                            </span>
+                            <span style={{ color: "#475569" }}>
+                              👥 {t.total_athletes || 0} VĐV • 🏆 {t.total_categories || 0} Hạng mục
+                            </span>
+                            <span style={{ color: "#94a3b8" }}>
+                              🕒 {t.last_synced_at ? new Date(t.last_synced_at).toLocaleString('vi-VN') : ''}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          className="backup-btn primary-btn"
+                          onClick={() => handleDownloadFromCloud(t.id)}
+                          style={{
+                            whiteSpace: "nowrap",
+                            padding: "8px 16px",
+                            fontSize: "0.82rem",
+                            background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "8px",
+                            fontWeight: 600,
+                            cursor: "pointer"
+                          }}
+                        >
+                          📥 Tải & Khôi phục
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              )}
             </>
           )}
 

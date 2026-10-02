@@ -488,6 +488,38 @@ function updateAoDisplay() {
   saveState();
 }
 
+function configureKataSelects(kataOptions, kataOptionGroups) {
+  const hasConfiguration = Array.isArray(kataOptions)
+    || Array.isArray(kataOptionGroups?.wkf)
+    || Array.isArray(kataOptionGroups?.custom);
+  if (!hasConfiguration) return;
+  const fallback = Array.isArray(kataOptions) ? kataOptions : [];
+  const groups = [
+    { label: "WKF", items: kataOptionGroups?.wkf || [] },
+    { label: "Tewaza / Bài bổ sung", items: kataOptionGroups?.custom || [] },
+  ].filter((group) => Array.isArray(group.items) && group.items.length > 0);
+
+  ["aka", "ao"].forEach((side) => {
+    const select = document.getElementById(side + "KataSelect");
+    if (!select) return;
+    select.replaceChildren();
+    select.add(new Option("-- Chọn Kata --", ""));
+
+    if (groups.length) {
+      groups.forEach((group) => {
+        const optgroup = document.createElement("optgroup");
+        optgroup.label = group.label;
+        group.items.forEach((kata) => {
+          optgroup.appendChild(new Option(kata, kata));
+        });
+        select.appendChild(optgroup);
+      });
+    } else {
+      fallback.forEach((kata) => select.add(new Option(kata, kata)));
+    }
+  });
+}
+
 // Update Kata name for specific side (aka or ao)
 function updateKataName(side) {
   const select = document.getElementById(side + "KataSelect");
@@ -510,6 +542,8 @@ function filterKata(side) {
   );
   const select = document.getElementById(side + "KataSelect");
   const options = select.options;
+  state[side].kataName = searchInput.value.trim();
+  saveState();
 
   if (searchTerm === "") {
     // Show all options if search is empty
@@ -1932,6 +1966,10 @@ function loadPendingMatch() {
 
   // Load sponsor logos (ALWAYS update to reflect bracket settings, even if null/empty)
   state.sponsorLogos = pendingMatchData.sponsorLogos || { sponsors: [] };
+  configureKataSelects(
+    pendingMatchData.kataOptions,
+    pendingMatchData.kataOptionGroups
+  );
 
   // ALWAYS reset match-specific state for a clean start
   state.swapPositions = false;

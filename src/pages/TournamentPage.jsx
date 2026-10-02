@@ -166,6 +166,9 @@ export default function TournamentPage() {
   const { toast } = useToast();
   const { activeHint, clearHint } = useOnboarding();
   const [editingId, setEditingId] = useState(null);
+  const [showSplitPoolsModal, setShowSplitPoolsModal] = useState(false);
+  const [splitTargetCategory, setSplitTargetCategory] = useState(null);
+  const [splitPoolsCount, setSplitPoolsCount] = useState(2);
   const [showModal, setShowModal] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
@@ -2190,6 +2193,42 @@ export default function TournamentPage() {
                       ✏️
                     </button>
                     <button
+                      className="edit-btn"
+                      style={{ background: '#f59e0b', color: '#fff', border: 'none' }}
+                      onClick={() => {
+                        setSplitTargetCategory(category);
+                        setSplitPoolsCount(2);
+                        setShowSplitPoolsModal(true);
+                      }}
+                      title="Chia hạng mục thành nhiều Bảng thi đấu độc lập"
+                    >
+                      🔀
+                    </button>
+                    {/- Bảng [A-Z]$/.test(category.name) && (() => {
+                      const baseName = category.name.replace(/ - Bảng [A-Z]$/, '');
+                      const siblingCount = tournament.categories.filter(c => new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} - Bảng [A-Z]$`).test(c.name)).length;
+                      if (siblingCount < 2) return null;
+                      return (
+                        <button
+                          className="edit-btn"
+                          style={{ background: '#0ea5e9', color: '#fff', border: 'none' }}
+                          onClick={() => {
+                            if (window.confirm(`Gộp tất cả ${siblingCount} bảng của "${baseName}" lại thành 1 hạng mục? Tất cả kết quả bốc thăm sẽ bị xóa.`)) {
+                              dispatch({
+                                type: ACTIONS.MERGE_CATEGORY_POOLS,
+                                payload: { baseName, tournamentId: tournament.id }
+                              });
+                              toast.success(`Đã gộp ${siblingCount} bảng lại thành công!`);
+                              navigate(`/tournament/${id}`, { replace: true });
+                            }
+                          }}
+                          title={`Gộp tất cả các Bảng của "${baseName}" lại thành 1`}
+                        >
+                          🔗
+                        </button>
+                      );
+                    })()}
+                    <button
                       className="delete-btn"
                       onClick={() => handleDeleteCategory(category.id)}
                       title="Xóa"
@@ -3459,6 +3498,61 @@ export default function TournamentPage() {
               </div>
             </div>
           )}
+        </Modal>
+
+        {/* Modal Chia Bảng Đấu (Pools) */}
+        <Modal
+          isOpen={showSplitPoolsModal}
+          onClose={() => setShowSplitPoolsModal(false)}
+          title="Chia Hạng Mục Thành Nhiều Bảng"
+        >
+          <div style={{ padding: '10px' }}>
+            <label style={{ fontWeight: 'bold', marginBottom: '10px', display: 'block' }}>
+              Hạng mục: <em>{splitTargetCategory?.name}</em>
+            </label>
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '15px' }}>
+              Hệ thống sẽ tự động phân bổ VĐV đồng đều vào các bảng. Mỗi bảng thi đấu độc lập, có huy chương riêng và được tính chung vào bảng toàn đoàn.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+              <label style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Số bảng muốn chia:</label>
+              <input
+                type="number"
+                value={splitPoolsCount}
+                onChange={(e) => setSplitPoolsCount(Number(e.target.value))}
+                min="2"
+                max="16"
+                style={{ width: '80px', padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '16px', fontWeight: 700, textAlign: 'center' }}
+              />
+              <span style={{ fontSize: '13px', color: '#64748b' }}>bảng (A, B, C...)</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowSplitPoolsModal(false)}
+              >
+                Hủy
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  const n = parseInt(splitPoolsCount, 10);
+                  if (n >= 2) {
+                    dispatch({
+                      type: ACTIONS.SPLIT_CATEGORY_POOLS,
+                      payload: { categoryId: splitTargetCategory.id, numPools: n }
+                    });
+                    toast.success(`Đã chia thành ${n} bảng thành công! Xem danh sách bên dưới.`);
+                    setShowSplitPoolsModal(false);
+                    navigate(`/tournament/${id}`, { replace: true });
+                  } else {
+                    toast.error('Vui lòng nhập số lượng bảng hợp lệ (từ 2 trở lên).');
+                  }
+                }}
+              >
+                ✅ Xác nhận Chia Bảng
+              </button>
+            </div>
+          </div>
         </Modal>
       </div>
     </div>

@@ -201,6 +201,7 @@ let matches = [];
 let selectedMatch = null;
 let selectedSlot = 1;
 let selectedKataName = '';
+let visibleKataOptions = [];
 let selectedCategoryId = 'all';
 let categoryOptions = [];
 let matchSearchTerm = '';
@@ -392,16 +393,20 @@ function normalize(s) { return (s||'').normalize('NFD').replace(/[\u0300-\u036f]
 function renderKataGrid(filter = '') {
   const grid = document.getElementById('kataGrid');
   const term = normalize(filter);
-  const list = WKF_KATA_LIST.filter(o => !term || normalize(o).includes(term) || o.toLowerCase().includes(term));
+  const configured = Array.isArray(selectedMatch?.kataOptions)
+    ? selectedMatch.kataOptions
+    : WKF_KATA_LIST;
+  const list = configured.filter(o => !term || normalize(o).includes(term) || o.toLowerCase().includes(term));
+  visibleKataOptions = list;
   
   if (!list.length) {
     grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #94a3b8; padding: 20px;">Không tìm thấy bài quyền</div>';
     return;
   }
   
-  grid.innerHTML = list.map(o => {
+  grid.innerHTML = list.map((o, index) => {
     const isSel = o === selectedKataName;
-    return `<div class="kata-item ${isSel ? 'selected' : ''}" onclick="pickKata('${o.replace(/'/g,"\\'")}')">${o}</div>`;
+    return `<div class="kata-item ${isSel ? 'selected' : ''}" onclick="pickVisibleKata(${index})">${escapeHtml(o)}</div>`;
   }).join('');
 }
 
@@ -412,6 +417,16 @@ function filterKataGrid() {
 function pickKata(val) {
   selectedKataName = val;
   renderKataGrid(document.getElementById('kataSearch').value);
+}
+
+function pickVisibleKata(index) {
+  pickKata(visibleKataOptions[index] || '');
+}
+
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[char]);
 }
 
 function getKataWarnings(match, slot, kataName) {

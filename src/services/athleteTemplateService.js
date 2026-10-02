@@ -103,7 +103,7 @@ function toBase64(bytes) {
   return btoa(binary);
 }
 
-function buildWorkbook({ events, clubName }) {
+export function buildAthleteTemplateWorkbook({ events, clubName }) {
   const safeEvents = events || [];
   const currentYear = new Date().getFullYear();
 
@@ -159,7 +159,7 @@ function buildWorkbook({ events, clubName }) {
 
   const headers = [
     "Họ tên", "Giới tính", "Năm sinh", "Nhóm tuổi (tự động)",
-    "Đơn vị/CLB", "Nội dung thi đấu", "Cân nặng (kg)", "Đồng đội", "Hạt giống",
+    "Đơn vị/CLB", "Nội dung thi đấu", "Cân nặng (kg)", "Đồng đội", "Mã đội", "Hạt giống",
   ];
 
   function getAgeGroup(y, cy) {
@@ -190,6 +190,7 @@ function buildWorkbook({ events, clubName }) {
       event.name,
       event.type === "kumite" || event.name?.toLowerCase().includes("kumite") ? 60 : "",
       event.isTeam ? "Có" : "Không",
+      event.isTeam ? "1" : "",
       i === 0 ? 1 : "",
     ];
   });
@@ -218,7 +219,7 @@ function buildWorkbook({ events, clubName }) {
 
   const inputSheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<dimension ref="A1:I${TEMPLATE_ROWS + 1}"/>
+<dimension ref="A1:J${TEMPLATE_ROWS + 1}"/>
 <sheetViews><sheetView tabSelected="1" workbookViewId="0"><selection activeCell="A2" sqref="A2"/></sheetView></sheetViews>
 <sheetFormatPr defaultRowHeight="20" customHeight="1"/>
 <cols>
@@ -231,6 +232,7 @@ function buildWorkbook({ events, clubName }) {
   <col min="7" max="7" width="14" customWidth="1"/>
   <col min="8" max="8" width="13" customWidth="1"/>
   <col min="9" max="9" width="14" customWidth="1"/>
+  <col min="10" max="10" width="14" customWidth="1"/>
 </cols>
 <sheetData>
 ${headerRowXml}
@@ -285,19 +287,21 @@ ${formulaRowsXml}
     row(9,  ["F - Nội dung thi đấu","BẮT BUỘC. Bấm vào ô → danh sách TỰ LỌC theo Giới tính (B) và Năm sinh (C) ▼"]),
     row(10, ["G - Cân nặng (kg)",   "BẮT BUỘC với nội dung Kumite. Bỏ trống nếu là Kata."]),
     row(11, ["H - Đồng đội",        "Bấm chọn: Có (nội dung đồng đội) hoặc Không (cá nhân)."]),
-    row(12, ["I - Hạt giống",       "Tùy chọn. Chỉ nhập số từ 1 đến 8 nếu VĐV được xếp hạt giống."]),
-    row(13, ["", ""]),
-    row(14, ["LƯU Ý QUAN TRỌNG", ""], 1),
-    row(15, ["1.", "NHẬP NĂM SINH VÀ CHỌN GIỚI TÍNH TRƯỚC, sau đó bấm cột F → danh sách nội dung sẽ TỰ LỌC."]),
-    row(16, ["2.", "Nếu không nhập năm sinh, danh sách nội dung sẽ hiện tất cả."]),
-    row(17, ["3.", "Một VĐV thi nhiều nội dung → nhập NHIỀU DÒNG, mỗi dòng một nội dung."]),
-    row(18, ["4.", "Sau khi điền xong, lưu file và gửi lại cho BTC hoặc nhập trực tiếp vào phần mềm."]),
-    row(19, ["5.", "Không xóa hoặc thay đổi dòng tiêu đề (dòng 1 màu đậm)."]),
+    row(12, ["I - Mã đội",          "BẮT BUỘC với nội dung đồng đội. Các VĐV cùng CLB và cùng mã (ví dụ 1, 2, A) sẽ thuộc cùng một đội."]),
+    row(13, ["J - Hạt giống",       "Tùy chọn. Chỉ nhập số từ 1 đến 8 nếu VĐV được xếp hạt giống."]),
+    row(14, ["", ""]),
+    row(15, ["LƯU Ý QUAN TRỌNG", ""], 1),
+    row(16, ["1.", "NHẬP NĂM SINH VÀ CHỌN GIỚI TÍNH TRƯỚC, sau đó bấm cột F → danh sách nội dung sẽ TỰ LỌC."]),
+    row(17, ["2.", "Nếu không nhập năm sinh, danh sách nội dung sẽ hiện tất cả."]),
+    row(18, ["3.", "Một VĐV thi nhiều nội dung → nhập NHIỀU DÒNG, mỗi dòng một nội dung."]),
+    row(19, ["4.", "Nội dung đồng đội: nhập cùng Mã đội cho các thành viên cùng đội."]),
+    row(20, ["5.", "Sau khi điền xong, lưu file và gửi lại cho BTC hoặc nhập trực tiếp vào phần mềm."]),
+    row(21, ["6.", "Không xóa hoặc thay đổi dòng tiêu đề (dòng 1 màu đậm)."]),
   ].join("");
 
   const guideSheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<dimension ref="A1:B19"/>
+<dimension ref="A1:B21"/>
 <sheetViews><sheetView workbookViewId="0"/></sheetViews>
 <sheetFormatPr defaultRowHeight="20"/>
 <cols>
@@ -329,7 +333,7 @@ export async function downloadAthleteImportTemplate({
   events,
   clubName = "",
 }) {
-  const bytes = buildWorkbook({ events, clubName });
+  const bytes = buildAthleteTemplateWorkbook({ events, clubName });
   const fileName = `mau_nhap_vdv_${tournamentName || "giai_dau"}.xlsx`;
 
   if (window.electronAPI?.saveExportFile) {

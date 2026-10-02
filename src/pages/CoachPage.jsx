@@ -199,7 +199,7 @@ function buildAthleteTemplateWorkbook({ tournamentData, clubName }) {
 
   const headers = [
     "Họ tên", "Giới tính", "Năm sinh", "Nhóm tuổi (tự động)",
-    "Đơn vị/CLB", "Nội dung thi đấu", "Cân nặng (kg)", "Đồng đội", "Hạt giống",
+    "Đơn vị/CLB", "Nội dung thi đấu", "Cân nặng (kg)", "Đồng đội", "Mã đội", "Hạt giống",
   ];
 
   const sampleSources = [
@@ -217,7 +217,8 @@ function buildAthleteTemplateWorkbook({ tournamentData, clubName }) {
       clubName || "CLB ...",
       event.name,
       event.type === "kumite" || event.name?.toLowerCase().includes("kumite") ? 60 : "",
-      event.isTeam ? "Có" : "Không",
+      isTeamCategory(event) ? "Có" : "Không",
+      isTeamCategory(event) ? "1" : "",
       index === 0 ? 1 : "",
     ];
   });
@@ -245,7 +246,7 @@ function buildAthleteTemplateWorkbook({ tournamentData, clubName }) {
 
   const inputSheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<dimension ref="A1:I${TEMPLATE_ROWS + 1}"/>
+<dimension ref="A1:J${TEMPLATE_ROWS + 1}"/>
 <sheetViews><sheetView tabSelected="1" workbookViewId="0"><selection activeCell="A2" sqref="A2"/></sheetView></sheetViews>
 <sheetFormatPr defaultRowHeight="20" customHeight="1"/>
 <cols>
@@ -258,6 +259,7 @@ function buildAthleteTemplateWorkbook({ tournamentData, clubName }) {
   <col min="7" max="7" width="14" customWidth="1"/>
   <col min="8" max="8" width="13" customWidth="1"/>
   <col min="9" max="9" width="14" customWidth="1"/>
+  <col min="10" max="10" width="14" customWidth="1"/>
 </cols>
 <sheetData>
 ${headerRowXml}
@@ -311,19 +313,21 @@ ${formulaRowsXml}
     makeRow(9,  ["F - Nội dung thi đấu","BẮT BUỘC. Bấm vào ô → danh sách TỰ LỌC theo Giới tính (B) và Năm sinh (C) ▼"]),
     makeRow(10, ["G - Cân nặng (kg)",   "BẮT BUỘC với nội dung Kumite. Bỏ trống nếu là Kata."]),
     makeRow(11, ["H - Đồng đội",        "Bấm chọn: Có (nội dung đồng đội) hoặc Không (cá nhân)."]),
-    makeRow(12, ["I - Hạt giống",       "Tùy chọn. Chỉ nhập số từ 1 đến 8 nếu VĐV được xếp hạt giống."]),
-    makeRow(13, ["", ""]),
-    makeRow(14, ["LƯU Ý QUAN TRỌNG", ""], 1),
-    makeRow(15, ["1.", "NHẬP NĂM SINH VÀ CHỌN GIỚI TÍNH TRƯỚC, sau đó bấm cột F → danh sách nội dung sẽ TỰ LỌC."]),
-    makeRow(16, ["2.", "Nếu không nhập năm sinh, danh sách nội dung sẽ hiện tất cả."]),
-    makeRow(17, ["3.", "Một VĐV thi nhiều nội dung → nhập NHIỀU DÒNG, mỗi dòng một nội dung."]),
-    makeRow(18, ["4.", "Sau khi điền xong, lưu file và gửi lại cho BTC hoặc nhập trực tiếp vào phần mềm."]),
-    makeRow(19, ["5.", "Không xóa hoặc thay đổi dòng tiêu đề (dòng 1 màu đậm)."]),
+    makeRow(12, ["I - Mã đội",          "BẮT BUỘC với nội dung đồng đội. Các VĐV cùng CLB và cùng mã (ví dụ 1, 2, A) sẽ thuộc cùng một đội."]),
+    makeRow(13, ["J - Hạt giống",       "Tùy chọn. Chỉ nhập số từ 1 đến 8 nếu VĐV được xếp hạt giống."]),
+    makeRow(14, ["", ""]),
+    makeRow(15, ["LƯU Ý QUAN TRỌNG", ""], 1),
+    makeRow(16, ["1.", "NHẬP NĂM SINH VÀ CHỌN GIỚI TÍNH TRƯỚC, sau đó bấm cột F → danh sách nội dung sẽ TỰ LỌC."]),
+    makeRow(17, ["2.", "Nếu không nhập năm sinh, danh sách nội dung sẽ hiện tất cả."]),
+    makeRow(18, ["3.", "Một VĐV thi nhiều nội dung → nhập NHIỀU DÒNG, mỗi dòng một nội dung."]),
+    makeRow(19, ["4.", "Nội dung đồng đội: nhập cùng Mã đội cho các thành viên cùng đội."]),
+    makeRow(20, ["5.", "Sau khi điền xong, lưu file và gửi lại cho BTC hoặc nhập trực tiếp vào phần mềm."]),
+    makeRow(21, ["6.", "Không xóa hoặc thay đổi dòng tiêu đề (dòng 1 màu đậm)."]),
   ].join("");
 
   const guideSheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<dimension ref="A1:B19"/>
+<dimension ref="A1:B21"/>
 <sheetViews><sheetView workbookViewId="0"/></sheetViews>
 <sheetFormatPr defaultRowHeight="20"/>
 <cols>
@@ -403,6 +407,7 @@ function CoachPage() {
     eventId: "",
     weight: "",
     isTeam: false,
+    teamCode: "",
     seed: "",
   });
   const getTournamentEvent = (eventId) =>
@@ -508,6 +513,7 @@ function CoachPage() {
       eventId: "",
       weight: "",
       isTeam: false,
+      teamCode: "",
       seed: "",
     });
     setFormErrors([]);
@@ -533,6 +539,9 @@ function CoachPage() {
       isTeam: isTeamCategory(getTournamentEvent(athlete.eventId))
         ? athlete.isTeam || false
         : false,
+      teamCode: isTeamCategory(getTournamentEvent(athlete.eventId))
+        ? athlete.teamCode || ""
+        : "",
       seed: athlete.seed || "",
     });
     setEditingAthlete(athlete);
@@ -649,7 +658,7 @@ function CoachPage() {
         const row = rows[i];
         if (!row || !row[0]) continue;
 
-        let nameCol=0, genderCol=1, birthCol=2, clubCol=3, eventCol=4, weightCol=5, teamCol=6, seedCol=7;
+        let nameCol=0, genderCol=1, birthCol=2, clubCol=3, eventCol=4, weightCol=5, teamCol=6, teamCodeCol=7, seedCol=8;
 
         if (startRow === 1 && rows[0]) {
           const norm = v => String(v||'').toLowerCase().normalize('NFD')
@@ -663,10 +672,11 @@ function CoachPage() {
           const ev=fc(['noi dung','event','hang muc']); if(ev>=0) eventCol=ev;
           const w=fc(['can','weight','kg']);       if(w>=0) weightCol=w;
           const t=fc(['dong doi','team']);         if(t>=0) teamCol=t;
+          const tc=fc(['ma doi','team code','teamcode']); if(tc>=0) teamCodeCol=tc;
           const s=fc(['hat giong','seed']);        if(s>=0) seedCol=s;
         } else {
           const isNum = typeof row[0]==='number' || (!isNaN(row[0]) && String(row[0]).trim()!=='');
-          if (isNum && row[1]) { nameCol=1;birthCol=2;genderCol=3;clubCol=4;eventCol=5;weightCol=6;teamCol=7;seedCol=8; }
+          if (isNum && row[1]) { nameCol=1;birthCol=2;genderCol=3;clubCol=4;eventCol=5;weightCol=6;seedCol=7;teamCol=8;teamCodeCol=9; }
         }
 
         const name = String(row[nameCol]||'').trim();
@@ -706,6 +716,7 @@ function CoachPage() {
         const weight = row[weightCol] ? parseFloat(row[weightCol]) : null;
         const teamRaw = String(row[teamCol]||'').trim().toLowerCase();
         const isTeam = teamRaw==='ó'||teamRaw==='co'||teamRaw==='yes'||teamRaw==='x'||teamRaw.startsWith('có')||teamRaw==='có';
+        const teamCode = String(row[teamCodeCol] ?? '').trim();
         const seed = parseInt(row[seedCol]) || null;
 
         if (!eventName) {
@@ -737,12 +748,16 @@ function CoachPage() {
         const isKumiteEv = matchedEvent.type==='kumite' || evName.toLowerCase().includes('kumite');
         if (isKumiteEv && (!weight||isNaN(weight)))
           importErrors.push('⚠️ Đòng '+(i+1)+' ('+name+'): Thiếu cân nặng cho Kumite "'+evName+'"');
+        if (isTeamCategory(matchedEvent) && !teamCode)
+          importErrors.push('⚠️ Dòng '+(i+1)+' ('+name+'): Thiếu Mã đội cho nội dung đồng đội "'+evName+'"');
 
         const result = await addAthlete({
           name, birthDate, birthYear, gender, club,
           eventId: matchedEvent.id, eventName: matchedEvent.name,
           weight: weight && !isNaN(weight) ? weight : undefined,
-          isTeam, seed: seed && seed>=1 && seed<=8 ? seed : null,
+          isTeam,
+          teamCode: isTeamCategory(matchedEvent) ? teamCode : "",
+          seed: seed && seed>=1 && seed<=8 ? seed : null,
         });
         if (result.success) imported++;
         else importErrors.push('❌ Đòng '+(i+1)+' ('+name+'): '+result.error);
@@ -780,6 +795,9 @@ function CoachPage() {
       (event.type === "kumite" || event.name?.toLowerCase().includes("kumite"));
     if (isKumite && !formData.weight) {
       errors.push("Cân nặng (kg) là bắt buộc cho nội dung Kumite");
+    }
+    if (selectedEventIsTeam && !formData.teamCode.trim()) {
+      errors.push("Mã đội là bắt buộc cho nội dung đồng đội");
     }
 
     // Age validation: compute directly instead of relying on state
@@ -844,6 +862,7 @@ function CoachPage() {
       eventName: event?.name || "",
       weight: formData.weight ? parseFloat(formData.weight) : undefined,
       isTeam: selectedEventIsTeam ? formData.isTeam || false : false,
+      teamCode: selectedEventIsTeam ? formData.teamCode.trim() : "",
       seed: formData.seed ? parseInt(formData.seed) : null,
     };
 
@@ -1428,6 +1447,7 @@ function CoachPage() {
                           ...formData,
                           eventId: val,
                           isTeam: isTeamEvent ? formData.isTeam : false,
+                          teamCode: isTeamEvent ? formData.teamCode : "",
                         });
                         checkAgeWarning(formData.birthDate, val);
                       }}
@@ -1458,6 +1478,20 @@ function CoachPage() {
                       />
                       Thi đấu đồng đội
                     </label>
+                  </div>
+                  <div className="form-group">
+                    <label>
+                      Mã đội {selectedEventIsTeam && <span className="required-star">*</span>}
+                    </label>
+                    <input
+                      type="text"
+                      value={selectedEventIsTeam ? formData.teamCode : ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, teamCode: e.target.value })
+                      }
+                      placeholder="Ví dụ: 1, 2, A"
+                      disabled={!selectedEventIsTeam}
+                    />
                   </div>
                   <div className="form-group">
                     <label>Hạt giống (1-8)</label>
@@ -1503,6 +1537,7 @@ function CoachPage() {
                     <th>Cân nặng</th>
                     <th>Hạt giống</th>
                     <th>Đồng đội</th>
+                    <th>Mã đội</th>
                     {canEdit && <th>Thao tác</th>}
                   </tr>
                 </thead>
@@ -1527,6 +1562,7 @@ function CoachPage() {
                       <td>{athlete.weight || "-"}</td>
                       <td>{athlete.seed || "-"}</td>
                       <td>{isTeamCategory(getTournamentEvent(athlete.eventId)) && athlete.isTeam ? "✅" : "-"}</td>
+                      <td>{isTeamCategory(getTournamentEvent(athlete.eventId)) ? athlete.teamCode || "-" : "-"}</td>
                       {canEdit && (
                         <td className="actions-cell">
                           <button

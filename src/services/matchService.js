@@ -3,6 +3,7 @@
  */
 
 import * as XLSX from "xlsx";
+import { resolveKataCatalog } from "../domain/kataCatalog.js";
 
 // Version hiện tại
 const KMATCH_VERSION = "1.0.0";
@@ -34,6 +35,7 @@ export function createKmatchData(tournament, categories, settings = {}, targetRo
     number: index + 1,
     name: `Thảm ${index + 1}`,
   }));
+  const kataCatalog = resolveKataCatalog(tournament);
 
   const data = {
     version: KMATCH_VERSION,
@@ -51,6 +53,10 @@ export function createKmatchData(tournament, categories, settings = {}, targetRo
     scheduleConfig: tournament.scheduleConfig || null,
     mats,
     sponsorLogos: tournament.sponsorLogos || null,
+    kataSettings: {
+      includeWkf: kataCatalog.includeWkf,
+      additionalKatas: kataCatalog.custom,
+    },
     // Thời gian cho phép bấm điểm
     startTime: settings.startTime || null,
     endTime: settings.endTime || null,

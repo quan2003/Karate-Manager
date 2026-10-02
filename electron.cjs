@@ -1517,6 +1517,7 @@ ipcMain.handle("kata-receive:updateMatches", (event, matches) => {
     isFinal: !!m.isFinal,
     previousKatas1: Array.isArray(m.previousKatas1) ? m.previousKatas1 : [],
     previousKatas2: Array.isArray(m.previousKatas2) ? m.previousKatas2 : [],
+    kataOptions: Array.isArray(m.kataOptions) ? m.kataOptions : [],
     isCompleted: !!m.isCompleted,
     athlete1: m.athlete1
       ? { id: m.athlete1.id, name: m.athlete1.name, club: m.athlete1.club }

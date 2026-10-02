@@ -101,6 +101,7 @@ export default function AthleteList({
                   {category?.type === "kumite" && <th>Cân nặng</th>}
                   <th>Quốc gia</th>
                   <th>Đ.Đội</th>
+                  {isTeamEvent && <th>Mã đội</th>}
                   <th>Hạt giống</th>
                   <th>Thao tác</th>
                 </tr>
@@ -129,6 +130,9 @@ export default function AthleteList({
                       {athlete.country}
                     </td>
                     <td className="col-team">{isTeamEvent && athlete.isTeam ? "✅" : "-"}</td>
+                    {isTeamEvent && (
+                      <td className="col-team-code">{athlete.teamCode || "-"}</td>
+                    )}
                     <td className="col-seed">
                       {athlete.seed ? (
                         <span className="seed-badge">#{athlete.seed}</span>

@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
   Key,
+  Trophy,
   Users,
   MessageSquare,
   ReceiptText,
@@ -9,13 +10,17 @@ import {
   LogOut,
   Menu,
   X,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "../services/auth";
+import { useTheme } from "../services/theme";
 import api from "../services/api";
 
 export default function Sidebar() {
   const { logout, user } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [pendingRequests, setPendingRequests] = useState(0);
 
@@ -40,6 +45,7 @@ export default function Sidebar() {
   const navItems = [
     { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
     { icon: Key, label: "Licenses", path: "/licenses" },
+    { icon: Trophy, label: "Giải đấu & Storage", path: "/tournaments" },
     { icon: ReceiptText, label: "Đơn hàng", path: "/payment-orders" },
     { icon: Settings, label: "VietQR & Gói", path: "/payment-config" },
     { icon: Users, label: "Admin Users", path: "/users" },
@@ -114,7 +120,28 @@ export default function Sidebar() {
             ))}
           </nav>
 
-          <div className="pt-6 border-t border-slate-800">
+          <div className="pt-4 border-t border-slate-800">
+            {/* Theme Switcher Toggle */}
+            <button
+              onClick={toggleTheme}
+              className="w-full flex items-center justify-between px-3.5 py-2.5 mb-4 rounded-xl text-slate-300 hover:text-white bg-slate-800/60 hover:bg-slate-800 transition border border-slate-700/60 text-xs font-semibold"
+              title="Chuyển đổi giao diện Sáng / Tối"
+            >
+              <div className="flex items-center gap-2.5">
+                {theme === "dark" ? (
+                  <Moon size={16} className="text-blue-400" />
+                ) : (
+                  <Sun size={16} className="text-amber-400" />
+                )}
+                <span>{theme === "dark" ? "Giao diện Tối" : "Giao diện Sáng"}</span>
+              </div>
+              <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold ${
+                theme === "dark" ? "bg-slate-700 text-slate-300" : "bg-amber-500/20 text-amber-600"
+              }`}>
+                {theme === "dark" ? "DARK" : "LIGHT"}
+              </span>
+            </button>
+
             <div className="flex items-center gap-3 mb-4 px-2">
               {user?.picture ? (
                 <img

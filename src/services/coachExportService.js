@@ -40,8 +40,9 @@ export async function exportToExcel(data) {
     "CLB",
     "Nội dung",
     "Cân nặng (kg)",
-    "Hạt giống",
     "Đồng đội",
+    "Mã đội",
+    "Hạt giống",
   ];
   const athleteRows = data.athletes.map((a, i) => {
     let birthDisplay = "";
@@ -59,8 +60,9 @@ export async function exportToExcel(data) {
       a.club || data.clubName || "",
       a.eventName,
       a.weight || "",
-      a.seed || "",
       a.isTeam ? "Có" : "Không",
+      a.teamCode || "",
+      a.seed || "",
     ];
   });
 
@@ -76,8 +78,9 @@ export async function exportToExcel(data) {
     { wch: 25 }, // CLB
     { wch: 30 }, // Nội dung
     { wch: 12 }, // Cân nặng
-    { wch: 10 }, // Hạt giống
     { wch: 10 }, // Đồng đội
+    { wch: 12 }, // Mã đội
+    { wch: 10 }, // Hạt giống
   ];
 
   XLSX.utils.book_append_sheet(wb, athleteSheet, "Danh sách VĐV");

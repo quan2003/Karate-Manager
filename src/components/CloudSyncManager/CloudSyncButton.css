@@ -1,0 +1,174 @@
+.cloud-sync-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+}
+
+/* Icon variant inside card header action row */
+.action-btn.cloud-sync-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(239, 68, 68, 0.12); /* Default unsynced = Red */
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.action-btn.cloud-sync-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.action-btn.cloud-sync-btn:hover {
+  background: #ef4444;
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
+}
+
+/* 🔴 Chưa đồng bộ (idle / never synced) = Màu Đỏ */
+.action-btn.cloud-sync-btn.idle,
+.action-btn.cloud-sync-btn:not(.synced):not(.syncing) {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.action-btn.cloud-sync-btn.idle:hover,
+.action-btn.cloud-sync-btn:not(.synced):not(.syncing):hover {
+  background: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
+}
+
+/* 🟢 Đã đồng bộ = Màu xanh lá */
+.action-btn.cloud-sync-btn.synced {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.action-btn.cloud-sync-btn.synced:hover {
+  background: #10b981;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
+}
+
+/* 🟡 Đang đồng bộ = Màu Vàng */
+.action-btn.cloud-sync-btn.syncing {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+/* 🔴 Lỗi đồng bộ = Đỏ đậm */
+.action-btn.cloud-sync-btn.error {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.15);
+  border-color: rgba(220, 38, 38, 0.4);
+}
+
+.action-btn.cloud-sync-btn.error:hover {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+/* Spinner animation for syncing state */
+.spinner-icon {
+  animation: spinCloud 1.2s linear infinite;
+}
+
+@keyframes spinCloud {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Status Indicator Dot */
+.status-dot {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid #ffffff;
+}
+
+.status-dot.synced {
+  background-color: #10b981;
+  box-shadow: 0 0 5px #10b981;
+}
+
+.status-dot.syncing {
+  background-color: #f59e0b;
+  animation: pulseDot 1s infinite alternate;
+}
+
+.status-dot.error {
+  background-color: #ef4444;
+  box-shadow: 0 0 5px #ef4444;
+}
+
+.status-dot.idle {
+  background-color: #ef4444;
+  box-shadow: 0 0 4px #ef4444;
+}
+
+@keyframes pulseDot {
+  from { opacity: 0.4; }
+  to { opacity: 1; }
+}
+
+/* Toast Notification (Floating bottom-right) */
+.cloud-sync-toast-float {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(8px);
+  animation: slideUpToast 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cloud-sync-toast-float.success {
+  background: #064e3b;
+  color: #6ee7b7;
+  border: 1px solid #10b981;
+}
+
+.cloud-sync-toast-float.error {
+  background: #7f1d1d;
+  color: #fca5a5;
+  border: 1px solid #ef4444;
+}
+
+@keyframes slideUpToast {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

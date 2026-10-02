@@ -3,6 +3,8 @@
  * Quản lý việc mở scoreboard và nhận kết quả từ kata/kumite scoreboard
  */
 
+import { resolveKataCatalog } from "../domain/kataCatalog.js";
+
 const PENDING_MATCH_KEY = 'pending_match';
 const MATCH_RESULT_KEY = 'match_result';
 
@@ -14,7 +16,7 @@ const MATCH_RESULT_KEY = 'match_result';
  * @param {string} tournamentName - Tên giải đấu
  * @param {string} roundName - Tên vòng đấu (vd: "Bán kết")
  */
-export function openScoreboard(match, categoryType, categoryName, tournamentName, roundName, scheduleInfo = null, sponsorLogos = null, categoryId = null, categoryData = null) {
+export function openScoreboard(match, categoryType, categoryName, tournamentName, roundName, scheduleInfo = null, sponsorLogos = null, categoryId = null, categoryData = null, kataSettings = null) {
   // Always send an explicit logo configuration for the current tournament.
   // An empty sponsor list tells the scoreboard to show the K-SPORT default
   // instead of reusing logos left in another scoreboard session.
@@ -85,6 +87,7 @@ export function openScoreboard(match, categoryType, categoryName, tournamentName
 
   const athlete1Members = resolveMembers(match.athlete1);
   const athlete2Members = resolveMembers(match.athlete2);
+  const kataCatalog = resolveKataCatalog(kataSettings || {});
 
   const pendingMatch = {
     matchId: match.id,
@@ -126,6 +129,11 @@ export function openScoreboard(match, categoryType, categoryName, tournamentName
     matNumber: scheduleInfo?.mat || null,
     // Sponsor logos (base64 images)
     sponsorLogos: currentTournamentLogos,
+    kataOptions: kataCatalog.all,
+    kataOptionGroups: {
+      wkf: kataCatalog.wkf,
+      custom: kataCatalog.custom,
+    },
     timestamp: Date.now(),
   };
   

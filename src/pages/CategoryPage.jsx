@@ -257,6 +257,9 @@ export default function CategoryPage() {
   const untickedTeamAthletes = isTeamCategory
     ? category.athletes.filter(a => !a.isTeam)
     : [];
+  const missingTeamCodeAthletes = isTeamCategory
+    ? category.athletes.filter(a => !String(a.teamCode || "").trim())
+    : [];
 
   const handleDraw = () => {
     setDrawError(null);
@@ -660,6 +663,21 @@ export default function CategoryPage() {
                   {untickedTeamAthletes.length > 5 && <li>...và {untickedTeamAthletes.length - 5} VĐV khác</li>}
                 </ul>
                 <p style={{fontSize: '12px', marginTop: '4px'}}>Các VĐV này vẫn sẽ được ghép vào đội theo CLB.</p>
+              </div>
+            )}
+
+            {isTeamCategory && missingTeamCodeAthletes.length > 0 && (
+              <div className="draw-error" style={{background: '#fff7ed', border: '1px solid #f97316', color: '#9a3412'}}>
+                ⚠️ <strong>{missingTeamCodeAthletes.length} VĐV chưa có Mã đội:</strong>
+                <ul style={{margin: '6px 0', paddingLeft: '20px', fontSize: '13px'}}>
+                  {missingTeamCodeAthletes.slice(0, 5).map(a => (
+                    <li key={a.id}>{a.name} ({a.club || 'Không CLB'})</li>
+                  ))}
+                  {missingTeamCodeAthletes.length > 5 && <li>...và {missingTeamCodeAthletes.length - 5} VĐV khác</li>}
+                </ul>
+                <p style={{fontSize: '12px', marginTop: '4px'}}>
+                  Dữ liệu cũ chưa có mã vẫn được chia tự động theo thứ tự đăng ký. Hãy nhập Mã đội để cố định đúng đồng đội.
+                </p>
               </div>
             )}
 

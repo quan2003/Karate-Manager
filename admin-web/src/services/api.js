@@ -29,7 +29,7 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (error.response && error.response.status === 401) {
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       // Auto logout if token is invalid/expired
       localStorage.removeItem('admin_token');
       localStorage.removeItem('admin_user');

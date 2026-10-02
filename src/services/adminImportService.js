@@ -146,22 +146,46 @@ function parseExcelFile(content) {
     }
     
     const rows = XLSX.utils.sheet_to_json(athleteSheet, { header: 1 });
+    const headers = (rows[0] || []).map((value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+    );
+    const findColumn = (terms, fallback) => {
+      const index = headers.findIndex((header) => terms.some((term) => header.includes(term)));
+      return index >= 0 ? index : fallback;
+    };
+    const findOptionalColumn = (terms) =>
+      headers.findIndex((header) => terms.some((term) => header.includes(term)));
+    const nameCol = findColumn(["ho ten", "ten vdv", "name"], 1);
+    const birthCol = findColumn(["ngay sinh", "nam sinh", "birth"], 2);
+    const genderCol = findColumn(["gioi tinh", "gender"], 3);
+    const clubCol = findColumn(["clb", "don vi", "club"], 4);
+    const eventCol = findColumn(["noi dung", "event"], 5);
+    const weightCol = findColumn(["can nang", "weight", "kg"], 6);
+    const teamCol = findColumn(["dong doi"], 7);
+    const teamCodeCol = findOptionalColumn(["ma doi", "team code", "teamcode"]);
+    const seedCol = findColumn(["hat giong", "seed"], 9);
     
     // Skip header row
     const athletes = [];
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      if (!row[1]) continue; // Skip empty rows
+      if (!row[nameCol]) continue; // Skip empty rows
       
       athletes.push({
-        name: row[1],
-        birthYear: parseInt(row[2]) || null,
-        gender: row[3] === 'Nam' ? 'male' : 'female',
-        club: row[4] || '',
-        eventName: row[5] || '',
-        weight: row[6] ? parseFloat(row[6]) : undefined,
-        seed: row[7] || null,
-        isTeam: row[8] === 'Có'
+        name: row[nameCol],
+        birthYear: parseInt(row[birthCol]) || null,
+        gender: row[genderCol] === 'Nam' ? 'male' : 'female',
+        club: row[clubCol] || '',
+        eventName: row[eventCol] || '',
+        weight: row[weightCol] ? parseFloat(row[weightCol]) : undefined,
+        isTeam: String(row[teamCol] || '').trim().toLowerCase() === 'có',
+        teamCode: teamCodeCol >= 0 ? String(row[teamCodeCol] ?? '').trim() : '',
+        seed: row[seedCol] || null
       });
     }
     

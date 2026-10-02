@@ -152,6 +152,7 @@ export default function SchedulePage() {
     const getCount = (cat) => {
       const athleteCount = cat.athletes?.length || 0;
       const threshold = splitSettings.threshold || 20;
+      if (cat.sigmaCount && cat.sigmaCount > 1) return cat.sigmaCount;
       if (cat.sigmaSplitEnabled === false) return 1;
       if (cat.sigmaSplitEnabled === true) return Math.max(2, Math.floor(athleteCount / threshold)) || 2;
       if (!splitSettings.enabled || athleteCount <= threshold) return 1;
@@ -167,7 +168,7 @@ export default function SchedulePage() {
             ...cat,
             id: `${cat.id}_split${i}`,
             baseId: cat.id,
-            name: `${cat.name} - Trận ${i + 1}/${numSplits}`,
+            name: `${cat.name} - Bảng ${i + 1}/${numSplits}`,
             isSplit: true,
             splitIndex: i,
             totalSplits: numSplits,

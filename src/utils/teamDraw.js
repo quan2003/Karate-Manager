@@ -137,6 +137,10 @@ function getClubGroupingKey(value) {
   return normalizeText(value || "Khong CLB");
 }
 
+function getAthleteTeamCode(athlete = {}) {
+  return String(athlete.teamCode ?? "").trim();
+}
+
 function splitMembersIntoTeams(members, mainSize, reserveSize) {
   const teamCount = Math.floor(members.length / mainSize);
   if (teamCount < 1) return [];
@@ -184,32 +188,70 @@ export function getTeamsFromAthletes(athletes = [], category = {}, tournament = 
 
   const teams = [];
   clubMap.forEach(({ clubName, members }, groupingKey) => {
-    if (members.length < targetSize) return;
-    const shouldSplit = autoSplit || splitClubKeys.has(groupingKey);
-    const memberGroups = shouldSplit
-      ? splitMembersIntoTeams(members, targetSize, reserveSize)
-      : [members.map((member, index) => ({
-          ...member,
-          isReserve: index >= targetSize,
-          teamRole: index >= targetSize ? "reserve" : "main",
-        }))];
-    memberGroups.forEach((teamMembers, index) => {
-      const teamNumber = index + 1;
+    const codedGroups = new Map();
+    const uncodedMembers = [];
+
+    members.forEach((member) => {
+      const teamCode = getAthleteTeamCode(member);
+      if (!teamCode) {
+        uncodedMembers.push(member);
+        return;
+      }
+      const teamKey = normalizeText(teamCode);
+      if (!codedGroups.has(teamKey)) {
+        codedGroups.set(teamKey, { teamCode, members: [] });
+      }
+      codedGroups.get(teamKey).members.push(member);
+    });
+
+    const addTeam = (teamMembers, { teamCode = "", teamNumber = null, showSuffix = false } = {}) => {
       const idMembers = teamMembers.map((member) => member.id || member.name).join("_");
+      const teamLabel = teamCode || teamNumber;
 
       teams.push({
-        id: `team_${sanitizeIdPart(clubName)}_${teamNumber}_${sanitizeIdPart(idMembers)}`,
-        name: memberGroups.length > 1 ? `${clubName} - Đội ${teamNumber}` : clubName,
+        id: `team_${sanitizeIdPart(clubName)}_${sanitizeIdPart(teamLabel || "1")}_${sanitizeIdPart(idMembers)}`,
+        name: showSuffix ? `${clubName} - Đội ${teamLabel}` : clubName,
         club: clubName,
         country: teamMembers[0]?.country || "VN",
         gender: teamMembers[0]?.gender,
         isTeam: true,
-        teamNumber: memberGroups.length > 1 ? teamNumber : null,
+        teamCode: teamCode || null,
+        teamNumber: showSuffix ? teamLabel : null,
         targetTeamSize: targetSize,
         reserveTeamSize: reserveSize,
         mainMembers: teamMembers.filter((member) => !member.isReserve),
         reserveMembers: teamMembers.filter((member) => member.isReserve),
         members: teamMembers,
+      });
+    };
+
+    // A supplied team code is authoritative: same club + same code = one team.
+    // Keep every extra athlete as a reserve so no registration is silently lost.
+    codedGroups.forEach(({ teamCode, members: codedMembers }) => {
+      if (codedMembers.length < targetSize) return;
+      const teamMembers = codedMembers.map((member, index) => ({
+        ...member,
+        isReserve: index >= targetSize,
+        teamRole: index >= targetSize ? "reserve" : "main",
+      }));
+      addTeam(teamMembers, { teamCode, teamNumber: teamCode, showSuffix: true });
+    });
+
+    if (uncodedMembers.length < targetSize) return;
+    const shouldSplit = autoSplit || splitClubKeys.has(groupingKey);
+    const memberGroups = shouldSplit
+      ? splitMembersIntoTeams(uncodedMembers, targetSize, reserveSize)
+      : [uncodedMembers.map((member, index) => ({
+          ...member,
+          isReserve: index >= targetSize,
+          teamRole: index >= targetSize ? "reserve" : "main",
+        }))];
+    memberGroups.forEach((teamMembers, index) => {
+      const mixedWithCodedTeams = codedGroups.size > 0;
+      const teamNumber = mixedWithCodedTeams ? `Tự động ${index + 1}` : index + 1;
+      addTeam(teamMembers, {
+        teamNumber,
+        showSuffix: mixedWithCodedTeams || memberGroups.length > 1,
       });
     });
   });
@@ -269,7 +311,11 @@ export function syncTeamBracketMembers(bracket, athletes = [], category = {}, to
     const clubKey = getClubKey(participant.club || participant.name);
     const clubTeams = teamsByClub.get(clubKey) || [];
     const replacement =
-      clubTeams.find((team) => team.teamNumber === participant.teamNumber) ||
+      clubTeams.find((team) =>
+        participant.teamCode
+          ? normalizeText(team.teamCode) === normalizeText(participant.teamCode)
+          : team.teamNumber === participant.teamNumber
+      ) ||
       (!participant.teamNumber && clubTeams.length > 0 ? clubTeams[0] : null);
 
     if (!replacement) {
@@ -290,6 +336,7 @@ export function syncTeamBracketMembers(bracket, athletes = [], category = {}, to
       club: replacement.club,
       country: replacement.country,
       gender: replacement.gender,
+      teamCode: replacement.teamCode,
       teamNumber: replacement.teamNumber,
       targetTeamSize: replacement.targetTeamSize,
       reserveTeamSize: replacement.reserveTeamSize,

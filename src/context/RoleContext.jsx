@@ -264,6 +264,7 @@ export function RoleProvider({ children }) {
       const newAthlete = {
         ...athlete,
         isTeam: isTeamCategory(event) ? Boolean(athlete.isTeam) : false,
+        teamCode: isTeamCategory(event) ? String(athlete.teamCode || "").trim() : "",
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
       };
@@ -302,6 +303,9 @@ export function RoleProvider({ children }) {
             ...a,
             ...updates,
             isTeam: isTeamCategory(event) ? Boolean(updates.isTeam ?? a.isTeam) : false,
+            teamCode: isTeamCategory(event)
+              ? String(updates.teamCode ?? a.teamCode ?? "").trim()
+              : "",
             updatedAt: new Date().toISOString(),
           };
         });

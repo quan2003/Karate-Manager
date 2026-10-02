@@ -1008,7 +1008,7 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         padding-right: ${connectorWidth + 150}px; /* Chỗ chứa Champion & Kết quả linh động */
       }
       .pdf-rounds { display: flex; align-items: flex-start; }
-      .pdf-round { display: flex; flex-direction: column; }
+      .pdf-round { display: flex; flex-direction: column; min-width: ${cellWidth + connectorWidth}px; flex-shrink: 0; }
       .pdf-round-header { 
         text-align: center; padding: 5px 0; margin-bottom: 10px; min-width: ${cellWidth}px;
       }

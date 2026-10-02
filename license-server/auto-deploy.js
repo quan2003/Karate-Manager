@@ -28,18 +28,18 @@ async function deploy() {
     });
     console.log('Upload Admin Web xong!');
 
-    // 2. Upload Backend ZIP
-    console.log('Đang tải lên Backend Server ZIP...');
-    const zipLocalFile = path.join(__dirname, '../server_deploy.zip');
-    const zipRemoteFile = '/root/karate-app/server_deploy.zip';
-    await ssh.putFile(zipLocalFile, zipRemoteFile);
-    console.log('Upload Backend Server xong!');
-
-    // 3. Extract and restart on VPS
-    console.log('Đang giải nén và khởi động lại Server...');
+    // 3. Extract and update Server on VPS
+    console.log('Đang giải nén và cập nhật Server...');
     const remoteServerDir = '/root/karate-app/license-server';
     await ssh.execCommand(`mkdir -p ${remoteServerDir}`);
     await ssh.execCommand(`unzip -o /root/karate-app/server_deploy.zip -d ${remoteServerDir}`);
+    
+    // Upload newest server.js
+    console.log('Đang ghi đè server.js mới nhất...');
+    const serverFileLocal = path.join(__dirname, 'server.js');
+    await ssh.putFile(serverFileLocal, '/root/karate-app/license-server/server.js');
+    await ssh.putFile(serverFileLocal, '/root/license-server/server.js').catch(() => {});
+    await ssh.putFile(serverFileLocal, '/root/server.js').catch(() => {});
     
     // Install NPM
     console.log('Đang cài đặt node modules trên VPS...');

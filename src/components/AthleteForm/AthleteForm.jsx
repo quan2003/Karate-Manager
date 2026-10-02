@@ -52,6 +52,7 @@ export default function AthleteForm({
     country: initialData?.country || "VN",
     weight: initialData?.weight || "",
     isTeam: isTeamEvent ? initialData?.isTeam || false : false,
+    teamCode: isTeamEvent ? initialData?.teamCode || "" : "",
     seed: initialData?.seed || "",
   });
 
@@ -95,6 +96,9 @@ export default function AthleteForm({
         e.weight = "Cân nặng phải là số";
       }
     }
+    if (isTeamEvent && !formData.teamCode.trim()) {
+      e.teamCode = "Vui lòng nhập mã đội";
+    }
     if (ageError) e.birthDate = ageError;
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -106,6 +110,7 @@ export default function AthleteForm({
       onSubmit({
         ...formData,
         isTeam: isTeamEvent ? Boolean(formData.isTeam) : false,
+        teamCode: isTeamEvent ? formData.teamCode.trim() : "",
         weight: formData.weight ? parseFloat(formData.weight) : null,
         seed: formData.seed ? parseInt(formData.seed) : null,
       });
@@ -118,6 +123,7 @@ export default function AthleteForm({
           country: "VN",
           weight: "",
           isTeam: false,
+          teamCode: "",
           seed: "",
         });
         setAgeError("");
@@ -280,6 +286,25 @@ export default function AthleteForm({
             />
             <span>Đồng đội</span>
           </label>
+          {isTeamEvent && (
+            <div className="input-group input-group-inline">
+              <label className="input-label">
+                Mã đội <span className="required">*</span>
+              </label>
+              <input
+                type="text"
+                name="teamCode"
+                className={`input ${errors.teamCode ? "error" : ""}`}
+                value={formData.teamCode}
+                onChange={handleChange}
+                placeholder="1, 2, A..."
+                style={{ width: "110px" }}
+              />
+              {errors.teamCode && (
+                <span className="error-message">{errors.teamCode}</span>
+              )}
+            </div>
+          )}
         </div>
         <div className="form-actions">
           {onCancel && (

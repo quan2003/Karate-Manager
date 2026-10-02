@@ -139,7 +139,7 @@ export function parseExcelFile(file) {
             hasEventCol = headerStr.some(h => h.includes("nội dung"));
           }
 
-          let eventName, weight, country, isTeam, seed;
+          let eventName, weight, country, isTeam, teamCode, seed;
           const name = String(row[0] || "").trim();
           const gender = parseGenderValue(row[1]);
           const birthDate = parseDateValue(row[2]);
@@ -147,19 +147,27 @@ export function parseExcelFile(file) {
           const club = String(row[3] || "").trim();
 
           if (hasEventCol) {
-            // New format: Name, Gender, BirthDate, Club, Event, Weight, Country, Team, Seed
+            // Format: Name, Gender, BirthDate, Club, Event, Weight, Country, Team, TeamCode, Seed
             eventName = String(row[4] || "").trim();
             weight = row[5] ? parseFloat(row[5]) : null;
             country = String(row[6] || "VN").trim().toUpperCase();
             isTeam = parseBooleanValue(row[7]);
-            seed = parseInt(row[8]) || null;
+            const header = jsonData[0] || [];
+            const teamCodeCol = findHeaderColumn(header, ["mã đội", "ma doi", "team code", "teamcode"]);
+            const seedCol = findHeaderColumn(header, ["hạt giống", "hat giong", "seed"]);
+            teamCode = teamCodeCol >= 0 ? String(row[teamCodeCol] ?? "").trim() : "";
+            seed = parseInt(row[seedCol >= 0 ? seedCol : 8]) || null;
           } else {
-            // Old format: Name, Gender, BirthDate, Club, Weight, Country, Team, Seed
+            // Legacy format: Name, Gender, BirthDate, Club, Weight, Country, Team, [TeamCode], Seed
             eventName = "";
             weight = row[4] ? parseFloat(row[4]) : null;
             country = String(row[5] || "VN").trim().toUpperCase();
             isTeam = parseBooleanValue(row[6]);
-            seed = parseInt(row[7]) || null;
+            const header = jsonData[0] || [];
+            const teamCodeCol = findHeaderColumn(header, ["mã đội", "ma doi", "team code", "teamcode"]);
+            const seedCol = findHeaderColumn(header, ["hạt giống", "hat giong", "seed"]);
+            teamCode = teamCodeCol >= 0 ? String(row[teamCodeCol] ?? "").trim() : "";
+            seed = parseInt(row[seedCol >= 0 ? seedCol : 7]) || null;
           }
 
           if (!name) {
@@ -185,6 +193,7 @@ export function parseExcelFile(file) {
             weight: weight && !isNaN(weight) ? weight : null,
             country,
             isTeam,
+            teamCode,
             seed: seed && seed >= 1 && seed <= 8 ? seed : null,
           });
         }
@@ -256,6 +265,7 @@ export function parseCoachExcelFile(file) {
                       eventName: String(a.eventName || "").trim(),
                       weight: a.weight || null,
                       isTeam: !!a.isTeam,
+                      teamCode: String(a.teamCode || "").trim(),
                       seed: a.seed || null,
                       country: a.country || "VN",
                     }))
@@ -323,20 +333,21 @@ export function parseCoachExcelFile(file) {
           if (!row || !row[0]) continue;
 
           // Skip if first col is just a number (STT) and no name in second col
-          let nameCol, genderCol, birthCol, clubCol, eventCol, weightCol, seedCol, teamCol;
+          let nameCol, genderCol, birthCol, clubCol, eventCol, weightCol, seedCol, teamCol, teamCodeCol;
 
           // Detect if col 0 is STT (number) → data starts from col 1
           const firstVal = row[0];
           if (typeof firstVal === "number" || /^\d+$/.test(String(firstVal).trim())) {
-            // STT column present: STT(0), Name(1), Birth(2), Gender(3), Club(4), Event(5), Weight(6), Seed(7), Team(8)
+            // STT column present: STT(0), Name(1), Birth(2), Gender(3), Club(4), Event(5), Weight(6), Team(7), TeamCode(8), Seed(9)
             nameCol = 1;
             birthCol = 2;
             genderCol = 3;
             clubCol = 4;
             eventCol = 5;
             weightCol = 6;
-            seedCol = 7;
-            teamCol = 8;
+            teamCol = 7;
+            teamCodeCol = 8;
+            seedCol = 9;
           } else {
             // No STT, first col is name
             nameCol = 0;
@@ -345,8 +356,9 @@ export function parseCoachExcelFile(file) {
             clubCol = 3;
             eventCol = 4;
             weightCol = 5;
-            seedCol = 6;
-            teamCol = 7;
+            teamCol = 6;
+            teamCodeCol = 7;
+            seedCol = 8;
           }
 
           if (header.length > 0) {
@@ -358,6 +370,7 @@ export function parseCoachExcelFile(file) {
             const dynamicWeightCol = findHeaderColumn(header, ["cân nặng", "can nang", "weight", "kg"]);
             const dynamicSeedCol = findHeaderColumn(header, ["hạt giống", "hat giong", "seed"]);
             const dynamicTeamCol = findHeaderColumn(header, ["đồng đội", "dong doi", "team"]);
+            const dynamicTeamCodeCol = findHeaderColumn(header, ["mã đội", "ma doi", "team code", "teamcode"]);
 
             if (dynamicNameCol >= 0) nameCol = dynamicNameCol;
             if (dynamicGenderCol >= 0) genderCol = dynamicGenderCol;
@@ -367,6 +380,7 @@ export function parseCoachExcelFile(file) {
             if (dynamicWeightCol >= 0) weightCol = dynamicWeightCol;
             if (dynamicSeedCol >= 0) seedCol = dynamicSeedCol;
             if (dynamicTeamCol >= 0) teamCol = dynamicTeamCol;
+            if (dynamicTeamCodeCol >= 0) teamCodeCol = dynamicTeamCodeCol;
           }
 
           const name = String(row[nameCol] || "").trim();
@@ -380,6 +394,7 @@ export function parseCoachExcelFile(file) {
           const weight = row[weightCol] ? parseFloat(row[weightCol]) : null;
           const seed = parseInt(row[seedCol]) || null;
           const isTeam = parseBooleanValue(row[teamCol]);
+          const teamCode = String(row[teamCodeCol] ?? "").trim();
 
           athletes.push({
             name,
@@ -390,6 +405,7 @@ export function parseCoachExcelFile(file) {
             eventName,
             weight: weight && !isNaN(weight) ? weight : null,
             isTeam,
+            teamCode,
             seed: seed && seed >= 1 && seed <= 8 ? seed : null,
             country: "VN",
           });
@@ -450,6 +466,7 @@ export function exportAthletesToExcel(
     "Cân nặng (kg)",
     "Quốc gia",
     "Đồng đội",
+    "Mã đội",
     "Hạt giống",
   ];
 
@@ -464,6 +481,7 @@ export function exportAthletesToExcel(
       a.weight || "",
       a.country || "VN",
       a.isTeam ? "Có" : "Không",
+      a.teamCode || "",
       a.seed || "",
     ]),
   ];
@@ -481,6 +499,7 @@ export function exportAthletesToExcel(
     { wch: 12 }, // Weight
     { wch: 10 }, // Country
     { wch: 10 }, // Team
+    { wch: 12 }, // Team code
     { wch: 10 }, // Seed
   ];
   worksheet["!cols"] = colWidths;
@@ -502,6 +521,7 @@ export function generateTemplateExcel(category = null) {
     "Cân nặng (kg)",
     "Quốc gia",
     "Đồng đội (Có/Không)",
+    "Mã đội",
     "Hạt giống",
   ];
 
@@ -517,6 +537,7 @@ export function generateTemplateExcel(category = null) {
           59.5,
           "VN",
           "Không",
+          "",
           1,
         ],
         [
@@ -528,9 +549,10 @@ export function generateTemplateExcel(category = null) {
           55.0,
           "VN",
           "Không",
+          "",
           2,
         ],
-        ["Lê Văn C", "Nam", "10/01/2008", "CLB Đà Nẵng", categoryName, 60.0, "VN", "Có", ""],
+        ["Lê Văn C", "Nam", "10/01/2008", "CLB Đà Nẵng", categoryName, 60.0, "VN", "Có", "1", ""],
         [
           "Phạm Thị D",
           "Nữ",
@@ -540,6 +562,7 @@ export function generateTemplateExcel(category = null) {
           52.3,
           "VN",
           "Không",
+          "",
           "",
         ],
       ]
@@ -554,10 +577,11 @@ export function generateTemplateExcel(category = null) {
           "",
           "VN",
           "Không",
+          "",
           1,
         ],
-        ["Trần Thị B", "Nữ", "22/07/2009", "CLB TP.HCM", categoryName, "", "VN", "Không", 2],
-        ["Lê Văn C", "Nam", "10/01/2008", "CLB Đà Nẵng", categoryName, "", "VN", "Có", ""],
+        ["Trần Thị B", "Nữ", "22/07/2009", "CLB TP.HCM", categoryName, "", "VN", "Không", "", 2],
+        ["Lê Văn C", "Nam", "10/01/2008", "CLB Đà Nẵng", categoryName, "", "VN", "Có", "1", ""],
         [
           "Phạm Thị D",
           "Nữ",
@@ -567,6 +591,7 @@ export function generateTemplateExcel(category = null) {
           "",
           "VN",
           "Không",
+          "",
           "",
         ],
       ];
@@ -584,6 +609,7 @@ export function generateTemplateExcel(category = null) {
     { wch: 14 },
     { wch: 10 },
     { wch: 18 },
+    { wch: 12 },
     { wch: 10 },
   ];
   worksheet["!cols"] = colWidths;

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   useTournament,
@@ -19,6 +19,8 @@ import ConfirmDialog from "../components/common/ConfirmDialog";
 import DateInput from "../components/common/DateInput";
 import DateTimeInput from "../components/common/DateTimeInput";
 import BackupManager from "../components/BackupManager/BackupManager";
+import CloudSyncButton from "../components/CloudSyncManager/CloudSyncButton";
+import { startAutoSyncEngine } from "../services/cloudSyncService";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import { BRONZE_MODES } from "../domain/bronzeMode.js";
@@ -68,6 +70,7 @@ export default function HomePage() {
     weightMin: "",
     weightMax: "",
   });
+
 
   // Redirect nếu không phải Admin
   if (role !== ROLES.ADMIN) {
@@ -646,6 +649,7 @@ export default function HomePage() {
                 <div className="tournament-header">
                   <h3 className="tournament-name">{tournament.name}</h3>
                   <div className="tournament-actions">
+                    <CloudSyncButton tournamentId={tournament.id} tournamentObj={tournament} variant="icon" />
                     <button
                       className="action-btn edit-btn"
                       onClick={() => handleOpenModal(tournament)}
@@ -772,6 +776,11 @@ export default function HomePage() {
                     <span>{tournament.categories?.length || 0} hạng mục</span>
                   </div>
                 </div>
+
+
+
+
+
 
                 <Link
                   to={`/tournament/${tournament.id}`}

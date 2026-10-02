@@ -1,6 +1,6 @@
-
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './services/auth';
+import { ThemeProvider } from './services/theme';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import LicensePage from './pages/LicensePage';
@@ -8,6 +8,7 @@ import UsersPage from './pages/UsersPage';
 import RequestsPage from './pages/RequestsPage';
 import PaymentOrdersPage from './pages/PaymentOrdersPage';
 import PaymentConfigPage from './pages/PaymentConfigPage';
+import TournamentsPage from './pages/TournamentsPage';
 import Sidebar from './components/Sidebar';
 
 const ProtectedLayout = () => {
@@ -28,24 +29,27 @@ const ProtectedLayout = () => {
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          
-          <Route element={<ProtectedLayout />}>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/licenses" element={<LicensePage />} />
-            <Route path="/payments" element={<Navigate to="/payment-orders" replace />} />
-            <Route path="/payment-orders" element={<PaymentOrdersPage />} />
-            <Route path="/payment-config" element={<PaymentConfigPage />} />
-            <Route path="/users" element={<UsersPage />} />
-            <Route path="/requests" element={<RequestsPage />} />
-          </Route>
-        </Routes>
-      </AuthProvider>
-    </Router>
+    <ThemeProvider>
+      <Router>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            
+            <Route element={<ProtectedLayout />}>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/licenses" element={<LicensePage />} />
+              <Route path="/tournaments" element={<TournamentsPage />} />
+              <Route path="/payments" element={<Navigate to="/payment-orders" replace />} />
+              <Route path="/payment-orders" element={<PaymentOrdersPage />} />
+              <Route path="/payment-config" element={<PaymentConfigPage />} />
+              <Route path="/users" element={<UsersPage />} />
+              <Route path="/requests" element={<RequestsPage />} />
+            </Route>
+          </Routes>
+        </AuthProvider>
+      </Router>
+    </ThemeProvider>
   );
 }
 
