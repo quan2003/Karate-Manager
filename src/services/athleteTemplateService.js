@@ -1,4 +1,16 @@
 const TEMPLATE_ROWS = 200;
+const TEMPLATE_PROTECTION_PASSWORD = "KSport2026";
+
+function hashExcelPassword(password) {
+  let verifier = 0;
+  for (let i = password.length - 1; i >= 0; i--) {
+    verifier = ((verifier >> 14) & 1) | ((verifier << 1) & 0x7fff);
+    verifier ^= password.charCodeAt(i);
+  }
+  verifier = ((verifier >> 14) & 1) | ((verifier << 1) & 0x7fff);
+  verifier ^= password.length;
+  return (verifier ^ 0xce4b).toString(16).toUpperCase().padStart(4, "0");
+}
 
 function esc(value) {
   return String(value ?? "")
@@ -24,6 +36,20 @@ function cell(row, column, value, style = 0) {
   const s = style ? ` s="${style}"` : "";
   if (typeof value === "number") return `<c r="${ref}"${s}><v>${value}</v></c>`;
   return `<c r="${ref}" t="inlineStr"${s}><is><t>${esc(value)}</t></is></c>`;
+}
+
+function formulaCell(row, column, formula, style = 0) {
+  const ref = `${col(column)}${row}`;
+  const s = style ? ` s="${style}"` : "";
+  return `<c r="${ref}"${s}><f>${esc(formula)}</f></c>`;
+}
+
+function rowWithFormulas(index, values, formulas = {}, valueStyle = 0, formulaStyle = 0) {
+  return `<row r="${index}">${values
+    .map((value, column) => Object.prototype.hasOwnProperty.call(formulas, column)
+      ? formulaCell(index, column, formulas[column], formulaStyle)
+      : cell(index, column, value, valueStyle))
+    .join("")}</row>`;
 }
 
 function row(index, values, style = 0) {
@@ -104,6 +130,7 @@ function toBase64(bytes) {
 }
 
 export function buildAthleteTemplateWorkbook({ events, clubName }) {
+  const protectionHash = hashExcelPassword(TEMPLATE_PROTECTION_PASSWORD);
   const safeEvents = events || [];
   const currentYear = new Date().getFullYear();
 
@@ -122,10 +149,32 @@ export function buildAthleteTemplateWorkbook({ events, clubName }) {
     if (rangeMatch) { minAge = parseInt(rangeMatch[1]); maxAge = parseInt(rangeMatch[2]); }
     else if (plusMatch1) { minAge = parseInt(plusMatch1[1]); maxAge = 99; }
     else if (plusMatch2) { minAge = parseInt(plusMatch2[1]); maxAge = 99; }
-    else if (plusMatch3) { minAge = parseInt(plusMatch3[1]); maxAge = 99; }
-    else if (underMatch) { minAge = 0; maxAge = parseInt(underMatch[1]); }
+    else if (plusMatch3) { minAge = parseInt(plusMatch3[1]) + 1; maxAge = 99; }
+    else if (underMatch) { minAge = 0; maxAge = Math.max(0, parseInt(underMatch[1]) - 1); }
     
     return { minAge, maxAge };
+  }
+
+  function getEventAgeRange(event) {
+    const parsed = parseEventAgeRange(`${event?.ageGroup || ""} ${event?.name || ""}`);
+    const hasExplicitMin = event?.minAge !== undefined && event?.minAge !== null && event?.minAge !== "";
+    const hasExplicitMax = event?.maxAge !== undefined && event?.maxAge !== null && event?.maxAge !== "";
+    const explicitMin = Number(event?.minAge);
+    const explicitMax = Number(event?.maxAge);
+    return {
+      minAge: hasExplicitMin && Number.isFinite(explicitMin) ? explicitMin : parsed.minAge,
+      maxAge: hasExplicitMax && Number.isFinite(explicitMax) ? explicitMax : parsed.maxAge,
+    };
+  }
+
+  function isTeamEvent(event) {
+    if (event?.isTeam) return true;
+    const normalizedName = (event?.name || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .toLowerCase();
+    return /dong\s*doi|\bteam\b/.test(normalizedName);
   }
 
   // Generate All lists
@@ -143,16 +192,20 @@ export function buildAthleteTemplateWorkbook({ events, clubName }) {
   
   for (let age = MIN_AGE_GEN; age <= MAX_AGE_GEN; age++) {
     const mEvents = maleEventsAll.filter(e => {
-       const r = parseEventAgeRange(e.name);
+       const r = getEventAgeRange(e);
        return age >= r.minAge && age <= r.maxAge;
     });
     const fEvents = femaleEventsAll.filter(e => {
-       const r = parseEventAgeRange(e.name);
+       const r = getEventAgeRange(e);
        return age >= r.minAge && age <= r.maxAge;
     });
     catalogColumns.push({ name: `Nam_${age}`, events: mEvents });
     catalogColumns.push({ name: `Nu_${age}`, events: fEvents });
   }
+
+  catalogColumns.push({ name: "NoiDung_DongDoi", events: safeEvents.filter(isTeamEvent) });
+  catalogColumns.push({ name: "Ma_Doi", events: Array.from({ length: 99 }, (_, i) => ({ name: i + 1 })) });
+  catalogColumns.push({ name: "Trong", events: [] });
 
   const catalogEndRows = Math.max(...catalogColumns.map(c => c.events.length), 1) + 1; // +1 for header
   const catalogEndCols = catalogColumns.length;
@@ -173,49 +226,65 @@ export function buildAthleteTemplateWorkbook({ events, clubName }) {
     return "18+ tuổi";
   }
 
-  // Sample rows
-  const sampleSources = [
-    maleEventsAll[0], femaleEventsAll[0], maleEventsAll[1] || femaleEventsAll[1],
-  ].filter(Boolean).slice(0, 3);
+  // Sample rows luôn dùng nội dung phù hợp với giới tính và tuổi mẫu.
+  const sampleProfiles = [
+    { gender: "male", age: 13, offset: 0 },
+    { gender: "female", age: 14, offset: 0 },
+    { gender: "male", age: 13, offset: 1 },
+  ];
+  const sampleSources = sampleProfiles.map((profile) => {
+    const genderEvents = profile.gender === "female" ? femaleEventsAll : maleEventsAll;
+    const compatibleEvents = genderEvents.filter((event) => {
+      const range = getEventAgeRange(event);
+      return profile.age >= range.minAge && profile.age <= range.maxAge;
+    });
+    const event = compatibleEvents[profile.offset] || compatibleEvents[0];
+    return event ? { event, ...profile } : null;
+  }).filter(Boolean);
 
-  const samples = sampleSources.map((event, i) => {
-    const isFemale = event.gender === "female";
-    const sampleYear = isFemale ? currentYear - 14 : currentYear - 13;
+  const samples = sampleSources.map(({ event, gender, age }, i) => {
+    const sampleYear = currentYear - age;
     return [
       `VĐV mẫu ${i + 1}`,
-      isFemale ? "Nữ" : "Nam",
+      gender === "female" ? "Nữ" : "Nam",
       sampleYear,
       getAgeGroup(sampleYear, currentYear),
       clubName || "CLB ...",
       event.name,
       event.type === "kumite" || event.name?.toLowerCase().includes("kumite") ? 60 : "",
-      event.isTeam ? "Có" : "Không",
-      event.isTeam ? "1" : "",
+      "",
+      isTeamEvent(event) ? "1" : "",
       i === 0 ? 1 : "",
     ];
   });
 
+  const teamFlagFormula = (r) => `IF(F${r}="","",IF(COUNTIF(NoiDung_DongDoi,F${r})>0,"Có","Không"))`;
+  const ageGroupFormula = (r) =>
+    `IF(C${r}="","",IF((${currentYear}-C${r})<=5,"Dưới 6 tuổi",IF((${currentYear}-C${r})<=8,"6-8 tuổi",IF((${currentYear}-C${r})<=11,"9-11 tuổi",IF((${currentYear}-C${r})<=14,"12-14 tuổi",IF((${currentYear}-C${r})<=17,"15-17 tuổi","18+ tuổi"))))))`;
+
   const headerRowXml = row(1, headers, 1);
-  const sampleRowsXml = samples.map((sample, i) => row(i + 2, sample)).join("");
+  const sampleRowsXml = samples.map((sample, i) => {
+    const r = i + 2;
+    return rowWithFormulas(r, sample, { 3: ageGroupFormula(r), 7: teamFlagFormula(r) }, 2, 0);
+  }).join("");
 
   // Formula rows
   const formulaRowsXml = (() => {
     const start = samples.length + 2;
-    const yr = currentYear;
     return Array.from({ length: TEMPLATE_ROWS + 1 - start + 1 }, (_, i) => {
       const r = start + i;
-      const formula =
-        `IF(C${r}="","",` +
-        `IF((${yr}-C${r})<=5,"D\u01b0\u1edbi 6 tu\u1ed5i",` +
-        `IF((${yr}-C${r})<=8,"6-8 tu\u1ed5i",` +
-        `IF((${yr}-C${r})<=11,"9-11 tu\u1ed5i",` +
-        `IF((${yr}-C${r})<=14,"12-14 tu\u1ed5i",` +
-        `IF((${yr}-C${r})<=17,"15-17 tu\u1ed5i","18+ tu\u1ed5i"))))))`;
-      return `<row r="${r}"><c r="D${r}"><f>${esc(formula)}</f></c></row>`;
+      return rowWithFormulas(
+        r,
+        Array(10).fill(""),
+        { 3: ageGroupFormula(r), 7: teamFlagFormula(r) },
+        2,
+        0,
+      );
     }).join("");
   })();
 
-  const eventValidationFormula = `IF(C2="", INDIRECT(IF(B2="N\u1eef","Nu_All",IF(B2="Nam","Nam_All","All_All"))), INDIRECT(IF(B2="N\u1eef","Nu_","Nam_") & MIN(MAX(${currentYear}-C2, ${MIN_AGE_GEN}), ${MAX_AGE_GEN})))`;
+  const eventValidationFormula = `IF(B2="",INDIRECT("All_All"),IF(C2="",INDIRECT(IF(B2="N\u1eef","Nu_All","Nam_All")),INDIRECT(IF(B2="N\u1eef","Nu_","Nam_")&MIN(MAX(${currentYear}-C2,${MIN_AGE_GEN}),${MAX_AGE_GEN}))))`;
+  const teamCodeValidationFormula = `INDIRECT(IF(H2="Có","Ma_Doi","Trong"))`;
 
   const inputSheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -239,6 +308,7 @@ ${headerRowXml}
 ${sampleRowsXml}
 ${formulaRowsXml}
 </sheetData>
+<sheetProtection password="${protectionHash}" sheet="1" objects="1" scenarios="1" formatCells="1" formatColumns="1" formatRows="1" insertColumns="1" insertRows="1" insertHyperlinks="1" deleteColumns="1" deleteRows="1" sort="1" autoFilter="1" pivotTables="1" selectLockedCells="1" selectUnlockedCells="0"/>
 <dataValidations count="3">
   <dataValidation type="list" allowBlank="1" showDropDown="0" showErrorMessage="1"
     errorTitle="Gioi tinh khong hop le" error="Chi duoc chon Nam hoac Nu"
@@ -251,8 +321,9 @@ ${formulaRowsXml}
     <formula1>${esc(eventValidationFormula)}</formula1>
   </dataValidation>
   <dataValidation type="list" allowBlank="1" showDropDown="0" showErrorMessage="1"
-    sqref="H2:H${TEMPLATE_ROWS + 1}">
-    <formula1>"Kh\u00f4ng,C\u00f3"</formula1>
+    errorTitle="Ma doi khong hop le" error="Chi chon Ma doi cho noi dung dong doi"
+    sqref="I2:I${TEMPLATE_ROWS + 1}">
+    <formula1>${esc(teamCodeValidationFormula)}</formula1>
   </dataValidation>
 </dataValidations>
 <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
@@ -273,6 +344,7 @@ ${formulaRowsXml}
   <col min="1" max="${catalogEndCols}" width="40" customWidth="1"/>
 </cols>
 <sheetData>${catalogHeaderXml}${catalogDataXml}</sheetData>
+<sheetProtection password="${protectionHash}" sheet="1" objects="1" scenarios="1" selectLockedCells="1" selectUnlockedCells="1"/>
 </worksheet>`;
 
   const guideRows = [
@@ -286,8 +358,8 @@ ${formulaRowsXml}
     row(8,  ["E - Đơn vị/CLB",      "Nhập tên CLB hoặc đơn vị. Có thể để trống nếu đã cài sẵn."]),
     row(9,  ["F - Nội dung thi đấu","BẮT BUỘC. Bấm vào ô → danh sách TỰ LỌC theo Giới tính (B) và Năm sinh (C) ▼"]),
     row(10, ["G - Cân nặng (kg)",   "BẮT BUỘC với nội dung Kumite. Bỏ trống nếu là Kata."]),
-    row(11, ["H - Đồng đội",        "Bấm chọn: Có (nội dung đồng đội) hoặc Không (cá nhân)."]),
-    row(12, ["I - Mã đội",          "BẮT BUỘC với nội dung đồng đội. Các VĐV cùng CLB và cùng mã (ví dụ 1, 2, A) sẽ thuộc cùng một đội."]),
+    row(11, ["H - Đồng đội",        "TỰ ĐỘNG: nội dung đồng đội hiện Có, nội dung cá nhân hiện Không."]),
+    row(12, ["I - Mã đội",          "Chỉ dùng cho nội dung đồng đội. Chọn số 1-99; các VĐV cùng CLB và cùng mã thuộc cùng một đội."]),
     row(13, ["J - Hạt giống",       "Tùy chọn. Chỉ nhập số từ 1 đến 8 nếu VĐV được xếp hạt giống."]),
     row(14, ["", ""]),
     row(15, ["LƯU Ý QUAN TRỌNG", ""], 1),
@@ -297,11 +369,12 @@ ${formulaRowsXml}
     row(19, ["4.", "Nội dung đồng đội: nhập cùng Mã đội cho các thành viên cùng đội."]),
     row(20, ["5.", "Sau khi điền xong, lưu file và gửi lại cho BTC hoặc nhập trực tiếp vào phần mềm."]),
     row(21, ["6.", "Không xóa hoặc thay đổi dòng tiêu đề (dòng 1 màu đậm)."]),
+    row(22, ["7.", "Chỉ nhập, sửa hoặc xóa dữ liệu trong các ô cho phép. Không xóa dòng/cột để bảo toàn công thức."]),
   ].join("");
 
   const guideSheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<dimension ref="A1:B21"/>
+<dimension ref="A1:B22"/>
 <sheetViews><sheetView workbookViewId="0"/></sheetViews>
 <sheetFormatPr defaultRowHeight="20"/>
 <cols>
@@ -309,6 +382,7 @@ ${formulaRowsXml}
   <col min="2" max="2" width="92" customWidth="1"/>
 </cols>
 <sheetData>${guideRows}</sheetData>
+<sheetProtection password="${protectionHash}" sheet="1" objects="1" scenarios="1" selectLockedCells="1" selectUnlockedCells="1"/>
 </worksheet>`;
 
   const definedNames = `<definedNames>` + catalogColumns.map((c, i) => {
@@ -320,8 +394,8 @@ ${formulaRowsXml}
     { name: "[Content_Types].xml", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>` },
     { name: "_rels/.rels", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
     { name: "xl/_rels/workbook.xml.rels", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/><Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` },
-    { name: "xl/styles.xml", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>` },
-    { name: "xl/workbook.xml", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="M\u1eabu nh\u1eadp V\u0110V" sheetId="1" r:id="rId1"/><sheet name="Danh m\u1ee5c" sheetId="2" state="hidden" r:id="rId2"/><sheet name="H\u01b0\u1edbng d\u1eabn" sheetId="3" r:id="rId3"/></sheets>${definedNames}</workbook>` },
+    { name: "xl/styles.xml", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyProtection="1"><protection locked="0"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>` },
+    { name: "xl/workbook.xml", content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><workbookProtection workbookPassword="${protectionHash}" lockStructure="1"/><sheets><sheet name="M\u1eabu nh\u1eadp V\u0110V" sheetId="1" r:id="rId1"/><sheet name="Danh m\u1ee5c" sheetId="2" state="hidden" r:id="rId2"/><sheet name="H\u01b0\u1edbng d\u1eabn" sheetId="3" r:id="rId3"/></sheets>${definedNames}</workbook>` },
     { name: "xl/worksheets/sheet1.xml", content: inputSheet },
     { name: "xl/worksheets/sheet2.xml", content: catalogSheet },
     { name: "xl/worksheets/sheet3.xml", content: guideSheet },

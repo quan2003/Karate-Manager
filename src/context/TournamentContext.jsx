@@ -1,7 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useReducer, useEffect } from "react";
+import { createContext, useContext, useReducer, useEffect, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { createAutoBackup } from "../services/backupService";
+import {
+  getOrCreateCloudResultRelayId,
+  pullResultsFromCloudRelay,
+  triggerDebouncedCloudSync,
+} from "../services/cloudSyncService";
 import {
   dbGetTournaments,
   dbSaveTournaments,
@@ -983,10 +988,46 @@ function tournamentReducer(state, action) {
         getAthletesForPool = (poolItems) => poolItems;
       }
 
-      // True round-robin assignment across pools
+      // Greedy least-loaded pool distribution with per-club quotas:
+      // - Each club's max items per pool = ceil(clubSize / numPools)
+      // - Each item is placed in the least-loaded pool that hasn't exceeded
+      //   the club's quota, ensuring even distribution even when one club
+      //   has more members than the number of pools.
+
+      // Re-group items by club
+      const clubOrderMap = new Map(); // club -> [items]
+      itemsToDistribute.forEach(item => {
+        const club = item.club || 'Unknown';
+        if (!clubOrderMap.has(club)) clubOrderMap.set(club, []);
+        clubOrderMap.get(club).push(item);
+      });
+
       const pools = Array.from({ length: numPools }, () => []);
-      itemsToDistribute.forEach((item, idx) => {
-        pools[idx % numPools].push(item);
+
+      // Process clubs from largest to smallest so big clubs get spread first
+      const sortedClubs = [...clubOrderMap.entries()].sort((a, b) => b[1].length - a[1].length);
+
+      sortedClubs.forEach(([, clubItems]) => {
+        const quota = Math.ceil(clubItems.length / numPools); // max per pool for this club
+        const clubCountInPool = Array(numPools).fill(0); // how many of this club per pool
+
+        clubItems.forEach(item => {
+          // Find pool with fewest total items that still has room for this club
+          let bestPool = -1;
+          let bestSize = Infinity;
+          for (let p = 0; p < numPools; p++) {
+            if (clubCountInPool[p] < quota && pools[p].length < bestSize) {
+              bestSize = pools[p].length;
+              bestPool = p;
+            }
+          }
+          // Fallback: if all pools exceeded quota (shouldn't happen), pick least-loaded
+          if (bestPool === -1) {
+            bestPool = pools.reduce((minP, pool, p) => pool.length < pools[minP].length ? p : minP, 0);
+          }
+          pools[bestPool].push(item);
+          clubCountInPool[bestPool]++;
+        });
       });
 
       // Create new categories
@@ -1456,17 +1497,43 @@ function tournamentReducer(state, action) {
   }
 
   // Save to localStorage
-  saveToStorage(newState, action.type);
+  saveToStorage(newState, action);
   return newState;
 }
 
 let saveTimeout = null;
-async function saveToStorage(state, actionType) {
+async function saveToStorage(state, action) {
+  const actionType = action.type;
   // Debounce save to avoid blocking UI
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(async () => {
     try {
       await dbSaveTournaments(state.tournaments);
+
+      // Tự động đẩy dữ liệu ngầm lên Cloud VPS khi có bất kỳ thay đổi nào
+      // Creating/selecting/deleting a tournament does not modify the currently
+      // open tournament's contents. Syncing here would push the previously
+      // selected tournament and make a new test copy appear linked to it.
+      const actionsWithoutTournamentContentChanges = [
+        ACTIONS.LOAD_DATA,
+        ACTIONS.ADD_TOURNAMENT,
+        ACTIONS.DELETE_TOURNAMENT,
+        ACTIONS.SET_CURRENT_TOURNAMENT,
+      ];
+      const explicitTournamentId =
+        action.payload?.tournamentId ||
+        (actionType === ACTIONS.UPDATE_TOURNAMENT ? action.payload?.id : null);
+      const targetTournamentId =
+        explicitTournamentId || state.currentTournament?.id;
+      if (
+        targetTournamentId &&
+        !actionsWithoutTournamentContentChanges.includes(actionType)
+      ) {
+        const targetTour = state.tournaments.find(t => t.id === targetTournamentId);
+        if (targetTour) {
+          triggerDebouncedCloudSync(targetTour.id, targetTour, 2500);
+        }
+      }
 
       // Auto-backup for important changes
       const importantActions = [
@@ -1510,6 +1577,7 @@ async function loadFromStorage() {
 export function TournamentProvider({ children }) {
   const [state, dispatch] = useReducer(tournamentReducer, initialState);
   const { toast } = useToast();
+  const seenCloudResultEventsRef = useRef(new Set());
 
   // Load data from SQLite on mount (run migration first if needed)
   useEffect(() => {
@@ -1629,6 +1697,86 @@ export function TournamentProvider({ children }) {
       return cleanup;
     }
   }, [state.currentTournament?.id, toast]); // Keep dependency to allow fallback to current if payload missing id
+
+  // Receive Secretary results over the Internet. This is independent from LAN,
+  // so both channels can stay active at the same time.
+  useEffect(() => {
+    if (!Array.isArray(state.tournaments) || state.tournaments.length === 0) return undefined;
+    const relayId = getOrCreateCloudResultRelayId();
+    let active = true;
+    let polling = false;
+
+    const pollCloudResults = async () => {
+      if (!active || polling || !navigator.onLine) return;
+      polling = true;
+      try {
+        for (const tournament of state.tournaments) {
+          if (!active) break;
+          const cursorKey = `krt_cloud_result_cursor_${tournament.id}_${relayId.slice(-16)}`;
+          const since = localStorage.getItem(cursorKey) || "";
+          const response = await pullResultsFromCloudRelay(relayId, tournament.id, since);
+          if (!response.success || !response.events.length) continue;
+
+          let newestTimestamp = since;
+          response.events.forEach((event) => {
+            // Preserve the server's timestamp string. Converting it through
+            // Date#toISOString drops PostgreSQL microseconds and makes the
+            // same row look newer again on every poll.
+            if (typeof event.updatedAt === "string" && !Number.isNaN(Date.parse(event.updatedAt))) {
+              newestTimestamp = event.updatedAt;
+            }
+
+            const data = event.payload || {};
+            if (
+              data.syncType === "category-medals" &&
+              (data.syncProtocol !== 2 || data.confirmedInCurrentRun !== true || !data.exportId)
+            ) return;
+
+            const eventIdentity = `${tournament.id}:${event.eventKey || event.id}:${event.updatedAt || ""}`;
+            if (seenCloudResultEventsRef.current.has(eventIdentity)) return;
+            seenCloudResultEventsRef.current.add(eventIdentity);
+            if (seenCloudResultEventsRef.current.size > 5000) {
+              const oldestIdentity = seenCloudResultEventsRef.current.values().next().value;
+              seenCloudResultEventsRef.current.delete(oldestIdentity);
+            }
+
+            dispatch({
+              type: data.syncType === "category-medals"
+                ? ACTIONS.SYNC_CATEGORY_MEDALS
+                : ACTIONS.SYNC_MATCH_RESULT,
+              payload: { ...data, tournamentId: tournament.id },
+            });
+            if (data.syncType === "category-medals") {
+              toast.success(`☁️ Đã nhận kết quả Cloud: ${data.categoryName || "nội dung thi đấu"}`, 7000);
+            }
+          });
+
+          // serverTime is a compatibility fallback for servers that still
+          // serialize PostgreSQL timestamps at millisecond precision.
+          const nextCursor = response.cursor || response.serverTime || newestTimestamp;
+          if (nextCursor) localStorage.setItem(cursorKey, nextCursor);
+          window.dispatchEvent(new CustomEvent("krt_cloud_result_received", {
+            detail: {
+              tournamentId: tournament.id,
+              count: response.events.length,
+              receivedAt: newestTimestamp || new Date().toISOString(),
+            },
+          }));
+        }
+      } finally {
+        polling = false;
+      }
+    };
+
+    pollCloudResults();
+    const intervalId = window.setInterval(pollCloudResults, 2500);
+    window.addEventListener("online", pollCloudResults);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("online", pollCloudResults);
+    };
+  }, [state.tournaments, toast]);
 
   return (
     <TournamentContext.Provider value={state}>

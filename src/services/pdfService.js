@@ -295,6 +295,7 @@ function getSplitCount(category, splitSettings) {
   const threshold = splitSettings?.threshold || DEFAULT_SPLIT_THRESHOLD;
 
   // Ưu tiên cài đặt riêng của hạng mục nếu có
+  if (category.sigmaCount && category.sigmaCount > 1) return category.sigmaCount;
   if (category.sigmaSplitEnabled === false) return 1;
   if (category.sigmaSplitEnabled === true) {
     if (athleteCount <= 1) return 1;
@@ -425,6 +426,22 @@ export async function exportAllBracketsToPDF(
 ) {
   const categoriesWithBracket = categories.filter((c) => c.bracket);
 
+  const getExportSplitIndexes = (category) => {
+    const splitCount = getSplitCount(category, splitSettings);
+    const requestedIndexes = Array.isArray(category.exportSplitIndexes)
+      ? category.exportSplitIndexes
+      : null;
+
+    if (!requestedIndexes) {
+      return Array.from({ length: splitCount }, (_, index) => index);
+    }
+
+    return [...new Set(requestedIndexes)]
+      .map(Number)
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < splitCount)
+      .sort((a, b) => a - b);
+  };
+
   if (categoriesWithBracket.length === 0) {
     alert("Không có hạng mục nào đã bốc thăm để xuất!");
     return;
@@ -432,9 +449,14 @@ export async function exportAllBracketsToPDF(
 
   const finalFilename = filename || `${tournamentName.replace(/\\s+/g, "_")}_tat_ca_so_do.pdf`;
   const totalPages = categoriesWithBracket.reduce(
-    (total, category) => total + getSplitCount(category, splitSettings),
+    (total, category) => total + getExportSplitIndexes(category).length,
     0
   );
+
+  if (totalPages === 0) {
+    alert("Không có nhánh Sigma nào được chọn để xuất!");
+    return;
+  }
   const totalSteps = Math.max(totalPages + 1, 1);
   let completedSteps = 0;
   const reportProgress = (label = "", percentOverride = null) => {
@@ -456,7 +478,8 @@ export async function exportAllBracketsToPDF(
         const category = categoriesWithBracket[i];
         const numSplits = getSplitCount(category, splitSettings);
 
-        for (let half = 0; half < numSplits; half++) {
+        const splitIndexes = getExportSplitIndexes(category);
+        for (const half of splitIndexes) {
           let scheduleInfo = schedule ? schedule[category.id] : null;
           
           // Ưu tiên lịch thi đấu riêng của nhánh Sigma nếu có (Dùng cho trang Lịch)
@@ -517,10 +540,17 @@ export async function exportAllBracketsToPDF(
 
     for (let i = 0; i < categoriesWithBracket.length; i++) {
       const category = categoriesWithBracket[i];
-      const scheduleInfo = schedule ? schedule[category.id] : null;
       const numSplits = getSplitCount(category, splitSettings);
 
-      for (let half = 0; half < numSplits; half++) {
+      const splitIndexes = getExportSplitIndexes(category);
+      for (const half of splitIndexes) {
+        let scheduleInfo = schedule ? schedule[category.id] : null;
+        if (numSplits > 1 && schedule) {
+          const splitKey = `${category.id}_split${half}`;
+          if (schedule[splitKey]) {
+            scheduleInfo = schedule[splitKey];
+          }
+        }
         const splitSchedule = numSplits > 1
           ? { ...scheduleInfo, splitLabel: `Trận ${half + 1}/${numSplits}` }
           : scheduleInfo;
@@ -550,6 +580,278 @@ export async function exportAllBracketsToPDF(
     console.error("Lỗi xuất PDF hàng loạt:", error);
     alert("Lỗi xuất PDF: " + error.message);
     document.body.style.cursor = "default";
+  }
+}
+
+// ====================================================================
+// EXPORT SIGMA BY CLUB
+// Generates a per-club summary sheet: one page per club, listing every
+// athlete/team from that club across all selected categories, with
+// their seed slot, bracket position, and first-round opponent.
+// ====================================================================
+
+/**
+ * Build a per-club index from the selected categories + their brackets.
+ * Returns Map<clubName, Array<{ categoryName, athleteName, seedSlot, opponent, matchNum, matchCode }>>
+ */
+function buildClubSigmaIndex(categories) {
+  const clubMap = new Map(); // clubName -> []
+
+  categories.forEach(cat => {
+    const { bracket, name: catName } = cat;
+    if (!bracket || !bracket.matches) return;
+
+    const isTeamBracket = bracket.isTeamBracket || false;
+    const round1 = bracket.matches
+      .filter(m => m.round === 1)
+      .sort((a, b) => a.position - b.position);
+
+    round1.forEach(match => {
+      [
+        { athlete: match.athlete1, slot: 'aka' },
+        { athlete: match.athlete2, slot: 'ao' },
+      ].forEach(({ athlete, slot }) => {
+        if (!athlete) return;
+
+        // Determine club
+        let club;
+        let athleteLabel;
+        if (isTeamBracket) {
+          club = athlete.club || 'Không CLB';
+          athleteLabel = athlete.name || club;
+        } else {
+          club = athlete.club || 'Không CLB';
+          athleteLabel = athlete.name || '';
+        }
+
+        // Determine opponent
+        const opponent = slot === 'aka' ? match.athlete2 : match.athlete1;
+        const opponentLabel = opponent
+          ? (opponent.name || opponent.club || 'BYE')
+          : 'BYE (Miễn đấu)';
+        const opponentClub = (!isTeamBracket && opponent?.club) ? ` (${opponent.club})` : '';
+
+        // Seed slot number (1-based, pairs: position*2+1 for aka, position*2+2 for ao)
+        const seedNum = match.position * 2 + (slot === 'aka' ? 1 : 2);
+
+        // Match number / code
+        const matchCode = match.matchCode || (match.isBye ? 'BYE' : `#${match.position + 1}`);
+        const isBye = match.isBye;
+
+        if (!clubMap.has(club)) clubMap.set(club, []);
+        clubMap.get(club).push({
+          categoryName: catName,
+          athleteName: athleteLabel,
+          seedSlot: seedNum,
+          slot: slot.toUpperCase(), // AKA or AO
+          opponent: isBye ? 'BYE (Miễn đấu vòng 1)' : (opponentLabel + opponentClub),
+          matchCode: isBye ? '—' : matchCode,
+          isBye,
+        });
+      });
+    });
+  });
+
+  return clubMap;
+}
+
+/**
+ * Generate a full standalone HTML page for one club's sigma summary.
+ */
+function generateClubSigmaPageHTML(clubName, entries, tournamentName, sponsorLogos, pageIndex, totalPages) {
+  const appIconUrl = `${getAppBaseUrl()}icon.png`;
+  const tournamentLogosList = getTournamentLogos(sponsorLogos);
+  const sponsorsList = sponsorLogos?.sponsors || [];
+
+  // Group entries by category
+  const byCategory = {};
+  entries.forEach(e => {
+    if (!byCategory[e.categoryName]) byCategory[e.categoryName] = [];
+    byCategory[e.categoryName].push(e);
+  });
+
+  const rows = Object.entries(byCategory).flatMap(([catName, items]) =>
+    items.map((item, i) => ({ ...item, catName: i === 0 ? catName : '' }))
+  );
+
+  const rowsHTML = rows.map((r, idx) => {
+    const bg = idx % 2 === 0 ? '#f8fafc' : '#ffffff';
+    const slotColor = r.slot === 'AKA' ? '#dc2626' : '#2563eb';
+    const byeStyle = r.isBye ? 'color:#059669;font-style:italic;' : '';
+    return `
+      <tr style="background:${bg};border-bottom:1px solid #e2e8f0;">
+        <td style="padding:7px 10px;font-weight:700;color:#374151;font-size:12px;border-right:1px solid #e2e8f0;">${r.catName}</td>
+        <td style="padding:7px 10px;font-weight:700;color:#111827;font-size:13px;border-right:1px solid #e2e8f0;">${r.athleteName}</td>
+        <td style="padding:7px 10px;text-align:center;border-right:1px solid #e2e8f0;">
+          <span style="display:inline-block;background:${slotColor};color:#fff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:4px;">${r.slot}</span>
+        </td>
+        <td style="padding:7px 10px;text-align:center;font-weight:700;color:#111827;font-size:12px;border-right:1px solid #e2e8f0;">${r.seedSlot}</td>
+        <td style="padding:7px 10px;font-size:12px;color:#374151;border-right:1px solid #e2e8f0;${byeStyle}">${r.opponent}</td>
+        <td style="padding:7px 10px;text-align:center;font-weight:700;color:#7c3aed;font-size:12px;">${r.matchCode}</td>
+      </tr>`;
+  }).join('');
+
+  const logoBarHTML = (() => {
+    let h = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:6px 14px;background:#f8fafc;border-bottom:2px solid #e2e8f0;">`;
+    if (tournamentLogosList.length > 0) {
+      h += `<div style="display:flex;gap:8px;">` + tournamentLogosList.map(l => `<img src="${l}" style="height:44px;max-width:120px;object-fit:contain;">`).join('') + `</div>`;
+    } else {
+      h += `<div></div>`;
+    }
+    h += `<img src="${appIconUrl}" style="height:44px;width:44px;object-fit:contain;">`;
+    if (sponsorsList.length > 0) {
+      h += `<div style="display:flex;gap:8px;">` + sponsorsList.map(l => `<img src="${l}" style="height:40px;max-width:100px;object-fit:contain;">`).join('') + `</div>`;
+    } else {
+      h += `<div></div>`;
+    }
+    h += `</div>`;
+    return h;
+  })();
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { margin: 0; size: A4 portrait; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: white; padding: 0; }
+  table { border-collapse: collapse; width: 100%; }
+  thead th { background: #1e293b; color: #fff; font-size: 11px; font-weight: 800; padding: 8px 10px; text-align: left; text-transform: uppercase; letter-spacing: 0.05em; }
+  thead th:nth-child(3), thead th:nth-child(4), thead th:nth-child(6) { text-align: center; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+  <div style="width:210mm;min-height:297mm;padding:0 0 20px 0;position:relative;">
+    ${logoBarHTML}
+    <div style="padding:10px 20px 12px 20px;background:linear-gradient(135deg,#1e293b 0%,#334155 100%);margin-bottom:12px;">
+      <div style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Danh sách bốc thăm theo CLB</div>
+      <div style="font-size:26px;font-weight:900;color:#fff;line-height:1.2;">${clubName}</div>
+      <div style="font-size:13px;color:#cbd5e1;margin-top:4px;">${tournamentName} &nbsp;•&nbsp; Trang ${pageIndex} / ${totalPages}</div>
+    </div>
+    <div style="padding:0 20px;">
+      <div style="font-size:12px;color:#64748b;margin-bottom:10px;font-weight:600;">
+        Tổng cộng <span style="color:#7c3aed;font-weight:800;">${entries.length}</span> VĐV/đội tham gia &nbsp;•&nbsp;
+        <span style="color:#059669;">${entries.filter(e=>e.isBye).length} miễn đấu vòng 1</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:28%;border-right:1px solid #334155;">Hạng mục</th>
+            <th style="width:22%;border-right:1px solid #334155;">VĐV / Đội</th>
+            <th style="width:7%;border-right:1px solid #334155;">Màu</th>
+            <th style="width:7%;border-right:1px solid #334155;">Vị trí</th>
+            <th style="width:28%;border-right:1px solid #334155;">Đối thủ vòng 1</th>
+            <th style="width:8%;">Trận</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHTML}</tbody>
+      </table>
+      <div style="margin-top:16px;padding:12px 14px;background:#f1f5f9;border-radius:8px;border-left:4px solid #7c3aed;">
+        <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:6px;">📋 Chú thích:</div>
+        <div style="font-size:10px;color:#64748b;display:flex;gap:20px;flex-wrap:wrap;">
+          <span><span style="display:inline-block;background:#dc2626;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:3px;">AKA</span> = Mặc Đỏ (vị trí lẻ)</span>
+          <span><span style="display:inline-block;background:#2563eb;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:3px;">AO</span> = Mặc Xanh (vị trí chẵn)</span>
+          <span style="color:#059669;font-weight:700;">BYE = Miễn đấu, tự động vào vòng tiếp theo</span>
+        </div>
+      </div>
+    </div>
+    <div style="position:absolute;bottom:10px;left:20px;right:20px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;">
+      <span>© Karate Manager – Xuất sigma theo CLB</span>
+      <span>${new Date().toLocaleDateString('vi-VN')}</span>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Export a per-club sigma summary PDF.
+ * Each page = one club, listing all their athletes/teams with bracket info.
+ * @param {Object[]} categories - categories with brackets
+ * @param {string} tournamentName
+ * @param {string|null} filename
+ * @param {Object|null} sponsorLogos
+ * @param {Function|null} onProgress
+ */
+export async function exportSigmaByClubToPDF(
+  categories,
+  tournamentName = 'Giai_dau',
+  filename = null,
+  sponsorLogos = null,
+  onProgress = null
+) {
+  const categoriesWithBracket = categories.filter(c => c.bracket);
+  if (categoriesWithBracket.length === 0) {
+    alert('Không có hạng mục nào đã bốc thăm để xuất!');
+    return;
+  }
+
+  const clubMap = buildClubSigmaIndex(categoriesWithBracket);
+  if (clubMap.size === 0) {
+    alert('Không tìm thấy VĐV nào trong sơ đồ!');
+    return;
+  }
+
+  const finalFilename = filename || `${tournamentName.replace(/\s+/g, '_')}_sigma_theo_club.pdf`;
+  const clubs = [...clubMap.entries()].sort((a, b) => a[0].localeCompare(b[0], 'vi'));
+  const totalPages = clubs.length;
+
+  const report = (label, percent) => onProgress?.({ percent: percent ?? 0, label, completed: 0, total: totalPages });
+
+  try {
+    const originalCursor = document.body.style.cursor;
+    document.body.style.cursor = 'wait';
+    report('Đang chuẩn bị dữ liệu CLB...', 0);
+
+    if (isElectronPdfAvailable()) {
+      const pages = [];
+      for (let i = 0; i < clubs.length; i++) {
+        const [clubName, entries] = clubs[i];
+        const html = generateClubSigmaPageHTML(clubName, entries, tournamentName, sponsorLogos, i + 1, totalPages);
+        const processedHtml = await processHtmlImages(html);
+        pages.push({ htmlContent: processedHtml });
+        report(`Chuẩn bị trang CLB ${i + 1}/${totalPages}: ${clubName}`, Math.round(((i + 1) / totalPages) * 20));
+      }
+
+      report('Chọn nơi lưu file PDF...', 20);
+      const stopProgress = window.electronAPI?.pdf?.onProgress?.((p) => {
+        const cur = p?.current || 0;
+        const tot = p?.total || pages.length || 1;
+        report(`Đang render PDF ${cur}/${tot}`, 20 + Math.round((cur / tot) * 75));
+      });
+
+      let result;
+      try {
+        result = await window.electronAPI.pdf.printBracketMulti({ pages, filename: finalFilename });
+      } finally {
+        if (stopProgress) stopProgress();
+      }
+      report('Hoàn tất', 100);
+      document.body.style.cursor = originalCursor;
+      if (result.success) alert(`Đã xuất sigma ${totalPages} CLB thành công!`);
+      else if (!result.canceled) alert('Lỗi xuất PDF: ' + result.error);
+      return;
+    }
+
+    // Fallback: jsPDF + html2canvas
+    let pdf = null;
+    for (let i = 0; i < clubs.length; i++) {
+      const [clubName, entries] = clubs[i];
+      const html = generateClubSigmaPageHTML(clubName, entries, tournamentName, sponsorLogos, i + 1, totalPages);
+      const canvas = await renderBracketToCanvas(html);
+      pdf = i === 0 ? addCanvasPage(null, canvas, true) : addCanvasPage(pdf, canvas, false);
+      report(`Đang tạo trang ${i + 1}/${totalPages}: ${clubName}`, Math.round(((i + 1) / totalPages) * 95));
+    }
+    if (pdf) pdf.save(finalFilename);
+    report('Hoàn tất', 100);
+    document.body.style.cursor = originalCursor;
+    alert(`Đã xuất sigma ${totalPages} CLB thành công!`);
+  } catch (error) {
+    console.error('Lỗi xuất sigma theo CLB:', error);
+    alert('Lỗi xuất PDF: ' + error.message);
+    document.body.style.cursor = 'default';
   }
 }
 

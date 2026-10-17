@@ -381,6 +381,11 @@ export async function restoreSingleTournament(backupData, mode = "add") {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+      // A copied tournament is a new local entity. Never inherit Cloud
+      // ownership/source metadata from the original tournament.
+      delete tournamentCopy.authorizedMachineId;
+      delete tournamentCopy.authorized_machine_id;
+      delete tournamentCopy.isAuthorizedSource;
       await dbSaveTournaments([...currentTournaments, tournamentCopy]);
       return {
         success: true,

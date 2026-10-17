@@ -18,7 +18,19 @@ export default function CloudSyncButton({ tournamentId, tournamentObj, variant =
     const interval = setInterval(() => {
       checkVPSOnlineSyncList().then(() => refreshStatus());
     }, 10000);
-    return () => clearInterval(interval);
+
+    const handleSyncUpdate = (e) => {
+      if (e.detail?.tournamentId === tournamentId) {
+        refreshStatus();
+      }
+    };
+
+    window.addEventListener('krt_cloud_sync_update', handleSyncUpdate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('krt_cloud_sync_update', handleSyncUpdate);
+    };
   }, [tournamentId]);
 
   const handlePushSync = async (e) => {

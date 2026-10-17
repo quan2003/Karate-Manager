@@ -7,6 +7,10 @@ import {
 } from "../context/TournamentContext";
 import { generateBracket } from "../utils/drawEngine";
 import { getTeamFormationSize, getTeamsFromAthletes, isTeamCategory as isTeamCategoryMeta } from "../utils/teamDraw";
+import {
+  getTournamentDrawMinimum,
+  isCategoryDrawEligible,
+} from "../utils/drawEligibility";
 import AthleteForm from "../components/AthleteForm/AthleteForm";
 import AthleteList from "../components/AthleteList/AthleteList";
 import Modal from "../components/common/Modal";
@@ -268,8 +272,8 @@ export default function CategoryPage() {
       if (isTeamCategory) {
         // For team categories: group athletes by club
         drawEntries = teamEntries;
-        if (drawEntries.length < 3) {
-          setDrawError('Cần ít nhất 3 đội để bốc thăm đồng đội!');
+        if (drawEntries.length < minParticipantsNeeded) {
+          setDrawError(`Cần ít nhất ${minParticipantsNeeded} đội để bốc thăm đồng đội!`);
           return;
         }
       } else {
@@ -368,12 +372,11 @@ export default function CategoryPage() {
       })
     : [];
   const teamCount = teamEntries.length;
-  const minTeamsNeeded = Number(category.minTeamsForDraw) || 3;
-  const canDraw = isTeamCategory
-    ? teamCount >= minTeamsNeeded
-    : category.athletes.length >= 3;
+  const minParticipantsNeeded = getTournamentDrawMinimum(tournament);
+  const minTeamsNeeded = minParticipantsNeeded;
+  const canDraw = isCategoryDrawEligible(category, tournament);
   const allSameClub = (() => {
-    if (category.athletes.length < 3) return false;
+    if (category.athletes.length < minParticipantsNeeded) return false;
     const clubs = new Set(category.athletes.map(a => (a.club || '').trim().toLowerCase()).filter(Boolean));
     return clubs.size === 1;
   })();
@@ -463,7 +466,7 @@ export default function CategoryPage() {
                     if (isTeamCategory) {
                       toast.warning(`Nội dung đồng đội cần ít nhất ${minTeamsNeeded} đội để bốc thăm!`);
                     } else {
-                      toast.warning("Cần ít nhất 3 VĐV để bốc thăm!");
+                      toast.warning(`Cần ít nhất ${minParticipantsNeeded} VĐV để bốc thăm!`);
                     }
                     return;
                   }
@@ -565,15 +568,21 @@ export default function CategoryPage() {
                 </label>
               )}
               <label style={{ fontSize: "13px", fontWeight: 500 }}>
-                Điều kiện đủ (Tối thiểu):
+                Điều kiện chung của giải (Tối thiểu):
                 <select
                   style={{ marginLeft: "8px", padding: "4px 8px", borderRadius: "4px", border: "1px solid #cbd5e1" }}
                   value={minTeamsNeeded}
                   onChange={(e) => {
                     const val = Number(e.target.value);
                     dispatch({
-                      type: ACTIONS.UPDATE_CATEGORY,
-                      payload: { id: category.id, minTeamsForDraw: val },
+                      type: ACTIONS.UPDATE_TOURNAMENT,
+                      payload: {
+                        id: tournament.id,
+                        drawSettings: {
+                          ...(tournament.drawSettings || {}),
+                          minimumParticipants: val,
+                        },
+                      },
                     });
                   }}
                 >
@@ -588,7 +597,7 @@ export default function CategoryPage() {
             </div>
           ) : (
             <p style={{ color: "#64748b", margin: 0, fontSize: "13px" }}>
-              Nội dung thi đấu cá nhân tiêu chuẩn (yêu cầu tối thiểu 3 VĐV). Chuyển sang "Đồng đội" ở góc trên nếu đây là môn thi đồng đội ngoại lệ.
+              Nội dung cá nhân yêu cầu tối thiểu {minParticipantsNeeded} VĐV theo cấu hình chung của giải. Chuyển sang "Đồng đội" ở góc trên nếu đây là môn thi đồng đội ngoại lệ.
             </p>
           )}
         </div>

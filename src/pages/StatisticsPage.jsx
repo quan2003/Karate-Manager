@@ -25,6 +25,15 @@ import wordLogo from "../assets/word-logo.svg";
 import "./StatisticsPage.css";
 import { getComputedCategoryResults, getSavedResultWarnings } from "../domain/bronzeIntegration.js";
 import AthleteCheckPanel from "../components/AthleteCheck/AthleteCheckPanel";
+import { isCategoryDrawEligible } from "../utils/drawEligibility";
+
+const escapeHtml = (value = "") =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 
 export default function StatisticsPage() {
   const { id } = useParams();
@@ -102,6 +111,11 @@ export default function StatisticsPage() {
   const [selectedDelegationClubs, setSelectedDelegationClubs] = useState(
     new Set()
   );
+  const [clubBatchExport, setClubBatchExport] = useState({
+    type: "",
+    current: 0,
+    total: 0,
+  });
 
   // PDF loading state
   const [isPdfLoading, setIsPdfLoading] = useState(false);
@@ -2769,11 +2783,7 @@ export default function StatisticsPage() {
   const medals = getEstimatedMedals();
   const clubs = getClubs();
   const isDelegationCategoryEligible = (category) => {
-    const { isTeamCategory } = getCategoryMedalMeta(category);
-    const minTeams = Number(category.minTeamsForDraw) || 3;
-    return isTeamCategory
-      ? getTeamsFromAthletes(category.athletes || [], category, tournament).length >= minTeams
-      : (category.athletes?.length || 0) >= 3;
+    return isCategoryDrawEligible(category, tournament);
   };
   const delegationCategories = tournament.categories.filter(
     (category) => (category.athletes || []).length > 0
@@ -3028,6 +3038,161 @@ export default function StatisticsPage() {
       )}.xlsx`
     );
     toast.success("Đã xuất Excel thống kê đoàn!");
+  };
+
+  // Export the editable "Chi tiết thông tin đoàn" table to its own Excel file.
+  const handleExportClubDetailsExcel = () => {
+    const delegations = getClubDelegationSummary();
+    if (delegations.length === 0) {
+      toast.error("Chưa có thông tin đoàn để xuất!");
+      return;
+    }
+
+    const rows = delegations.map((d, index) => [
+      index + 1,
+      d.club,
+      d.teamLeader || "Chưa có",
+      d.coaches.filter(Boolean).join(", ") || "Chưa có",
+      d.maleCount,
+      d.femaleCount,
+      d.athleteCount,
+      d.submittedAt || "—",
+    ]);
+    const totalMale = delegations.reduce((sum, d) => sum + d.maleCount, 0);
+    const totalFemale = delegations.reduce((sum, d) => sum + d.femaleCount, 0);
+    const totalAthletes = delegations.reduce((sum, d) => sum + d.athleteCount, 0);
+
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["CHI TIẾT THÔNG TIN ĐOÀN"],
+      [tournament.name],
+      [],
+      [
+        "STT",
+        "CLB/Đơn vị",
+        "Trưởng đoàn",
+        "HLV",
+        "VĐV Nam",
+        "VĐV Nữ",
+        "Tổng VĐV",
+        "Thời gian nộp",
+      ],
+      ...rows,
+      ["", "TỔNG CỘNG", "", "", totalMale, totalFemale, totalAthletes, ""],
+    ]);
+    worksheet["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
+    ];
+    worksheet["!cols"] = [
+      { wch: 6 },
+      { wch: 32 },
+      { wch: 24 },
+      { wch: 40 },
+      { wch: 11 },
+      { wch: 11 },
+      { wch: 12 },
+      { wch: 22 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Chi tiết đoàn");
+    const safeTournamentName = tournament.name.replace(
+      /[^a-zA-Z0-9\u00C0-\u1EF9]/g,
+      "_"
+    );
+    XLSX.writeFile(workbook, `ChiTietThongTinDoan_${safeTournamentName}.xlsx`);
+    toast.success("Đã xuất Excel chi tiết thông tin đoàn!");
+  };
+
+  // Export the editable "Chi tiết thông tin đoàn" table through the print/PDF flow.
+  const handleExportClubDetailsPDF = () => {
+    const delegations = getClubDelegationSummary();
+    if (delegations.length === 0) {
+      toast.error("Chưa có thông tin đoàn để xuất!");
+      return;
+    }
+
+    const totalMale = delegations.reduce((sum, d) => sum + d.maleCount, 0);
+    const totalFemale = delegations.reduce((sum, d) => sum + d.femaleCount, 0);
+    const totalAthletes = delegations.reduce((sum, d) => sum + d.athleteCount, 0);
+    const sponsorLogos = tournament.sponsorLogos || {};
+    const tournamentLogos = getTournamentLogos(sponsorLogos);
+    const sponsors = sponsorLogos.sponsors || [];
+    const logoHeader = `
+      <div class="logo-header">
+        <div class="header-left">${tournamentLogos
+          .map((logo) => `<img src="${escapeHtml(logo)}" class="system-logo" />`)
+          .join("")}</div>
+        <div class="header-center"><img src="${escapeHtml(
+          `${getAppBaseUrl()}icon.png`
+        )}" class="app-icon" /></div>
+        <div class="header-right">${sponsors
+          .map((logo) => `<img src="${escapeHtml(logo)}" class="sponsor-logo" />`)
+          .join("")}</div>
+      </div>`;
+
+    const tableRows = delegations
+      .map(
+        (d, index) => `
+          <tr>
+            <td class="center">${index + 1}</td>
+            <td class="club">${escapeHtml(d.club)}</td>
+            <td>${escapeHtml(d.teamLeader || "Chưa có")}</td>
+            <td>${escapeHtml(d.coaches.filter(Boolean).join(", ") || "Chưa có")}</td>
+            <td class="center">${d.maleCount}</td>
+            <td class="center">${d.femaleCount}</td>
+            <td class="center strong">${d.athleteCount}</td>
+            <td class="center submitted">${escapeHtml(d.submittedAt || "—")}</td>
+          </tr>`
+      )
+      .join("");
+
+    printIframeWithLoading(`<!DOCTYPE html><html><head>
+      <meta charset="utf-8" />
+      <title>Chi tiết thông tin đoàn - ${escapeHtml(tournament.name)}</title>
+      <style>
+        @page { size: A4 landscape; margin: 10mm; }
+        body { font-family: 'Times New Roman', Times, serif; color: #000; padding: 10px; }
+        h1 { text-align: center; font-size: 23px; margin: 0 0 5px; text-transform: uppercase; }
+        h2 { text-align: center; font-size: 16px; margin: 0 0 18px; font-style: italic; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+        th, td { border: 1px solid #000; padding: 6px 5px; vertical-align: middle; overflow-wrap: anywhere; }
+        th { font-weight: bold; text-align: center; background: #e2e8f0; }
+        tr { page-break-inside: avoid; }
+        tfoot td { font-weight: bold; background: #f1f5f9; }
+        .center { text-align: center; }
+        .strong, .club { font-weight: bold; }
+        .submitted { font-size: 10px; }
+        .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; min-height: 55px; }
+        .header-left, .header-center, .header-right { flex: 1; display: flex; align-items: center; gap: 8px; }
+        .header-center { justify-content: center; }
+        .header-right { justify-content: flex-end; }
+        .system-logo { height: 48px; max-width: 145px; object-fit: contain; }
+        .app-icon { height: 52px; width: 52px; object-fit: contain; }
+        .sponsor-logo { height: 42px; max-width: 110px; object-fit: contain; }
+      </style>
+    </head><body>
+      ${logoHeader}
+      <h1>Chi tiết thông tin đoàn</h1>
+      <h2>${escapeHtml(tournament.name)}</h2>
+      <table>
+        <colgroup>
+          <col style="width:4%" /><col style="width:20%" /><col style="width:14%" />
+          <col style="width:22%" /><col style="width:7%" /><col style="width:7%" />
+          <col style="width:8%" /><col style="width:18%" />
+        </colgroup>
+        <thead><tr>
+          <th>STT</th><th>CLB/Đơn vị</th><th>Trưởng đoàn</th><th>HLV</th>
+          <th>VĐV Nam</th><th>VĐV Nữ</th><th>Tổng VĐV</th><th>Thời gian nộp</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+        <tfoot><tr>
+          <td colspan="4" class="center">TỔNG CỘNG</td>
+          <td class="center">${totalMale}</td><td class="center">${totalFemale}</td>
+          <td class="center">${totalAthletes}</td><td></td>
+        </tr></tfoot>
+      </table>
+    </body></html>`);
   };
 
   // ----- VĐV THEO HẠNG MỤC EXPORT -----
@@ -3369,6 +3534,163 @@ export default function StatisticsPage() {
       })()}
       </body></html>`
     );
+  };
+
+  const getSelectedClubExportData = () =>
+    getClubDelegationSummary()
+      .filter((delegation) => selectedDelegationClubs.has(delegation.club))
+      .map((delegation) => ({
+        delegation,
+        athletes: getAllAthletes().filter(
+          (athlete) => athlete.club?.trim() === delegation.club
+        ),
+      }))
+      .filter((item) => item.athletes.length > 0);
+
+  const safeBatchName = (value) =>
+    String(value || "CLB")
+      .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+      .replace(/[. ]+$/g, "")
+      .slice(0, 100) || "CLB";
+
+  const handleExportAthsByClubSeparateExcel = async () => {
+    const clubData = getSelectedClubExportData();
+    if (clubData.length === 0) {
+      toast.error("Vui lòng chọn ít nhất một CLB để xuất!");
+      return;
+    }
+    if (!window.electronAPI?.saveBatchExportFiles) {
+      toast.error("Chức năng xuất nhiều file cần chạy trong ứng dụng K-SPORT.");
+      return;
+    }
+
+    setClubBatchExport({ type: "excel", current: 0, total: clubData.length });
+    try {
+      const files = clubData.map(({ delegation, athletes }, index) => {
+        const rows = athletes.map((athlete, athleteIndex) => ({
+          STT: athleteIndex + 1,
+          "Họ tên VĐV": athlete.name,
+          "Giới tính": athlete.gender === "male" ? "Nam" : athlete.gender === "female" ? "Nữ" : "—",
+          "Hạng mục": athlete.categoryName,
+          "Cân nặng": athlete.weight || "",
+        }));
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+        worksheet["!cols"] = [
+          { wch: 6 },
+          { wch: 28 },
+          { wch: 12 },
+          { wch: 36 },
+          { wch: 12 },
+        ];
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Danh sách VĐV");
+        return {
+          name: `${String(index + 1).padStart(2, "0")}_${safeBatchName(delegation.club)}.xlsx`,
+          contentBase64: XLSX.write(workbook, { bookType: "xlsx", type: "base64" }),
+        };
+      });
+
+      const result = await window.electronAPI.saveBatchExportFiles({
+        files,
+        folderName: `VDV_CLB_Excel_${safeBatchName(tournament.name)}`,
+      });
+      if (result?.success) {
+        toast.success(`Đã xuất ${result.fileCount} file Excel riêng theo CLB!`);
+      } else if (!result?.canceled) {
+        toast.error(result?.error || "Không thể xuất hàng loạt file Excel.");
+      }
+    } catch (error) {
+      toast.error(error?.message || "Không thể xuất hàng loạt file Excel.");
+    } finally {
+      setClubBatchExport({ type: "", current: 0, total: 0 });
+    }
+  };
+
+  const buildClubAthletePdfHtml = (delegation, athletes) => {
+    const sponsorLogos = tournament.sponsorLogos || {};
+    const systemLogos = getTournamentLogos(sponsorLogos);
+    const sponsors = sponsorLogos.sponsors || [];
+    const signatures = getTournamentSignatures(sponsorLogos);
+    const uniqueAthleteCount = new Set(athletes.map(getAthleteIdentityKey)).size;
+    const imageList = (images, className) =>
+      images.map((src) => `<img src="${escapeHtml(src)}" class="${className}" />`).join("");
+
+    return `<!DOCTYPE html><html><head><meta charset="utf-8" />
+      <style>
+        @page { size: A4 portrait; margin: 10mm; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Times New Roman', Times, serif; color: #000; margin: 0; }
+        .logo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .logo-side { width: 38%; display: flex; align-items: center; gap: 8px; }
+        .logo-side.right { justify-content: flex-end; }
+        .system-logo { height: 48px; max-width: 120px; object-fit: contain; }
+        .app-icon { height: 54px; width: 54px; object-fit: contain; }
+        h1 { text-align: center; text-transform: uppercase; font-size: 21px; margin: 0 0 5px; }
+        h2 { text-align: center; font-size: 15px; margin: 0 0 16px; }
+        .club-title { display: flex; justify-content: space-between; font-size: 16px; margin-bottom: 8px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { border: 1px solid #000; padding: 5px; }
+        th { text-align: center; }
+        .center { text-align: center; }
+        tr { page-break-inside: avoid; }
+        .signature { margin-top: 28px; margin-left: auto; width: 210px; text-align: center; page-break-inside: avoid; }
+        .signature img { height: 65px; max-width: 170px; object-fit: contain; }
+      </style></head><body>
+      <div class="logo-header">
+        <div class="logo-side">${imageList(systemLogos, "system-logo")}</div>
+        <img src="${escapeHtml(`${getAppBaseUrl()}icon.png`)}" class="app-icon" />
+        <div class="logo-side right">${imageList(sponsors, "system-logo")}</div>
+      </div>
+      <h1>Danh sách VĐV theo đơn vị</h1>
+      <h2>${escapeHtml(tournament.name)}</h2>
+      <div class="club-title"><strong>${escapeHtml(delegation.club)}</strong><span>${uniqueAthleteCount} VĐV / ${athletes.length} lượt đăng ký</span></div>
+      <table><thead><tr><th style="width:42px">STT</th><th>Họ tên</th><th style="width:78px">Giới tính</th><th>Hạng mục</th><th style="width:76px">Cân nặng</th></tr></thead>
+      <tbody>${athletes.map((athlete, index) => `<tr>
+        <td class="center">${index + 1}</td>
+        <td><strong>${escapeHtml(athlete.name)}</strong></td>
+        <td class="center">${athlete.gender === "male" ? "Nam" : athlete.gender === "female" ? "Nữ" : "—"}</td>
+        <td>${escapeHtml(athlete.categoryName)}</td>
+        <td class="center">${athlete.weight ? `${escapeHtml(athlete.weight)}kg` : ""}</td>
+      </tr>`).join("")}</tbody></table>
+      ${signatures.length > 0 ? `<div class="signature"><strong>BAN TỔ CHỨC</strong><div>${imageList(signatures, "")}</div></div>` : ""}
+      </body></html>`;
+  };
+
+  const handleExportAthsByClubSeparatePDF = async () => {
+    const clubData = getSelectedClubExportData();
+    if (clubData.length === 0) {
+      toast.error("Vui lòng chọn ít nhất một CLB để xuất!");
+      return;
+    }
+    if (!window.electronAPI?.pdf?.printHtmlBatch) {
+      toast.error("Chức năng xuất nhiều PDF cần chạy trong ứng dụng K-SPORT.");
+      return;
+    }
+
+    setClubBatchExport({ type: "pdf", current: 0, total: clubData.length });
+    const stopProgress = window.electronAPI.pdf.onProgress?.((progress) => {
+      setClubBatchExport({ type: "pdf", current: progress.current, total: progress.total });
+    });
+    try {
+      const documents = clubData.map(({ delegation, athletes }, index) => ({
+        name: `${String(index + 1).padStart(2, "0")}_${safeBatchName(delegation.club)}.pdf`,
+        htmlContent: buildClubAthletePdfHtml(delegation, athletes),
+      }));
+      const result = await window.electronAPI.pdf.printHtmlBatch({
+        documents,
+        folderName: `VDV_CLB_PDF_${safeBatchName(tournament.name)}`,
+      });
+      if (result?.success) {
+        toast.success(`Đã xuất ${result.fileCount} file PDF riêng theo CLB!`);
+      } else if (!result?.canceled) {
+        toast.error(result?.error || "Không thể xuất hàng loạt file PDF.");
+      }
+    } catch (error) {
+      toast.error(error?.message || "Không thể xuất hàng loạt file PDF.");
+    } finally {
+      stopProgress?.();
+      setClubBatchExport({ type: "", current: 0, total: 0 });
+    }
   };
 
   // ----- FEES EXPORT -----
@@ -4272,7 +4594,34 @@ export default function StatisticsPage() {
 
             {/* Detailed Club Registration Info (editable) */}
             <div className="section-card" style={{ marginTop: "20px" }}>
-              <h3>📝 Chi tiết thông tin đoàn ({clubs.length} CLB)</h3>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "10px",
+                  marginBottom: "8px",
+                }}
+              >
+                <h3 style={{ margin: 0 }}>
+                  📝 Chi tiết thông tin đoàn ({clubs.length} CLB)
+                </h3>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    onClick={handleExportClubDetailsExcel}
+                  >
+                    📤 Xuất Excel
+                  </button>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={handleExportClubDetailsPDF}
+                  >
+                    📄 Xuất PDF
+                  </button>
+                </div>
+              </div>
               <p
                 style={{
                   color: "#64748b",
@@ -4704,20 +5053,46 @@ export default function StatisticsPage() {
                 }}
               >
                 <h3>🏢 Danh sách VĐV theo Đơn vị / CLB ({clubs.length})</h3>
-                <div style={{ display: "flex", gap: "8px" }}>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
                   <button
                     className="btn btn-sm btn-secondary"
                     onClick={handleExportAthsByClubExcel}
+                    disabled={Boolean(clubBatchExport.type)}
                   >
                     📤 Xuất Excel ({selectedDelegationClubs.size})
                   </button>
                   <button
                     className="btn btn-sm btn-primary"
                     onClick={handleExportAthsByClubPDF}
+                    disabled={Boolean(clubBatchExport.type)}
                   >
                     📄 Xuất PDF ({selectedDelegationClubs.size})
                   </button>
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    onClick={handleExportAthsByClubSeparateExcel}
+                    disabled={Boolean(clubBatchExport.type)}
+                    title="Mỗi CLB được lưu thành một file Excel riêng; chỉ chọn thư mục một lần"
+                  >
+                    {clubBatchExport.type === "excel"
+                      ? "⏳ Đang xuất Excel..."
+                      : `📚 Excel riêng (${selectedDelegationClubs.size} file)`}
+                  </button>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={handleExportAthsByClubSeparatePDF}
+                    disabled={Boolean(clubBatchExport.type)}
+                    title="Mỗi CLB được lưu thành một file PDF riêng; chỉ chọn thư mục một lần"
+                  >
+                    {clubBatchExport.type === "pdf"
+                      ? `⏳ PDF ${clubBatchExport.current}/${clubBatchExport.total}`
+                      : `📚 PDF riêng (${selectedDelegationClubs.size} file)`}
+                  </button>
                 </div>
+              </div>
+
+              <div style={{ margin: "-8px 0 12px", color: "#64748b", fontSize: "12px" }}>
+                “Excel/PDF riêng” sẽ tạo một file cho mỗi CLB đã tích chọn và chỉ hỏi thư mục lưu một lần.
               </div>
 
               <div

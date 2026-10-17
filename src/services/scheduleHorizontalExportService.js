@@ -211,6 +211,10 @@ export async function exportScheduleHorizontalToPDF(
   const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const pdfWidth = pdf.internal.pageSize.getWidth();
   const pdfHeight = pdf.internal.pageSize.getHeight();
+  const pageMargin = 5;
+  const contentWidth = pdfWidth - pageMargin * 2;
+  const contentHeight = pdfHeight - pageMargin * 2;
+  let hasRenderedPage = false;
 
   for (let dayIndex = 0; dayIndex < days.length; dayIndex += 1) {
     const container = document.createElement("div");
@@ -235,15 +239,68 @@ export async function exportScheduleHorizontalToPDF(
         useCORS: true,
         backgroundColor: "#ffffff",
       });
-      const image = canvas.toDataURL("image/png");
-      const scale = Math.min(pdfWidth / canvas.width, pdfHeight / canvas.height);
-      const imageWidth = canvas.width * scale;
-      const imageHeight = canvas.height * scale;
 
-      if (dayIndex > 0) {
-        pdf.addPage("a4", "landscape");
+      // Always fill the landscape page width. The old implementation also
+      // constrained by page height, which shrank long schedules to half-width.
+      // Long days are now split vertically at table-row boundaries.
+      const pixelsPerMm = canvas.width / contentWidth;
+      const maxSliceHeight = Math.floor(contentHeight * pixelsPerMm);
+      const scheduleRoot = container.firstElementChild;
+      const rootRect = scheduleRoot.getBoundingClientRect();
+      const canvasScaleY = canvas.height / rootRect.height;
+      const rowBreaks = [...scheduleRoot.querySelectorAll("tbody tr")]
+        .map((row) =>
+          Math.round((row.getBoundingClientRect().bottom - rootRect.top) * canvasScaleY)
+        )
+        .filter((value) => value > 0 && value < canvas.height)
+        .sort((a, b) => a - b);
+
+      let sourceY = 0;
+      while (sourceY < canvas.height) {
+        const idealEnd = Math.min(canvas.height, sourceY + maxSliceHeight);
+        let sourceEnd = idealEnd;
+
+        if (idealEnd < canvas.height) {
+          const minimumUsefulEnd = sourceY + Math.floor(maxSliceHeight * 0.45);
+          const rowBoundary = rowBreaks
+            .filter((value) => value > minimumUsefulEnd && value <= idealEnd)
+            .pop();
+          if (rowBoundary) sourceEnd = rowBoundary;
+        }
+
+        const sliceHeight = Math.max(1, sourceEnd - sourceY);
+        const sliceCanvas = document.createElement("canvas");
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sliceHeight;
+        const sliceContext = sliceCanvas.getContext("2d");
+        sliceContext.fillStyle = "#ffffff";
+        sliceContext.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        sliceContext.drawImage(
+          canvas,
+          0,
+          sourceY,
+          canvas.width,
+          sliceHeight,
+          0,
+          0,
+          canvas.width,
+          sliceHeight
+        );
+
+        if (hasRenderedPage) {
+          pdf.addPage("a4", "landscape");
+        }
+        hasRenderedPage = true;
+        pdf.addImage(
+          sliceCanvas.toDataURL("image/png"),
+          "PNG",
+          pageMargin,
+          pageMargin,
+          contentWidth,
+          sliceHeight / pixelsPerMm
+        );
+        sourceY = sourceEnd;
       }
-      pdf.addImage(image, "PNG", 0, 0, imageWidth, imageHeight);
     } finally {
       container.remove();
     }

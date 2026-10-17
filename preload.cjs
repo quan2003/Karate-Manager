@@ -75,6 +75,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return ipcRenderer.invoke("export:save", content, suggestedName, fileType);
   },
 
+  // Save many generated files after choosing one destination folder.
+  saveBatchExportFiles: (data) => {
+    return ipcRenderer.invoke("export:saveBatch", data);
+  },
+
   // Import file từ HLV (cho Admin)
   openImportFile: () => {
     return ipcRenderer.invoke("import:open");
@@ -179,6 +184,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // Export multiple brackets into one merged PDF
     printBracketMulti: (data) =>
       ipcRenderer.invoke("pdf:printBracketMulti", data),
+    // Render multiple independent HTML documents into separate PDF files.
+    printHtmlBatch: (data) => ipcRenderer.invoke("pdf:printHtmlBatch", data),
     // Listen for progress updates during multi-page export
     onProgress: (callback) => {
       const handler = (event, data) => callback(data);

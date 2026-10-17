@@ -10,7 +10,8 @@ import {
   getDataSizeInfo,
   createAutoBackup,
 } from "../../services/backupService";
-import { fetchCloudTournamentsList, downloadCloudBackupData } from "../../services/cloudSyncService";
+import { fetchCloudTournamentsList, downloadCloudBackupData, setAuthorizedMachineForTournament } from "../../services/cloudSyncService";
+import { dbGetMachineId } from "../../services/dbService";
 import "./BackupManager.css";
 
 /**
@@ -32,7 +33,12 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
   const [cloudTournaments, setCloudTournaments] = useState([]);
   const [loadingCloud, setLoadingCloud] = useState(false);
   const [cloudSearch, setCloudSearch] = useState("");
+  const [myMachineId, setMyMachineId] = useState("");
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    dbGetMachineId().then((id) => setMyMachineId(id));
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -100,6 +106,17 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
       setStatus(null);
     } catch (err) {
       showStatus("error", `❌ Lỗi đọc dữ liệu Cloud: ${err.message}`);
+    }
+  };
+
+  const handleSetAuthorizedMachine = async (tournamentId) => {
+    showStatus("info", "⏳ Đang phân quyền Machine ID nguồn chính...");
+    const res = await setAuthorizedMachineForTournament(tournamentId, myMachineId);
+    if (res.success) {
+      showStatus("success", `✅ ${res.message}`);
+      handleOpenCloudView();
+    } else {
+      showStatus("error", `❌ ${res.message}`);
     }
   };
 
@@ -338,12 +355,32 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
                 ← Quay lại
               </button>
               <h3 style={{ marginBottom: "0.4rem", fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "8px" }}>
-                ☁️ Khôi phục dữ liệu từ Cloud VPS
+                ☁️ Đồng bộ & Khôi phục dữ liệu Cloud VPS
               </h3>
-              <p style={{ color: "#64748b", fontSize: "0.85rem", marginBottom: "1rem", lineHeight: 1.5 }}>
-                Chọn giải đấu đã sao lưu trên Server VPS để tải trực tiếp về máy này.
-                Mã máy (Machine ID) hiển thị dưới tên giải giúp bạn nhận biết giải đấu thuộc về máy tính nào.
+              <p style={{ color: "#64748b", fontSize: "0.85rem", marginBottom: "0.8rem", lineHeight: 1.5 }}>
+                Quản lý đồng bộ Realtime giữa các máy tính qua Cloud VPS. Xác nhận Machine ID nguồn chính để phân quyền xuất dữ liệu chính thức cho các máy khác.
               </p>
+
+              {/* Banner hiển thị Machine ID của máy này */}
+              <div style={{
+                background: "linear-gradient(135deg, #1e293b 0%, #334155 100%)",
+                color: "#fff",
+                borderRadius: "10px",
+                padding: "10px 14px",
+                marginBottom: "1rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                fontSize: "0.82rem"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span>💻 <strong>Mã máy hiện tại (My Machine ID):</strong></span>
+                  <code style={{ background: "#3b82f6", color: "#fff", padding: "2px 8px", borderRadius: "5px", fontFamily: "monospace", fontWeight: 700 }}>
+                    {myMachineId || "Đang lấy..."}
+                  </code>
+                </div>
+                <span style={{ color: "#4ade80", fontSize: "0.78rem", fontWeight: 600 }}>● Đã kết nối VPS</span>
+              </div>
 
               <div style={{ marginBottom: "1rem" }}>
                 <input
@@ -364,7 +401,7 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
 
               {loadingCloud ? (
                 <div style={{ textAlign: "center", padding: "2.5rem", color: "#64748b" }}>
-                  ⏳ Đang tải danh sách giải từ Cloud VPS...
+                  ⏳ Đang kết nối VPS và tải danh sách giải...
                 </div>
               ) : cloudTournaments.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "2.5rem", color: "#94a3b8" }}>
@@ -379,67 +416,107 @@ export default function BackupManager({ isOpen, onClose, onDataRestored }) {
                       return (
                         (t.name && t.name.toLowerCase().includes(q)) ||
                         (t.machine_id && t.machine_id.toLowerCase().includes(q)) ||
+                        (t.authorized_machine_id && t.authorized_machine_id.toLowerCase().includes(q)) ||
                         (t.id && t.id.toLowerCase().includes(q))
                       );
                     })
-                    .map((t) => (
-                      <div
-                        key={t.id}
-                        style={{
-                          background: "#f8fafc",
-                          border: "1px solid #e2e8f0",
-                          borderRadius: "12px",
-                          padding: "14px 16px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: "12px",
-                          boxShadow: "0 2px 6px rgba(0,0,0,0.02)"
-                        }}
-                      >
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#1e293b", marginBottom: "6px" }}>
-                            {t.name}
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", fontSize: "0.78rem" }}>
-                            <span style={{
-                              background: "#e0e7ff",
-                              color: "#3730a3",
-                              padding: "2px 8px",
-                              borderRadius: "6px",
-                              fontWeight: 600,
-                              fontFamily: "monospace"
-                            }}>
-                              Machine ID: {t.machine_id || "KRT-UNKNOWN"}
-                            </span>
-                            <span style={{ color: "#475569" }}>
-                              👥 {t.total_athletes || 0} VĐV • 🏆 {t.total_categories || 0} Hạng mục
-                            </span>
-                            <span style={{ color: "#94a3b8" }}>
-                              🕒 {t.last_synced_at ? new Date(t.last_synced_at).toLocaleString('vi-VN') : ''}
-                            </span>
-                          </div>
-                        </div>
+                    .map((t) => {
+                      const pushMachineId = t.machine_id || t.summary?.machineId || "KRT-UNKNOWN";
+                      const authMachineId = t.authorized_machine_id || t.summary?.authorizedMachineId || pushMachineId;
+                      const isMyMachineAuthorized = myMachineId && authMachineId === myMachineId;
 
-                        <button
-                          className="backup-btn primary-btn"
-                          onClick={() => handleDownloadFromCloud(t.id)}
+                      return (
+                        <div
+                          key={t.id}
                           style={{
-                            whiteSpace: "nowrap",
-                            padding: "8px 16px",
-                            fontSize: "0.82rem",
-                            background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: "8px",
-                            fontWeight: 600,
-                            cursor: "pointer"
+                            background: isMyMachineAuthorized ? "#f0fdf4" : "#f8fafc",
+                            border: isMyMachineAuthorized ? "2px solid #86efac" : "1px solid #e2e8f0",
+                            borderRadius: "12px",
+                            padding: "14px 16px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "12px",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.02)"
                           }}
                         >
-                          📥 Tải & Khôi phục
-                        </button>
-                      </div>
-                    ))}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                              <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#1e293b" }}>
+                                {t.name}
+                              </div>
+                              {isMyMachineAuthorized ? (
+                                <span style={{ background: "#dcfce7", color: "#15803d", border: "1px solid #86efac", padding: "1px 8px", borderRadius: "12px", fontSize: "0.72rem", fontWeight: 700 }}>
+                                  👑 Máy Nguồn Chính (Ghi nhận)
+                                </span>
+                              ) : (
+                                <span style={{ background: "#fef3c7", color: "#b45309", border: "1px solid #fde68a", padding: "1px 8px", borderRadius: "12px", fontSize: "0.72rem", fontWeight: 600 }}>
+                                  ⚠️ Máy phụ / Chờ xác nhận Machine ID
+                                </span>
+                              )}
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", fontSize: "0.78rem", marginTop: "4px" }}>
+                              <span style={{
+                                background: "#e0e7ff",
+                                color: "#3730a3",
+                                padding: "2px 8px",
+                                borderRadius: "6px",
+                                fontWeight: 600,
+                                fontFamily: "monospace"
+                              }}>
+                                🔑 Machine ID xuất: {pushMachineId}
+                              </span>
+                              <span style={{ color: "#475569" }}>
+                                👥 {t.total_athletes || 0} VĐV • 🏆 {t.total_categories || 0} Hạng mục
+                              </span>
+                              <span style={{ color: "#94a3b8" }}>
+                                🕒 {t.last_synced_at ? new Date(t.last_synced_at).toLocaleString('vi-VN') : ''}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "flex-end", flexShrink: 0 }}>
+                            <button
+                              className="backup-btn primary-btn"
+                              onClick={() => handleDownloadFromCloud(t.id)}
+                              style={{
+                                whiteSpace: "nowrap",
+                                padding: "7px 14px",
+                                fontSize: "0.82rem",
+                                background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: "8px",
+                                fontWeight: 600,
+                                cursor: "pointer"
+                              }}
+                            >
+                              📥 Tải & Khôi phục
+                            </button>
+
+                            {!isMyMachineAuthorized && (
+                              <button
+                                onClick={() => handleSetAuthorizedMachine(t.id)}
+                                title="Xác nhận máy tính này là máy nguồn chính thức để phân quyền xuất dữ liệu sang máy khác"
+                                style={{
+                                  fontSize: "0.74rem",
+                                  padding: "4px 10px",
+                                  borderRadius: "6px",
+                                  border: "1px solid #cbd5e1",
+                                  background: "#ffffff",
+                                  color: "#475569",
+                                  cursor: "pointer",
+                                  fontWeight: 600
+                                }}
+                              >
+                                👑 Đặt làm Máy Nguồn
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
               )}
             </>

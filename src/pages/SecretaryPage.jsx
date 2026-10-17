@@ -16,6 +16,7 @@ import {
   disqualifyAthlete,
 } from "../utils/drawEngine";
 import { sendMatchResult, sendCategoryMedals, checkAdminAvailability } from "../services/lanService";
+import { checkCloudResultRelay, pushResultsToCloudRelay } from "../services/cloudSyncService";
 import {
   publishLiveStatus,
   getCategoryLiveQueue,
@@ -226,6 +227,9 @@ function SecretaryPage() {
   const [teamLineupDraft, setTeamLineupDraft] = useState([]);
   const [syncing, setSyncing] = useState(false);
   const [adminIp, setAdminIp] = useState(localStorage.getItem("adminIp") || "");
+  const [showCloudSyncConfig, setShowCloudSyncConfig] = useState(false);
+  const [cloudTargetText, setCloudTargetText] = useState(localStorage.getItem("secretary_cloud_targets") || "");
+  const [cloudSyncStatus, setCloudSyncStatus] = useState({ state: "idle", message: "", syncedAt: "" });
   const [autoMedalStatus, setAutoMedalStatus] = useState({ synced: 0, complete: 0 });
   const medalSyncQueueRef = useRef(Promise.resolve());
   const liveExtraRef = useRef({});
@@ -599,6 +603,84 @@ function SecretaryPage() {
     return null;
   }, [matchData]);
 
+  const getCloudTargets = useCallback(() => [...new Set(
+    cloudTargetText
+      .split(/[\n,;]+/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+  )], [cloudTargetText]);
+
+  const syncResultsToCloud = useCallback(async (showFeedback = false) => {
+    const targets = getCloudTargets();
+    if (targets.length === 0 || !matchData?.tournamentId) {
+      if (showFeedback) setError("Vui lòng cấu hình ít nhất một Mã nhận Cloud");
+      return { success: false, message: "Chưa cấu hình máy nhận Cloud" };
+    }
+
+    const matchEvents = matchResults.flatMap((result) => {
+      const info = getMatchInfoById(result.matchId);
+      if (!info) return [];
+      return [{
+        eventKey: `match:${result.matchId}`,
+        payload: {
+          ...result,
+          matchCode: info.match.matchCode,
+          categoryId: info.category.id,
+          tournamentId: matchData.tournamentId,
+          teamLineups: matchData.teamLineups?.[info.category.id] || [],
+          syncedAt: new Date().toISOString(),
+        },
+      }];
+    });
+    const medalEvents = (getMatchExportData()?.categoryMedals || []).flatMap((item) => {
+      const category = matchData.categories?.find((cat) => cat.id === item.categoryId);
+      if (!category || !isCategoryCompleted(category, matchResults)) return [];
+      return [{
+        eventKey: `medals:${item.categoryId}`,
+        payload: {
+          tournamentId: matchData.tournamentId,
+          exportId: matchData.exportId,
+          categoryId: item.categoryId,
+          categoryName: item.categoryName,
+          medals: {
+            gold: item.gold,
+            silver: item.silver,
+            bronze1: item.bronze1,
+            bronze2: item.bronze2,
+          },
+          syncType: "category-medals",
+          syncProtocol: 2,
+          confirmedInCurrentRun: true,
+          syncedAt: new Date().toISOString(),
+        },
+      }];
+    });
+    const events = [...matchEvents, ...medalEvents];
+    if (events.length === 0) {
+      if (showFeedback) setError("Chưa có kết quả để đồng bộ Cloud");
+      return { success: false, message: "Chưa có kết quả" };
+    }
+
+    setCloudSyncStatus({ state: "syncing", message: "Đang gửi...", syncedAt: "" });
+    const result = await pushResultsToCloudRelay(targets, matchData.tournamentId, events);
+    if (result.success) {
+      const syncedAt = result.syncedAt || new Date().toISOString();
+      setCloudSyncStatus({
+        state: "synced",
+        message: `Đã gửi ${events.length} cập nhật tới ${targets.length} máy`,
+        syncedAt,
+      });
+      if (showFeedback) {
+        setNotification(`☁️ Đã đồng bộ Cloud tới ${targets.length} máy nhận!`);
+        setTimeout(() => setNotification(""), 3000);
+      }
+    } else {
+      setCloudSyncStatus({ state: "error", message: result.message, syncedAt: "" });
+      if (showFeedback) setError(`Lỗi Cloud: ${result.message}`);
+    }
+    return result;
+  }, [getCloudTargets, getMatchExportData, getMatchInfoById, matchData, matchResults]);
+
   const getMatchById = useCallback(
     (matchId) => getMatchInfoById(matchId)?.match || null,
     [getMatchInfoById]
@@ -811,6 +893,20 @@ function SecretaryPage() {
       setAutoMedalStatus({ synced, complete: completeMedals.length });
     });
   }, [adminIp, getMatchExportData, matchData, matchResults, matchResultsRevision]);
+
+  // Internet sync runs independently from LAN. Debouncing sends the latest
+  // version after score edits and retries as soon as the connection returns.
+  useEffect(() => {
+    if (matchResultsRevision === 0 || getCloudTargets().length === 0) return undefined;
+    const runSync = () => syncResultsToCloud(false);
+    const timeoutId = window.setTimeout(runSync, 1200);
+    window.addEventListener("online", runSync);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("online", runSync);
+    };
+  }, [getCloudTargets, matchResultsRevision, syncResultsToCloud]);
+
   // Prepare bracket with live scores
   const bracketWithScores = useMemo(() => {
     if (!selectedCategory?.bracket) return null;
@@ -1540,6 +1636,20 @@ function SecretaryPage() {
                 </span>
 
               </div>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => setShowCloudSyncConfig(true)}
+                style={{
+                  padding:'7px 10px',borderRadius:'20px',fontSize:'12px',fontWeight:700,
+                  background:getCloudTargets().length?'#dbeafe':'#f1f5f9',
+                  color:getCloudTargets().length?'#1d4ed8':'#64748b',
+                  border:`1px solid ${getCloudTargets().length?'#93c5fd':'#cbd5e1'}`
+                }}
+                title={cloudSyncStatus.message || 'Cấu hình đồng bộ kết quả qua Internet'}
+              >
+                ☁️ Cloud: {getCloudTargets().length ? `${getCloudTargets().length} máy` : 'Chưa cấu hình'}
+              </button>
               <div className="tournament-info">
                 <strong>{matchData.tournamentName}</strong>
                 <span>{matchData.location}</span>
@@ -2031,6 +2141,14 @@ function SecretaryPage() {
                   📡 {syncing ? "Đang gửi..." : "Đồng bộ LAN"}
                 </button>
                 <button
+                  className="export-btn sync"
+                  style={{ background: '#2563eb', color: '#fff' }}
+                  onClick={() => syncResultsToCloud(true)}
+                  disabled={matchResults.length === 0 || cloudSyncStatus.state === 'syncing'}
+                >
+                  ☁️ {cloudSyncStatus.state === 'syncing' ? 'Đang gửi...' : 'Đồng bộ Cloud'}
+                </button>
+                <button
                   className="export-btn excel"
                   onClick={() => handleExport("excel")}
                   disabled={matchResults.length === 0}
@@ -2042,6 +2160,65 @@ function SecretaryPage() {
           </>
         )}{" "}
       </div>
+
+      {showCloudSyncConfig && (
+        <Modal
+          isOpen={showCloudSyncConfig}
+          title="☁️ Cấu hình đồng bộ Cloud Internet"
+          onClose={() => setShowCloudSyncConfig(false)}
+          size="medium"
+        >
+          <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+            <div style={{padding:'10px 12px',background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:'8px',fontSize:'13px',color:'#1e3a8a',lineHeight:1.5}}>
+              Nhập Mã nhận Cloud của Admin và/hoặc Super Admin, mỗi mã một dòng.
+              LAN vẫn hoạt động độc lập theo IP đã cấu hình.
+            </div>
+            <label style={{fontSize:'13px',fontWeight:700,color:'#334155'}}>
+              Danh sách máy nhận Cloud
+            </label>
+            <textarea
+              value={cloudTargetText}
+              onChange={(event) => {
+                setCloudTargetText(event.target.value);
+                localStorage.setItem('secretary_cloud_targets', event.target.value);
+              }}
+              placeholder={'KRC-... (Admin)\nKRC-... (Super Admin)'}
+              rows={5}
+              style={{width:'100%',padding:'10px',border:'1px solid #cbd5e1',borderRadius:'8px',fontFamily:'monospace',fontSize:'12px',resize:'vertical'}}
+            />
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px',flexWrap:'wrap'}}>
+              <span style={{fontSize:'12px',color:cloudSyncStatus.state === 'error'?'#dc2626':cloudSyncStatus.state === 'synced'?'#15803d':'#64748b'}}>
+                {cloudSyncStatus.message || `${getCloudTargets().length} máy nhận đã cấu hình`}
+              </span>
+              <div style={{display:'flex',gap:'8px'}}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={getCloudTargets().length === 0}
+                  onClick={async () => {
+                    const result = await checkCloudResultRelay(getCloudTargets()[0]);
+                    setCloudSyncStatus({
+                      state: result.success ? 'synced' : 'error',
+                      message: result.success ? 'Kết nối Cloud VPS thành công' : result.message,
+                      syncedAt: result.success ? new Date().toISOString() : '',
+                    });
+                  }}
+                >
+                  Kiểm tra Cloud
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={matchResults.length === 0 || getCloudTargets().length === 0 || cloudSyncStatus.state === 'syncing'}
+                  onClick={() => syncResultsToCloud(true)}
+                >
+                  ☁️ Đồng bộ ngay
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {showTeamLineupEditor && (
         <Modal

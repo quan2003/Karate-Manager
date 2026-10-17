@@ -1955,6 +1955,132 @@ app.post(["/api/cloud-sync/trigger-auto-purge", "/cloud-sync/trigger-auto-purge"
   }
 });
 
+const ensureCloudResultRelayTable = async () => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cloud_result_relay (
+      id BIGSERIAL PRIMARY KEY,
+      target_channel_id VARCHAR(255) NOT NULL,
+      source_machine_id VARCHAR(255),
+      tournament_id VARCHAR(255) NOT NULL,
+      event_key VARCHAR(500) NOT NULL,
+      payload JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (target_channel_id, tournament_id, event_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_cloud_result_relay_inbox
+      ON cloud_result_relay (target_channel_id, tournament_id, updated_at);
+  `);
+};
+
+const isValidCloudChannel = (value) =>
+  typeof value === "string" && value.startsWith("KRC-") && value.length >= 50 && value.length <= 200;
+
+/** Capability-protected Internet result relay for Admin/Super Admin receivers. */
+app.post(["/api/cloud-sync/results", "/cloud-sync/results"], async (req, res) => {
+  try {
+    await ensureCloudResultRelayTable();
+    const { targetChannels, sourceMachineId, tournamentId, events } = req.body || {};
+    const targets = [...new Set(
+      (Array.isArray(targetChannels) ? targetChannels : [])
+        .map((value) => String(value || "").trim())
+        .filter(isValidCloudChannel)
+    )].slice(0, 10);
+    const safeEvents = (Array.isArray(events) ? events : [])
+      .filter((event) => event && event.eventKey && event.payload)
+      .slice(0, 1500);
+
+    if (!tournamentId || targets.length === 0 || safeEvents.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu Mã nhận Cloud hợp lệ, ID giải đấu hoặc dữ liệu kết quả",
+      });
+    }
+
+    const result = await pool.query(`
+      WITH target_rows AS (
+        SELECT UNNEST($1::text[]) AS target_channel_id
+      ), event_rows AS (
+        SELECT item->>'eventKey' AS event_key, item->'payload' AS payload
+        FROM JSONB_ARRAY_ELEMENTS($4::jsonb) AS item
+      )
+      INSERT INTO cloud_result_relay (
+        target_channel_id, source_machine_id, tournament_id, event_key, payload
+      )
+      SELECT target_rows.target_channel_id, $2, $3, event_rows.event_key, event_rows.payload
+      FROM target_rows CROSS JOIN event_rows
+      ON CONFLICT (target_channel_id, tournament_id, event_key)
+      DO UPDATE SET
+        source_machine_id = EXCLUDED.source_machine_id,
+        payload = EXCLUDED.payload,
+        updated_at = NOW()
+      RETURNING id;
+    `, [targets, String(sourceMachineId || "KRT-UNKNOWN"), String(tournamentId), JSON.stringify(safeEvents)]);
+
+    res.json({
+      success: true,
+      deliveredCopies: result.rowCount,
+      recipients: targets.length,
+      events: safeEvents.length,
+      syncedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("Cloud result relay push error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get(["/api/cloud-sync/results", "/cloud-sync/results"], async (req, res) => {
+  try {
+    await ensureCloudResultRelayTable();
+    const channelId = String(req.query.channelId || "").trim();
+    if (!isValidCloudChannel(channelId)) {
+      return res.status(400).json({ success: false, message: "Mã nhận Cloud không hợp lệ" });
+    }
+    if (req.query.health === "1") {
+      return res.json({ success: true, message: "Cloud Result Relay đang hoạt động" });
+    }
+    const tournamentId = String(req.query.tournamentId || "").trim();
+    if (!tournamentId) {
+      return res.status(400).json({ success: false, message: "Thiếu ID giải đấu" });
+    }
+    const sinceValue = String(req.query.since || "").trim();
+    const since = sinceValue && !Number.isNaN(Date.parse(sinceValue))
+      ? sinceValue
+      : "1970-01-01T00:00:00.000Z";
+    const result = await pool.query(`
+      SELECT id, source_machine_id, tournament_id, event_key, payload, updated_at,
+             TO_CHAR(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS updated_at_cursor
+      FROM cloud_result_relay
+      WHERE target_channel_id = $1
+        AND tournament_id = $2
+        AND updated_at > $3::timestamptz
+      ORDER BY updated_at ASC, id ASC
+      LIMIT 1500;
+    `, [channelId, tournamentId, since]);
+
+    res.json({
+      success: true,
+      cursor: result.rows.length
+        ? result.rows[result.rows.length - 1].updated_at_cursor
+        : since,
+      events: result.rows.map((row) => ({
+        id: row.id,
+        sourceMachineId: row.source_machine_id,
+        tournamentId: row.tournament_id,
+        eventKey: row.event_key,
+        payload: row.payload,
+        // Keep PostgreSQL's microsecond precision for the next `since` cursor.
+        updatedAt: row.updated_at_cursor,
+      })),
+      serverTime: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("Cloud result relay pull error:", err);
+    res.status(500).json({ success: false, events: [], message: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`License Server (PostgreSQL) running on port ${PORT}`);
 });

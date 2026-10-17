@@ -17,6 +17,18 @@ let vpsSyncedIds = null;
 let lastVPSCheckTime = 0;
 
 const SYNC_STATES_KEY = 'krt_cloud_sync_states';
+const RESULT_RELAY_ID_KEY = 'krt_cloud_result_relay_id';
+
+export function getOrCreateCloudResultRelayId() {
+  const existing = localStorage.getItem(RESULT_RELAY_ID_KEY);
+  if (existing) return existing;
+  const randomPart = typeof crypto !== "undefined" && crypto.randomUUID
+    ? `${crypto.randomUUID()}-${crypto.randomUUID()}`
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  const relayId = `KRC-${randomPart}`;
+  localStorage.setItem(RESULT_RELAY_ID_KEY, relayId);
+  return relayId;
+}
 
 export function getSyncStates() {
   try {
@@ -41,6 +53,12 @@ export function saveSyncState(tournamentId, stateObj) {
   }
 }
 
+
+export function isTournamentAutoSyncEnabled(tournamentId) {
+  if (!tournamentId) return false;
+  const localState = getSyncStates()[tournamentId];
+  return localState?.autoSyncEnabled === true || Boolean(localState?.lastSyncedAt);
+}
 
 export async function checkVPSOnlineSyncList() {
   const now = Date.now();
@@ -241,10 +259,17 @@ export async function pushTournamentToCloud(tournamentId, tournamentObj = null) 
       .sort((a, b) => b.gold - a.gold || b.silver - a.silver || b.bronze - a.bronze)
       .map((item, idx) => ({ rank: idx + 1, ...item }));
 
+    const localStates = getSyncStates();
+    const currentSyncState = localStates[tournamentId] || {};
+    const authorizedMachineId = currentSyncState.authorizedMachineId || tournamentData.authorizedMachineId || machineId;
+
     const payload = {
       tournamentId: tournamentData.id,
       tournamentName: tournamentData.name,
       machineId: machineId || 'KRT-UNKNOWN',
+      authorizedMachineId,
+      authorized_machine_id: authorizedMachineId,
+      isAuthorizedSource: machineId === authorizedMachineId,
       startDate: tournamentData.startDate || tournamentData.date || '',
       endDate: tournamentData.endDate || tournamentData.date || '',
       location: tournamentData.location || '',
@@ -256,7 +281,9 @@ export async function pushTournamentToCloud(tournamentId, tournamentObj = null) 
         clientAppVersion: '1.0.1',
         delegationRankings,
         medalists,
-        totalClubs: Object.keys(clubMedals).length
+        totalClubs: Object.keys(clubMedals).length,
+        machineId,
+        authorizedMachineId
       }
     };
 
@@ -267,7 +294,7 @@ export async function pushTournamentToCloud(tournamentId, tournamentObj = null) 
     for (const serverUrl of VPS_SERVERS) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s fast timeout per server
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s fast timeout per server
 
         const response = await fetch(`${serverUrl}/api/cloud-sync/tournament`, {
           method: 'POST',
@@ -290,7 +317,7 @@ export async function pushTournamentToCloud(tournamentId, tournamentObj = null) 
         }
       } catch (err) {
         lastError = (err.name === 'AbortError') 
-          ? 'Hết thời gian chờ (6s)' 
+          ? 'Hết thời gian chờ (8s)'
           : (err.message === 'Failed to fetch' ? 'Không thể kết nối VPS Server (Kiểm tra mạng / SSL)' : err.message);
       }
     }
@@ -304,8 +331,16 @@ export async function pushTournamentToCloud(tournamentId, tournamentObj = null) 
     saveSyncState(tournamentId, {
       status: 'synced',
       lastSyncedAt: syncedAt,
+      autoSyncEnabled: true,
+      authorizedMachineId,
       error: null
     });
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('krt_cloud_sync_update', {
+        detail: { tournamentId, syncedAt, status: 'synced', authorizedMachineId }
+      }));
+    }
 
     return {
       success: true,
@@ -321,11 +356,65 @@ export async function pushTournamentToCloud(tournamentId, tournamentObj = null) 
       error: errorMsg
     });
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('krt_cloud_sync_update', {
+        detail: { tournamentId, status: 'error', error: errorMsg }
+      }));
+    }
+
     return {
       success: false,
       message: errorMsg
     };
   }
+}
+
+/**
+ * Trigger đồng bộ tự động theo thời gian thực (Realtime Debounced Push)
+ * Được gọi khi có thay đổi dữ liệu (VĐV, Bốc thăm, Điểm số, Hạng mục...)
+ */
+let debouncedSyncTimeouts = {};
+
+export function triggerDebouncedCloudSync(tournamentId, tournamentObj, delayMs = 3000) {
+  // Giải mới chỉ nằm cục bộ cho tới khi người dùng chủ động đồng bộ lần đầu.
+  if (!isTournamentAutoSyncEnabled(tournamentId)) return;
+
+  if (debouncedSyncTimeouts[tournamentId]) {
+    clearTimeout(debouncedSyncTimeouts[tournamentId]);
+  }
+
+  debouncedSyncTimeouts[tournamentId] = setTimeout(() => {
+    delete debouncedSyncTimeouts[tournamentId];
+    if (navigator.onLine && isTournamentAutoSyncEnabled(tournamentId)) {
+      console.log(`[Realtime Cloud Sync] Tự động đồng bộ giải [${tournamentId}] lên VPS...`);
+      pushTournamentToCloud(tournamentId, tournamentObj).catch(err => {
+        console.warn('[Realtime Cloud Sync] Lỗi đẩy ngầm:', err);
+      });
+    }
+  }, delayMs);
+}
+
+/**
+ * Phân quyền / Xác nhận Machine ID nguồn chính cho giải đấu
+ */
+export async function setAuthorizedMachineForTournament(tournamentId, targetMachineId = null) {
+  if (!tournamentId) return { success: false, message: 'Thiếu ID giải đấu' };
+
+  const selectedMachineId = targetMachineId || (await dbGetMachineId());
+  saveSyncState(tournamentId, {
+    authorizedMachineId: selectedMachineId
+  });
+
+  // Re-push để cập nhật authorizedMachineId trên VPS
+  const pushRes = await pushTournamentToCloud(tournamentId);
+
+  return {
+    success: pushRes.success,
+    authorizedMachineId: selectedMachineId,
+    message: pushRes.success
+      ? `👑 Đã xác nhận Mã máy [${selectedMachineId}] là Máy Nguồn Chính cho giải đấu!`
+      : pushRes.message
+  };
 }
 
 /**
@@ -337,21 +426,23 @@ let lastAutoSyncTime = 0;
 export function startAutoSyncEngine(getTournamentsFn) {
   if (autoSyncInterval) return;
 
-  // Chạy mỗi 3 phút 1 lần
+  // Chạy kiểm tra mỗi 30 giây 1 lần
   autoSyncInterval = setInterval(async () => {
     if (!navigator.onLine) return;
 
     const now = Date.now();
-    if (now - lastAutoSyncTime < 2 * 60 * 1000) return;
+    if (now - lastAutoSyncTime < 20 * 1000) return;
     lastAutoSyncTime = now;
 
     try {
       const tournaments = typeof getTournamentsFn === 'function' ? getTournamentsFn() : [];
       if (Array.isArray(tournaments) && tournaments.length > 0) {
         for (const t of tournaments) {
+          if (!isTournamentAutoSyncEnabled(t.id)) continue;
           const syncStatus = getTournamentSyncStatus(t.id);
           const lastSynced = syncStatus.lastSyncedAt ? new Date(syncStatus.lastSyncedAt).getTime() : 0;
-          if (now - lastSynced > 10 * 60 * 1000) {
+          // Chỉ tự cập nhật các giải đã được người dùng đồng bộ thành công trước đó.
+          if (now - lastSynced > 2 * 60 * 1000) {
             await pushTournamentToCloud(t.id, t);
           }
         }
@@ -359,13 +450,108 @@ export function startAutoSyncEngine(getTournamentsFn) {
     } catch (e) {
       // Bỏ qua lỗi ngầm
     }
-  }, 3 * 60 * 1000);
+  }, 30 * 1000);
 }
 
 export function stopAutoSyncEngine() {
   if (autoSyncInterval) {
     clearInterval(autoSyncInterval);
     autoSyncInterval = null;
+  }
+}
+
+async function requestCloudResultRelay(path, options = {}, timeoutMs = 8000) {
+  let lastError = "Không thể kết nối đến máy chủ Cloud VPS";
+  for (const serverUrl of VPS_SERVERS) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`${serverUrl}${path}`, {
+        mode: "cors",
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.success !== false) return data;
+      lastError = data.message || `Lỗi HTTP ${response.status}`;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      lastError = error.name === "AbortError"
+        ? "Hết thời gian chờ máy chủ Cloud"
+        : error.message;
+    }
+  }
+  throw new Error(lastError);
+}
+
+/** Gửi một lô kết quả tới một hoặc nhiều Machine ID nhận Cloud. */
+export async function pushResultsToCloudRelay(targetChannelIds, tournamentId, events = []) {
+  const targets = [...new Set(
+    (Array.isArray(targetChannelIds) ? targetChannelIds : [targetChannelIds])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )];
+  if (targets.length === 0) return { success: false, message: "Thiếu Machine ID máy nhận" };
+  if (!tournamentId) return { success: false, message: "Thiếu ID giải đấu" };
+  if (!Array.isArray(events) || events.length === 0) {
+    return { success: false, message: "Chưa có kết quả để đồng bộ" };
+  }
+
+  try {
+    const sourceMachineId = await dbGetMachineId();
+    return await requestCloudResultRelay("/api/cloud-sync/results", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        targetChannels: targets,
+        sourceMachineId: sourceMachineId || "KRT-UNKNOWN",
+        tournamentId,
+        events,
+      }),
+    }, 12000);
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+}
+
+/** Nhận các kết quả Cloud mới dành cho Machine ID hiện tại. */
+export async function pullResultsFromCloudRelay(channelId, tournamentId, since = "") {
+  const normalizedChannelId = String(channelId || "").trim();
+  if (!normalizedChannelId || !tournamentId) {
+    return { success: false, events: [], message: "Thiếu Mã nhận Cloud hoặc ID giải đấu" };
+  }
+  const params = new URLSearchParams({
+    channelId: normalizedChannelId,
+    tournamentId: String(tournamentId),
+  });
+  if (since) params.set("since", since);
+  try {
+    const data = await requestCloudResultRelay(`/api/cloud-sync/results?${params.toString()}`, {
+      method: "GET",
+    });
+    return {
+      success: true,
+      events: data.events || [],
+      cursor: data.cursor || "",
+      serverTime: data.serverTime,
+    };
+  } catch (error) {
+    return { success: false, events: [], message: error.message };
+  }
+}
+
+export async function checkCloudResultRelay(targetMachineId) {
+  const normalizedTarget = String(targetMachineId || "").trim();
+  if (!normalizedTarget) return { success: false, message: "Thiếu Machine ID máy nhận" };
+  const params = new URLSearchParams({ channelId: normalizedTarget, health: "1" });
+  try {
+    const data = await requestCloudResultRelay(`/api/cloud-sync/results?${params.toString()}`, {
+      method: "GET",
+    });
+    return { success: true, message: data.message || "Cloud VPS đang hoạt động" };
+  } catch (error) {
+    return { success: false, message: error.message };
   }
 }
 
@@ -376,7 +562,7 @@ export async function fetchCloudTournamentsList() {
   for (const serverUrl of VPS_SERVERS) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
       const res = await fetch(`${serverUrl}/api/cloud-sync/synced-ids`, {
         method: 'GET',
         mode: 'cors',
@@ -426,4 +612,3 @@ export async function downloadCloudBackupData(tournamentId) {
   }
   return { success: false, message: 'Không thể tải gói dữ liệu từ Cloud VPS' };
 }
-

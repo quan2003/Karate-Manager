@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
 import './Toast.css';
 
 const ToastContext = createContext(null);
@@ -23,15 +23,19 @@ export function ToastProvider({ children }) {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  const toast = useCallback({
+  const toast = useMemo(() => ({
     success: (msg, dur) => addToast(msg, 'success', dur),
     error: (msg, dur) => addToast(msg, 'error', dur || 6000),
     warning: (msg, dur) => addToast(msg, 'warning', dur || 5000),
     info: (msg, dur) => addToast(msg, 'info', dur),
-  }, [addToast]);
+  }), [addToast]);
 
-  // Wrap toast object for stable reference
-  const value = { toast: { ...toast }, addToast, removeToast };
+  // Keep the context value stable so consumers' effects are not restarted
+  // whenever a toast is added or removed.
+  const value = useMemo(
+    () => ({ toast, addToast, removeToast }),
+    [toast, addToast, removeToast],
+  );
 
   return (
     <ToastContext.Provider value={value}>

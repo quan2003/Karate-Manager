@@ -27,11 +27,16 @@ import {
   isTeamCategory as isTeamCategoryMeta,
   syncTeamBracketMembers,
 } from "../utils/teamDraw";
+import {
+  getTournamentDrawMinimum,
+  isCategoryDrawEligible,
+} from "../utils/drawEligibility";
 import DateTimeInput from "../components/common/DateTimeInput";
 import { useToast } from "../components/common/Toast";
 import { useOnboarding } from "../context/OnboardingContext";
 import { publishTournament, unpublishTournament, fetchTournamentById } from "../services/supabaseService";
 import { downloadAthleteImportTemplate } from "../services/athleteTemplateService";
+import { getOrCreateCloudResultRelayId } from "../services/cloudSyncService";
 import { BRONZE_MODES, resolveBronzeMode } from "../domain/bronzeMode.js";
 import {
   BRONZE_MODE_CHANGE_STATUSES,
@@ -180,15 +185,30 @@ export default function TournamentPage() {
   const [bulkDrawResults, setBulkDrawResults] = useState(null);
   const [bulkDrawing, setBulkDrawing] = useState(false);
   const [bulkDrawCountdown, setBulkDrawCountdown] = useState(30);
+  const [allowTwoParticipantsDraw, setAllowTwoParticipantsDraw] = useState(false);
   const fileInputRef = useRef(null);
   const [lanStatus, setLanStatus] = useState({ running: false, ip: '', port: 3000 });
   const [liveServerStatus, setLiveServerStatus] = useState({ state: "checking", mats: [], message: "" });
+  const [cloudRelayId] = useState(() => getOrCreateCloudResultRelayId());
+  const [cloudReceiveStatus, setCloudReceiveStatus] = useState({ count: 0, receivedAt: "" });
   const [publishing, setPublishing] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [showExportPDFModal, setShowExportPDFModal] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
   const [exportPDFProgress, setExportPDFProgress] = useState({ percent: 0, label: "" });
+  // Club Sigma export modal
+  const [showClubSigmaModal, setShowClubSigmaModal] = useState(false);
+  const [clubSigmaSelectedClub, setClubSigmaSelectedClub] = useState(null);
+  const [clubSigmaSelectedClubs, setClubSigmaSelectedClubs] = useState({}); // clubName -> bool (checked for export)
+  const [clubSigmaCategoryOverrides, setClubSigmaCategoryOverrides] = useState({}); // clubName -> { [catId]: bool }
+  const [exportingClubSigma, setExportingClubSigma] = useState(false);
+  const [clubSigmaProgress, setClubSigmaProgress] = useState({ percent: 0, label: '' });
+  // Mat Sigma export modal
+  const [showMatSigmaModal, setShowMatSigmaModal] = useState(false);
+  const [matSigmaSelectedMats, setMatSigmaSelectedMats] = useState({});
+  const [exportingMatSigma, setExportingMatSigma] = useState(false);
+  const [matSigmaProgress, setMatSigmaProgress] = useState({ percent: 0, label: '' });
   const [exportFilter, setExportFilter] = useState({ type: 'all', format: 'all', gender: 'all' });
   const [exportSelectedIds, setExportSelectedIds] = useState([]);
   const [searchQueryExport, setSearchQueryExport] = useState("");
@@ -332,6 +352,10 @@ export default function TournamentPage() {
 
   const tournament = currentTournament || tournaments.find((t) => t.id === id);
   useEffect(() => {
+    if (!tournament) return;
+    setAllowTwoParticipantsDraw(getTournamentDrawMinimum(tournament) === 2);
+  }, [tournament?.id, tournament?.drawSettings?.minimumParticipants]);
+  useEffect(() => {
     let active = true;
 
     const refreshLiveStatus = async () => {
@@ -359,6 +383,17 @@ export default function TournamentPage() {
       window.clearInterval(intervalId);
     };
   }, []);
+  useEffect(() => {
+    const handleCloudResult = (event) => {
+      if (event.detail?.tournamentId !== id) return;
+      setCloudReceiveStatus((current) => ({
+        count: current.count + Number(event.detail?.count || 0),
+        receivedAt: event.detail?.receivedAt || new Date().toISOString(),
+      }));
+    };
+    window.addEventListener("krt_cloud_result_received", handleCloudResult);
+    return () => window.removeEventListener("krt_cloud_result_received", handleCloudResult);
+  }, [id]);
   const tvMatIds = Array.from(new Set([
     ...Object.values(tournament?.schedule || {}).map((item) => String(item.mat || 1)),
     ...liveServerStatus.mats.map((item) => String(item.mat_id || 1)),
@@ -612,10 +647,7 @@ export default function TournamentPage() {
   };
 
   const isMedalEligibleCategory = (cat) => {
-    const minTeams = Number(cat.minTeamsForDraw) || 3;
-    return isTeamCategoryMeta(cat)
-      ? getTeamCountFromAthletes(cat.athletes || [], cat, tournament) >= minTeams
-      : (cat.athletes?.length || 0) >= 3;
+    return isCategoryDrawEligible(cat, tournament);
   };
 
   const getEstimatedMedals = (categories = tournament.categories) => {
@@ -886,6 +918,171 @@ export default function TournamentPage() {
     }
   };
 
+  // ===== SIGMA THEO CLB =====
+  // Extract all unique clubs from categories that have brackets
+  const getClubsFromBrackets = () => {
+    const clubMap = new Map(); // clubName -> Set of categoryIds
+    (tournament.categories || []).forEach(cat => {
+      if (!cat.bracket) return;
+      (cat.athletes || []).forEach(a => {
+        const club = (a.club || '').trim() || 'Không rõ CLB';
+        if (!clubMap.has(club)) clubMap.set(club, new Set());
+        clubMap.get(club).add(cat.id);
+      });
+    });
+    return [...clubMap.entries()]
+      .map(([name, catIds]) => ({ name, catIds: [...catIds] }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+  };
+
+  const handleOpenClubSigmaModal = () => {
+    const clubs = getClubsFromBrackets();
+    const initSelected = {};
+    clubs.forEach(c => { initSelected[c.name] = true; });
+    setClubSigmaSelectedClubs(initSelected);
+    setClubSigmaCategoryOverrides({});
+    setClubSigmaSelectedClub(clubs.length > 0 ? clubs[0] : null);
+    setShowClubSigmaModal(true);
+  };
+
+  const handleToggleClubCheck = (clubName, e) => {
+    if (e) e.stopPropagation();
+    setClubSigmaSelectedClubs(prev => ({
+      ...prev,
+      [clubName]: !prev[clubName]
+    }));
+  };
+
+  const handleToggleAllClubs = () => {
+    const clubs = getClubsFromBrackets();
+    const allChecked = clubs.length > 0 && clubs.every(c => !!clubSigmaSelectedClubs[c.name]);
+    const nextState = {};
+    clubs.forEach(c => { nextState[c.name] = !allChecked; });
+    setClubSigmaSelectedClubs(nextState);
+  };
+
+  const handleSelectClubForSigma = (club) => {
+    setClubSigmaSelectedClub(club);
+  };
+
+  const isCategorySelectedForClub = (clubName, catId) => {
+    if (!clubName) return true;
+    const overrides = clubSigmaCategoryOverrides[clubName];
+    if (overrides && Object.prototype.hasOwnProperty.call(overrides, catId)) {
+      return overrides[catId];
+    }
+    return true; // Default checked
+  };
+
+  const handleToggleCategoryForClub = (clubName, catId) => {
+    if (!clubName) return;
+    setClubSigmaCategoryOverrides(prev => {
+      const currentClubOverrides = prev[clubName] || {};
+      const currentVal = isCategorySelectedForClub(clubName, catId);
+      return {
+        ...prev,
+        [clubName]: {
+          ...currentClubOverrides,
+          [catId]: !currentVal
+        }
+      };
+    });
+  };
+
+  const handleSelectAllCategoriesForClub = (club, checkAll) => {
+    if (!club) return;
+    setClubSigmaCategoryOverrides(prev => {
+      const newOverrides = {};
+      club.catIds.forEach(id => { newOverrides[id] = checkAll; });
+      return {
+        ...prev,
+        [club.name]: newOverrides
+      };
+    });
+  };
+
+  const handleExportClubSigma = async () => {
+    if (exportingClubSigma) return;
+    const allClubs = getClubsFromBrackets();
+    const selectedClubs = allClubs.filter(c => !!clubSigmaSelectedClubs[c.name]);
+
+    if (selectedClubs.length === 0) {
+      toast.error('Vui lòng tích chọn ít nhất một CLB!');
+      return;
+    }
+
+    setExportingClubSigma(true);
+    setClubSigmaProgress({ percent: 0, label: `Đang chuẩn bị xuất ${selectedClubs.length} file PDF...` });
+
+    let successCount = 0;
+    const totalClubs = selectedClubs.length;
+
+    try {
+      const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
+      const sponsorLogos = tournament.sponsorLogos || null;
+
+      for (let i = 0; i < selectedClubs.length; i++) {
+        const club = selectedClubs[i];
+        const overrides = clubSigmaCategoryOverrides[club.name];
+        const catIdsToExport = club.catIds.filter(id => {
+          if (overrides && Object.prototype.hasOwnProperty.call(overrides, id)) {
+            return overrides[id];
+          }
+          return true;
+        });
+
+        if (catIdsToExport.length === 0) continue;
+
+        const categoriesToExport = tournament.categories
+          .filter(c => catIdsToExport.includes(c.id) && c.bracket)
+          .map(category => {
+            if (!isTeamCategoryMeta(category)) return category;
+            return {
+              ...category,
+              bracket: syncTeamBracketMembers(category.bracket, category.athletes || [], category, tournament),
+            };
+          });
+
+        if (categoriesToExport.length === 0) continue;
+
+        const safeClubName = club.name.replace(/[/\\:*?"<>|]/g, '_');
+        const filename = `${safeClubName}_sigma.pdf`;
+
+        const basePercent = Math.round((i / totalClubs) * 100);
+        setClubSigmaProgress({
+          percent: basePercent,
+          label: `[${i + 1}/${totalClubs}] Đang xuất CLB: "${club.name}"...`
+        });
+
+        const sorted = [...categoriesToExport].sort(compareCategoriesForPDF);
+        await exportAllBracketsToPDF(
+          sorted,
+          tournament.name,
+          filename,
+          tournament.schedule || null,
+          splitSettings,
+          sponsorLogos,
+          (p) => {
+            const stepPercent = Math.round(((p.percent || 0) / 100) * (100 / totalClubs));
+            setClubSigmaProgress({
+              percent: Math.min(99, basePercent + stepPercent),
+              label: `[${i + 1}/${totalClubs}] ${club.name}: ${p.label || ''}`
+            });
+          }
+        );
+        successCount++;
+      }
+
+      toast.success(`🎉 Đã xuất thành công ${successCount} file PDF Sigma cho ${selectedClubs.length} CLB!`);
+      setShowClubSigmaModal(false);
+    } catch (err) {
+      toast.error('Không thể xuất PDF: ' + err.message);
+    } finally {
+      setExportingClubSigma(false);
+      setClubSigmaProgress({ percent: 0, label: '' });
+    }
+  };
+
   const applyBulkFilter = (filters) => {
     const filtered = tournament.categories.filter(c => {
       if (!c.bracket) return false;
@@ -953,7 +1150,10 @@ export default function TournamentPage() {
           name: cat.name,
           type: cat.type,
           gender: cat.gender,
-          isTeam: cat.isTeam,
+          ageGroup: cat.ageGroup,
+          minAge: cat.minAge,
+          maxAge: cat.maxAge,
+          isTeam: isTeamCategoryMeta(cat),
         })),
       });
 
@@ -1117,9 +1317,188 @@ export default function TournamentPage() {
   const isTeamCategoryForDraw = (cat) => isTeamCategoryMeta(cat);
 
 
-  const canBulkDrawCategory = (cat) => {
+  const canBulkDrawCategory = (cat, allowTwo = allowTwoParticipantsDraw) => {
     if (cat.bracket) return false;
-    return isMedalEligibleCategory(cat);
+    return isCategoryDrawEligible(cat, tournament, allowTwo ? 2 : 3);
+  };
+
+  // ===== SIGMA THEO SÀN =====
+  const getSigmaSplitCount = (category) => {
+    const athleteCount = category.athletes?.length || 0;
+    const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
+    const threshold = splitSettings.threshold || 20;
+    if (category.sigmaCount && category.sigmaCount > 1) return category.sigmaCount;
+    if (category.sigmaSplitEnabled === false) return 1;
+    if (category.sigmaSplitEnabled === true) {
+      if (athleteCount <= 1) return 1;
+      return Math.max(2, Math.floor(athleteCount / threshold));
+    }
+    if (!splitSettings.enabled || athleteCount <= threshold) return 1;
+    return Math.max(2, Math.floor(athleteCount / threshold));
+  };
+
+  const getMatSigmaGroups = () => {
+    const groups = new Map();
+    const schedule = tournament.schedule || {};
+
+    (tournament.categories || []).forEach((category) => {
+      if (!category.bracket) return;
+      const splitCount = getSigmaSplitCount(category);
+
+      for (let splitIndex = 0; splitIndex < splitCount; splitIndex++) {
+        const splitSchedule = splitCount > 1
+          ? schedule[`${category.id}_split${splitIndex}`]
+          : null;
+        const assignment = splitSchedule || schedule[category.id];
+        if (!assignment || assignment.mat === undefined || assignment.mat === null || assignment.mat === '') {
+          continue;
+        }
+
+        const mat = String(assignment.mat);
+        if (!groups.has(mat)) {
+          groups.set(mat, { mat, entries: new Map(), pageCount: 0 });
+        }
+        const group = groups.get(mat);
+        if (!group.entries.has(category.id)) group.entries.set(category.id, new Set());
+        group.entries.get(category.id).add(splitIndex);
+        group.pageCount += 1;
+      }
+    });
+
+    return [...groups.values()].sort((a, b) =>
+      String(a.mat).localeCompare(String(b.mat), 'vi', { numeric: true })
+    );
+  };
+
+  const handleOpenMatSigmaModal = () => {
+    const matGroups = getMatSigmaGroups();
+    if (matGroups.length === 0) {
+      toast.warning('Chưa có sơ đồ nào được xếp sàn. Vui lòng xếp lịch thi đấu trước!');
+      return;
+    }
+    setMatSigmaSelectedMats(Object.fromEntries(matGroups.map(group => [group.mat, true])));
+    setShowMatSigmaModal(true);
+  };
+
+  const handleToggleAllMatSigma = () => {
+    const matGroups = getMatSigmaGroups();
+    const allSelected = matGroups.length > 0 && matGroups.every(group => !!matSigmaSelectedMats[group.mat]);
+    setMatSigmaSelectedMats(Object.fromEntries(matGroups.map(group => [group.mat, !allSelected])));
+  };
+
+  const handleExportMatSigma = async () => {
+    if (exportingMatSigma) return;
+    const selectedGroups = getMatSigmaGroups().filter(group => !!matSigmaSelectedMats[group.mat]);
+    if (selectedGroups.length === 0) {
+      toast.error('Vui lòng chọn ít nhất một sàn!');
+      return;
+    }
+
+    setExportingMatSigma(true);
+    setMatSigmaProgress({ percent: 0, label: `Đang chuẩn bị xuất ${selectedGroups.length} file PDF...` });
+    let successCount = 0;
+
+    try {
+      const splitSettings = tournament.splitSettings || { enabled: false, threshold: 20 };
+      const sponsorLogos = tournament.sponsorLogos || null;
+
+      for (let index = 0; index < selectedGroups.length; index++) {
+        const group = selectedGroups[index];
+        const basePercent = Math.round((index / selectedGroups.length) * 100);
+        const categoriesToExport = tournament.categories
+          .filter(category => category.bracket && group.entries.has(category.id))
+          .map(category => {
+            const exportCategory = isTeamCategoryMeta(category)
+              ? {
+                  ...category,
+                  bracket: syncTeamBracketMembers(
+                    category.bracket,
+                    category.athletes || [],
+                    category,
+                    tournament
+                  ),
+                }
+              : { ...category };
+            return {
+              ...exportCategory,
+              exportSplitIndexes: [...group.entries.get(category.id)].sort((a, b) => a - b),
+            };
+          })
+          .sort((categoryA, categoryB) => {
+            const getFirstAssignment = (category) => {
+              const splitIndexes = group.entries.get(category.id) || new Set([0]);
+              return [...splitIndexes]
+                .map(splitIndex => tournament.schedule?.[`${category.id}_split${splitIndex}`] || tournament.schedule?.[category.id])
+                .filter(Boolean)
+                .sort((a, b) =>
+                  String(a.date || '').localeCompare(String(b.date || '')) ||
+                  String(a.time || '').localeCompare(String(b.time || '')) ||
+                  (Number(a.order) || 0) - (Number(b.order) || 0)
+                )[0] || {};
+            };
+            const assignmentA = getFirstAssignment(categoryA);
+            const assignmentB = getFirstAssignment(categoryB);
+            return String(assignmentA.date || '').localeCompare(String(assignmentB.date || '')) ||
+              String(assignmentA.time || '').localeCompare(String(assignmentB.time || '')) ||
+              (Number(assignmentA.order) || 0) - (Number(assignmentB.order) || 0) ||
+              compareCategoriesForPDF(categoryA, categoryB);
+          });
+
+        const safeMatName = String(group.mat).replace(/[/\\:*?"<>|]/g, '_');
+        setMatSigmaProgress({
+          percent: basePercent,
+          label: `[${index + 1}/${selectedGroups.length}] Đang xuất Sàn ${group.mat}...`,
+        });
+
+        await exportAllBracketsToPDF(
+          categoriesToExport,
+          tournament.name,
+          `San_${safeMatName}_sigma.pdf`,
+          tournament.schedule || null,
+          splitSettings,
+          sponsorLogos,
+          (progress) => {
+            const stepPercent = Math.round(((progress.percent || 0) / 100) * (100 / selectedGroups.length));
+            setMatSigmaProgress({
+              percent: Math.min(99, basePercent + stepPercent),
+              label: `[${index + 1}/${selectedGroups.length}] Sàn ${group.mat}: ${progress.label || ''}`,
+            });
+          }
+        );
+        successCount += 1;
+      }
+
+      toast.success(`Đã xuất thành công ${successCount} file PDF Sigma theo sàn!`);
+      setShowMatSigmaModal(false);
+    } catch (error) {
+      toast.error('Không thể xuất PDF: ' + error.message);
+    } finally {
+      setExportingMatSigma(false);
+      setMatSigmaProgress({ percent: 0, label: '' });
+    }
+  };
+
+  const handleAllowTwoParticipantsDraw = (enabled) => {
+    setAllowTwoParticipantsDraw(enabled);
+    dispatch({
+      type: ACTIONS.UPDATE_TOURNAMENT,
+      payload: {
+        id: tournament.id,
+        drawSettings: {
+          ...(tournament.drawSettings || {}),
+          minimumParticipants: enabled ? 2 : 3,
+        },
+      },
+    });
+    setBulkDrawSelection((currentSelection) => {
+      const nextSelection = { ...currentSelection };
+      tournament.categories.forEach((cat) => {
+        const canDraw = canBulkDrawCategory(cat, enabled);
+        if (!canDraw) nextSelection[cat.id] = false;
+        else if (enabled) nextSelection[cat.id] = true;
+      });
+      return nextSelection;
+    });
   };
 
   const handleOpenBulkDraw = () => {
@@ -1160,7 +1539,7 @@ export default function TournamentPage() {
       if (isTeamCategory) {
         // Team category: group by club
         const teams = getTeamsFromAthletes(cat.athletes || [], cat, tournament);
-        const minTeams = Number(cat.minTeamsForDraw) || 3;
+        const minTeams = allowTwoParticipantsDraw ? 2 : 3;
         if (teams.length < minTeams) {
           results.skipped.push({ name: cat.name, reason: `Chỉ có ${teams.length} đội (cần ≥ ${minTeams} đội)` });
           continue;
@@ -1178,14 +1557,15 @@ export default function TournamentPage() {
         }
       } else {
         // Individual category
-        if (athleteCount < 3) {
-          results.skipped.push({ name: cat.name, reason: `Chỉ có ${athleteCount} VĐV (cần ≥ 3)` });
+        const minAthletes = allowTwoParticipantsDraw ? 2 : 3;
+        if (athleteCount < minAthletes) {
+          results.skipped.push({ name: cat.name, reason: `Chỉ có ${athleteCount} VĐV (cần ≥ ${minAthletes})` });
           continue;
         }
 
-        // Check if all athletes are from the same club, but still allow drawing if count >= 3
+        // Check if all athletes are from the same club, but still allow drawing when the minimum is met.
         const clubs = new Set(cat.athletes.map(a => (a.club || '').trim().toLowerCase()).filter(Boolean));
-        if (clubs.size === 1 && athleteCount > 2) {
+        if (clubs.size === 1 && athleteCount >= minAthletes) {
           // Still allow but note it
         }
 
@@ -1233,7 +1613,11 @@ export default function TournamentPage() {
     });
   };
 
-  const bulkDrawableCategories = tournament.categories.filter(canBulkDrawCategory);
+  // Do not pass canBulkDrawCategory directly to filter: Array.filter supplies
+  // the item index as argument #2, which would be mistaken for allowTwo.
+  const bulkDrawableCategories = tournament.categories.filter((cat) =>
+    canBulkDrawCategory(cat)
+  );
   const drawableCount = bulkDrawableCategories.length;
   const handlePublishTournament = async () => {
       if (!linkStartTime || !linkEndTime) {
@@ -1338,6 +1722,28 @@ export default function TournamentPage() {
             >
               <span className="action-icon">📄</span>
               <span className="action-label">Xuất tất cả<br/>PDF</span>
+            </button>
+          )}
+
+          {tournament.categories.filter((c) => c.bracket).length > 0 && (
+            <button
+              className="tournament-action-btn action-export"
+              onClick={handleOpenClubSigmaModal}
+              title="Xuất file PDF sigma riêng cho từng CLB"
+            >
+              <span className="action-icon">🏛️</span>
+              <span className="action-label">Sigma<br/>Theo CLB</span>
+            </button>
+          )}
+
+          {tournament.categories.filter((c) => c.bracket).length > 0 && (
+            <button
+              className="tournament-action-btn action-export"
+              onClick={handleOpenMatSigmaModal}
+              title="Xuất file PDF Sigma riêng cho từng sàn theo lịch thi đấu"
+            >
+              <span className="action-icon">🥋</span>
+              <span className="action-label">Sigma<br/>Theo Sàn</span>
             </button>
           )}
 
@@ -1810,6 +2216,47 @@ export default function TournamentPage() {
                 📺 Mở TV tổng • {tvMatIds.length} thảm
               </button>
             </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:'12px',
+            padding:'16px 20px',marginBottom:'20px',display:'flex',alignItems:'center',
+            gap:'16px',flexWrap:'wrap'
+          }}
+        >
+          <span style={{fontSize:'24px'}}>☁️</span>
+          <div style={{minWidth:'260px'}}>
+            <h4 style={{margin:0,fontSize:'15px',color:'#1e3a8a'}}>Nhận kết quả qua Cloud Internet</h4>
+            <p style={{margin:0,fontSize:'12px',color:'#64748b'}}>
+              Hoạt động song song với LAN; gửi mã dưới đây cho máy Thư ký
+            </p>
+          </div>
+          <input
+            readOnly
+            value={cloudRelayId}
+            title={cloudRelayId}
+            style={{flex:'1 1 320px',minWidth:'260px',padding:'8px 10px',border:'1px solid #93c5fd',borderRadius:'7px',background:'#fff',fontSize:'11px',fontFamily:'monospace'}}
+          />
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            onClick={async () => {
+              await navigator.clipboard.writeText(cloudRelayId);
+              toast.success('Đã sao chép Mã nhận Cloud');
+            }}
+          >
+            📋 Sao chép mã
+          </button>
+          <div style={{width:'100%',display:'flex',alignItems:'center',gap:'8px',fontSize:'12px',color:'#1d4ed8'}}>
+            <span style={{width:'8px',height:'8px',borderRadius:'50%',background:navigator.onLine?'#22c55e':'#ef4444'}} />
+            {navigator.onLine ? 'Đang lắng nghe kết quả Cloud' : 'Đang ngoại tuyến — sẽ nhận lại khi có Internet'}
+            {cloudReceiveStatus.receivedAt && (
+              <strong style={{marginLeft:'auto'}}>
+                Đã nhận {cloudReceiveStatus.count} cập nhật • {new Date(cloudReceiveStatus.receivedAt).toLocaleTimeString('vi-VN')}
+              </strong>
+            )}
           </div>
         </div>
 
@@ -2823,8 +3270,31 @@ export default function TournamentPage() {
             ) : !bulkDrawResults ? (
               <>
                 <p style={{color:'#64748b',fontSize:'13px',marginBottom:'12px'}}>
-                  Chọn các nội dung muốn bốc thăm. Chỉ các nội dung có ≥ 3 VĐV mới có thể bốc thăm.
+                  Chọn các nội dung muốn bốc thăm. Ngưỡng hiện tại là ≥ {allowTwoParticipantsDraw ? 2 : 3} VĐV/đội.
                 </p>
+
+                <label
+                  style={{
+                    display:'flex',alignItems:'center',gap:'10px',padding:'10px 12px',
+                    background:allowTwoParticipantsDraw?'#ecfdf5':'#fffbeb',
+                    border:`1px solid ${allowTwoParticipantsDraw?'#86efac':'#fde68a'}`,
+                    borderRadius:'8px',marginBottom:'10px',cursor:'pointer'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={allowTwoParticipantsDraw}
+                    disabled={bulkDrawing}
+                    onChange={(e) => handleAllowTwoParticipantsDraw(e.target.checked)}
+                    style={{width:'17px',height:'17px',accentColor:'#16a34a'}}
+                  />
+                  <span style={{fontSize:'13px',fontWeight:700,color:'#334155'}}>
+                    ⚙️ Cho phép bốc thăm khi chỉ có 2 VĐV hoặc 2 đội
+                  </span>
+                  <span style={{marginLeft:'auto',fontSize:'11px',fontWeight:700,color:allowTwoParticipantsDraw?'#15803d':'#a16207'}}>
+                    {allowTwoParticipantsDraw ? 'Đang bật' : 'Mặc định: cần 3'}
+                  </span>
+                </label>
 
                 {/* Select all */}
                 <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'8px 12px',background:'#f1f5f9',borderRadius:'8px',marginBottom:'8px'}}>
@@ -2851,6 +3321,10 @@ export default function TournamentPage() {
                 <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
                   {tournament.categories.map(cat => {
                     const athleteCount = cat.athletes?.length || 0;
+                    const isTeamCategory = isTeamCategoryForDraw(cat);
+                    const teamCount = isTeamCategory
+                      ? getTeamCountFromAthletes(cat.athletes || [], cat, tournament)
+                      : 0;
                     const canDraw = canBulkDrawCategory(cat);
                     const hasBracket = !!cat.bracket;
                     return (
@@ -2873,7 +3347,9 @@ export default function TournamentPage() {
                         />
                         <span className={`cat-type-dot ${cat.type}`} style={{width:'8px',height:'8px',borderRadius:'50%',background: cat.type==='kumite'?'#ef4444':'#3b82f6',flexShrink:0}}></span>
                         <span style={{flex:1,fontWeight:600,fontSize:'13px',color:'#1e293b'}}>{cat.name}</span>
-                        <span style={{fontSize:'11px',color:'#64748b'}}>{athleteCount} VĐV</span>
+                        <span style={{fontSize:'11px',color:'#64748b'}}>
+                          {isTeamCategory ? `${teamCount} đội (${athleteCount} VĐV)` : `${athleteCount} VĐV`}
+                        </span>
                         {hasBracket && <span style={{fontSize:'10px',background:'#dcfce7',color:'#16a34a',padding:'2px 6px',borderRadius:'4px',fontWeight:600}}>✓ Đã bốc</span>}
                         {!hasBracket && !canDraw && <span style={{fontSize:'10px',background:'#fef2f2',color:'#dc2626',padding:'2px 6px',borderRadius:'4px',fontWeight:600}}>Không đủ điều kiện</span>}
                       </label>
@@ -3500,6 +3976,7 @@ export default function TournamentPage() {
           )}
         </Modal>
 
+
         {/* Modal Chia Bảng Đấu (Pools) */}
         <Modal
           isOpen={showSplitPoolsModal}
@@ -3554,6 +4031,408 @@ export default function TournamentPage() {
             </div>
           </div>
         </Modal>
+
+        {/* ===== MODAL XUẤT SIGMA THEO CLB ===== */}
+        <Modal
+          isOpen={showClubSigmaModal}
+          onClose={() => { if (!exportingClubSigma) setShowClubSigmaModal(false); }}
+          title="Xuất Sigma (Sơ đồ thi đấu) Theo CLB"
+          size="large"
+        >
+          <div style={{ display: 'flex', height: '520px', margin: '-20px -24px 0', overflow: 'hidden' }}>
+
+            {/* ── Panel trái: Danh sách CLB ── */}
+            <div style={{
+              width: '290px', flexShrink: 0,
+              borderRight: '2px solid #e2e8f0',
+              display: 'flex', flexDirection: 'column',
+              background: '#f8fafc',
+            }}>
+              {/* Header Panel trái with Master Checkbox */}
+              <div style={{
+                padding: '12px 14px',
+                borderBottom: '2px solid #cbd5e1',
+                background: '#f1f5f9',
+                flexShrink: 0,
+                display: 'flex', alignItems: 'center', gap: '10px'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={getClubsFromBrackets().length > 0 && getClubsFromBrackets().every(c => !!clubSigmaSelectedClubs[c.name])}
+                  onChange={handleToggleAllClubs}
+                  style={{ width: '18px', height: '18px', accentColor: '#7c3aed', cursor: 'pointer', flexShrink: 0 }}
+                  title="Chọn tất cả / Bỏ chọn tất cả CLB"
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '12px', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                    Tất cả CLB ({getClubsFromBrackets().length})
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px' }}>
+                    Đã tích chọn <strong>{getClubsFromBrackets().filter(c => !!clubSigmaSelectedClubs[c.name]).length}</strong> CLB
+                  </div>
+                </div>
+              </div>
+
+              {/* Club List */}
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                {getClubsFromBrackets().length === 0 ? (
+                  <div style={{ padding: '24px 16px', fontSize: '13px', color: '#94a3b8', textAlign: 'center' }}>
+                    Chưa có dữ liệu bốc thăm
+                  </div>
+                ) : (
+                  getClubsFromBrackets().map(club => {
+                    const isSelected = clubSigmaSelectedClub?.name === club.name;
+                    const isChecked = !!clubSigmaSelectedClubs[club.name];
+                    return (
+                      <div
+                        key={club.name}
+                        onClick={() => handleSelectClubForSigma(club)}
+                        style={{
+                          width: '100%', padding: '11px 14px',
+                          background: isSelected ? 'linear-gradient(to right, #ede9fe 0%, #f5f3ff 100%)' : 'transparent',
+                          borderLeft: isSelected ? '4px solid #7c3aed' : '4px solid transparent',
+                          borderBottom: '1px solid #e2e8f0',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                          display: 'flex', alignItems: 'center', gap: '10px',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => handleToggleClubCheck(club.name, e)}
+                          style={{ width: '17px', height: '17px', accentColor: '#7c3aed', cursor: 'pointer', flexShrink: 0 }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: '13px', fontWeight: isSelected ? 700 : (isChecked ? 600 : 400),
+                            color: isSelected ? '#5b21b6' : (isChecked ? '#1e293b' : '#64748b'),
+                            lineHeight: 1.3,
+                            wordBreak: 'break-word',
+                          }}>{club.name}</div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                            {club.catIds.length} nội dung
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <span style={{ color: '#7c3aed', fontSize: '16px', fontWeight: 800, flexShrink: 0 }}>›</span>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* ── Panel phải: Nội dung CLB đang chọn ── */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#fff' }}>
+              {!clubSigmaSelectedClub ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '14px', color: '#94a3b8' }}>
+                  <div style={{ fontSize: '56px' }}>🏛️</div>
+                  <div style={{ fontSize: '16px', fontWeight: 600, color: '#64748b' }}>Chọn hoặc tích chọn CLB ở cột bên trái</div>
+                  <div style={{ fontSize: '13px', color: '#94a3b8', textAlign: 'center', maxWidth: '300px' }}>
+                    Tích chọn tất cả CLB để xuất hàng loạt (mỗi CLB 1 file PDF) hoặc chọn từng CLB để lọc nội dung.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+                  {/* Info bar */}
+                  <div style={{
+                    padding: '14px 20px', flexShrink: 0,
+                    background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+                    borderBottom: '2px solid #7c3aed',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>
+                        Đang xem cấu hình CLB:
+                      </div>
+                      <div style={{ fontSize: '18px', fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>
+                        {clubSigmaSelectedClub.name}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: '24px', fontWeight: 900, color: '#a78bfa', lineHeight: 1 }}>
+                        {clubSigmaSelectedClub.catIds.filter(id => isCategorySelectedForClub(clubSigmaSelectedClub.name, id)).length}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                        / {clubSigmaSelectedClub.catIds.length} nội dung được chọn
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Filename & batch hint */}
+                  <div style={{
+                    padding: '8px 20px', flexShrink: 0,
+                    background: '#fafafa', borderBottom: '1px solid #f1f5f9',
+                    fontSize: '12px', color: '#64748b',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
+                  }}>
+                    <div>
+                      <span>📁 Tên file PDF: </span>
+                      <strong style={{ color: '#7c3aed', fontFamily: 'monospace', fontSize: '11px' }}>
+                        {clubSigmaSelectedClub.name.replace(/[/\\:*?"<>|]/g, '_')}_sigma.pdf
+                      </strong>
+                    </div>
+                    <span style={{ fontSize: '11px', color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px' }}>
+                      (Xuất riêng từng file PDF theo CLB)
+                    </span>
+                  </div>
+
+                  {/* Quick select bar for this club */}
+                  <div style={{
+                    padding: '8px 20px', flexShrink: 0,
+                    background: '#f8fafc', borderBottom: '1px solid #e2e8f0',
+                    display: 'flex', gap: '8px', alignItems: 'center',
+                  }}>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, marginRight: '4px' }}>Nội dung của CLB này:</span>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '6px' }}
+                      onClick={() => handleSelectAllCategoriesForClub(clubSigmaSelectedClub, true)}
+                    >✅ Tất cả</button>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '6px', color: '#ef4444' }}
+                      onClick={() => handleSelectAllCategoriesForClub(clubSigmaSelectedClub, false)}
+                    >☐ Bỏ hết</button>
+                  </div>
+
+                  {/* Category list — 2 columns */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+                    {(() => {
+                      const clubCats = tournament.categories
+                        .filter(c => c.bracket && clubSigmaSelectedClub.catIds.includes(c.id));
+                      const athleteCountForClub = (cat) =>
+                        (cat.athletes || []).filter(a => (a.club || '').trim() === clubSigmaSelectedClub.name).length;
+                      return (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          {clubCats.map((cat) => {
+                            const checked = isCategorySelectedForClub(clubSigmaSelectedClub.name, cat.id);
+                            const count = athleteCountForClub(cat);
+                            const isTeam = cat.isTeam || cat.name.toLowerCase().includes('đồng đội') || cat.name.toLowerCase().includes('hỗn hợp');
+                            return (
+                              <label
+                                key={cat.id}
+                                style={{
+                                  display: 'flex', alignItems: 'flex-start', gap: '10px',
+                                  padding: '12px 14px',
+                                  background: checked ? 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)' : '#f8fafc',
+                                  border: checked ? '2px solid #c4b5fd' : '2px solid #e2e8f0',
+                                  borderRadius: '10px',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s',
+                                  boxShadow: checked ? '0 2px 8px -1px rgba(124,58,237,0.15)' : 'none',
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => handleToggleCategoryForClub(clubSigmaSelectedClub.name, cat.id)}
+                                  style={{ width: '18px', height: '18px', accentColor: '#7c3aed', flexShrink: 0, marginTop: '2px', cursor: 'pointer' }}
+                                />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{
+                                    fontSize: '13px', fontWeight: 700,
+                                    color: checked ? '#5b21b6' : '#1e293b',
+                                    lineHeight: 1.3, marginBottom: '6px',
+                                    wordBreak: 'break-word',
+                                  }}>
+                                    {cat.name}
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <span style={{
+                                      fontSize: '10px', fontWeight: 800, padding: '1px 6px', borderRadius: '3px',
+                                      background: cat.type === 'kata' ? '#f5f3ff' : '#fff1f2',
+                                      color: cat.type === 'kata' ? '#7c3aed' : '#e11d48',
+                                      border: `1px solid ${cat.type === 'kata' ? '#ddd6fe' : '#fecdd3'}`,
+                                    }}>{cat.type.toUpperCase()}</span>
+                                    <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                      {cat.gender === 'male' ? '♂' : '♀'} {isTeam ? 'Đội' : 'CN'}
+                                    </span>
+                                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#7c3aed' }}>
+                                      {count} {isTeam ? 'đội' : 'VĐV'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Modal actions ── */}
+          <div className="modal-actions" style={{ gap: '12px', marginTop: '16px', display: 'flex', alignItems: 'center' }}>
+            {exportingClubSigma ? (
+              <div style={{ flex: 2, padding: '10px 16px', background: '#f5f3ff', borderRadius: '10px', border: '1px solid #ddd6fe' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 700, color: '#6d28d9', marginBottom: '6px' }}>
+                  <span>{clubSigmaProgress.label}</span>
+                  <span>{clubSigmaProgress.percent}%</span>
+                </div>
+                <div style={{ width: '100%', height: '8px', background: '#e9d5ff', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${clubSigmaProgress.percent}%`, height: '100%', background: '#7c3aed', transition: 'width 0.25s ease' }} />
+                </div>
+              </div>
+            ) : (
+              <button
+                className="btn btn-primary"
+                style={{
+                  flex: 2, padding: '13px 20px', borderRadius: '12px', fontSize: '15px', fontWeight: 700,
+                  background: (getClubsFromBrackets().filter(c => !!clubSigmaSelectedClubs[c.name]).length === 0)
+                    ? '#94a3b8'
+                    : 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
+                  boxShadow: '0 4px 15px -1px rgba(124,58,237,0.35)',
+                  transition: 'all 0.2s',
+                  cursor: (getClubsFromBrackets().filter(c => !!clubSigmaSelectedClubs[c.name]).length === 0) ? 'not-allowed' : 'pointer',
+                }}
+                onClick={handleExportClubSigma}
+                disabled={getClubsFromBrackets().filter(c => !!clubSigmaSelectedClubs[c.name]).length === 0}
+              >
+                {`📄 XUẤT ${getClubsFromBrackets().filter(c => !!clubSigmaSelectedClubs[c.name]).length} FILE PDF SIGMA (${getClubsFromBrackets().filter(c => !!clubSigmaSelectedClubs[c.name]).length} CLB)`}
+              </button>
+            )}
+            <button
+              className="btn btn-secondary"
+              style={{ flex: 1, padding: '13px 20px', borderRadius: '12px', fontSize: '14px', fontWeight: 600 }}
+              onClick={() => { if (!exportingClubSigma) setShowClubSigmaModal(false); }}
+              disabled={exportingClubSigma}
+            >
+              Đóng
+            </button>
+          </div>
+        </Modal>
+
+        {/* ===== MODAL XUẤT SIGMA THEO SÀN ===== */}
+        <Modal
+          isOpen={showMatSigmaModal}
+          onClose={() => { if (!exportingMatSigma) setShowMatSigmaModal(false); }}
+          title="Xuất Sigma (Sơ đồ thi đấu) Theo Sàn"
+          size="large"
+        >
+          {(() => {
+            const matGroups = getMatSigmaGroups();
+            const selectedCount = matGroups.filter(group => !!matSigmaSelectedMats[group.mat]).length;
+            const allSelected = matGroups.length > 0 && selectedCount === matGroups.length;
+
+            return (
+              <>
+                <div style={{
+                  padding: '14px 16px', marginBottom: '14px', borderRadius: '10px',
+                  background: '#f8fafc', border: '1px solid #e2e8f0',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 800, color: '#1e293b', marginBottom: '3px' }}>
+                      Chọn các sàn cần xuất
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>
+                      Mỗi sàn tạo một file PDF; các nhánh Sigma được lấy đúng theo lịch đã xếp.
+                    </div>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', cursor: 'pointer', fontWeight: 700, color: '#5b21b6' }}>
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={handleToggleAllMatSigma}
+                      style={{ width: '18px', height: '18px', accentColor: '#7c3aed', cursor: 'pointer' }}
+                    />
+                    Chọn tất cả
+                  </label>
+                </div>
+
+                <div style={{
+                  display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: '12px', maxHeight: '380px', overflowY: 'auto', padding: '2px',
+                }}>
+                  {matGroups.map(group => {
+                    const checked = !!matSigmaSelectedMats[group.mat];
+                    const categoryNames = tournament.categories
+                      .filter(category => group.entries.has(category.id))
+                      .map(category => category.name);
+                    return (
+                      <label
+                        key={group.mat}
+                        style={{
+                          padding: '14px', borderRadius: '12px', cursor: 'pointer',
+                          border: checked ? '2px solid #8b5cf6' : '2px solid #e2e8f0',
+                          background: checked ? 'linear-gradient(135deg, #f5f3ff, #ede9fe)' : '#fff',
+                          boxShadow: checked ? '0 3px 10px rgba(124,58,237,0.12)' : 'none',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setMatSigmaSelectedMats(prev => ({ ...prev, [group.mat]: !prev[group.mat] }))}
+                            style={{ width: '19px', height: '19px', accentColor: '#7c3aed', cursor: 'pointer' }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '17px', fontWeight: 900, color: checked ? '#5b21b6' : '#1e293b' }}>
+                              🥋 Sàn {group.mat}
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                              {group.pageCount} sơ đồ Sigma · {group.entries.size} nội dung
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{
+                          marginTop: '10px', paddingTop: '9px', borderTop: '1px solid #ddd6fe',
+                          fontSize: '11px', lineHeight: 1.5, color: '#64748b',
+                          display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        }}>
+                          {categoryNames.join(' • ')}
+                        </div>
+                        <div style={{ marginTop: '8px', fontSize: '11px', color: '#7c3aed', fontFamily: 'monospace', fontWeight: 700 }}>
+                          San_{String(group.mat).replace(/[/\\:*?"<>|]/g, '_')}_sigma.pdf
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="modal-actions" style={{ gap: '12px', marginTop: '18px', display: 'flex', alignItems: 'center' }}>
+                  {exportingMatSigma ? (
+                    <div style={{ flex: 2, padding: '10px 16px', background: '#f5f3ff', borderRadius: '10px', border: '1px solid #ddd6fe' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 700, color: '#6d28d9', marginBottom: '6px' }}>
+                        <span>{matSigmaProgress.label}</span>
+                        <span>{matSigmaProgress.percent}%</span>
+                      </div>
+                      <div style={{ width: '100%', height: '8px', background: '#e9d5ff', borderRadius: '4px', overflow: 'hidden' }}>
+                        <div style={{ width: `${matSigmaProgress.percent}%`, height: '100%', background: '#7c3aed', transition: 'width 0.25s ease' }} />
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      className="btn btn-primary"
+                      style={{ flex: 2, padding: '13px 20px', borderRadius: '12px', fontSize: '15px', fontWeight: 700 }}
+                      onClick={handleExportMatSigma}
+                      disabled={selectedCount === 0}
+                    >
+                      📄 XUẤT {selectedCount} FILE PDF SIGMA THEO SÀN
+                    </button>
+                  )}
+                  <button
+                    className="btn btn-secondary"
+                    style={{ flex: 1, padding: '13px 20px', borderRadius: '12px', fontSize: '14px', fontWeight: 600 }}
+                    onClick={() => { if (!exportingMatSigma) setShowMatSigmaModal(false); }}
+                    disabled={exportingMatSigma}
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </>
+            );
+          })()}
+        </Modal>
+
+
       </div>
     </div>
   );

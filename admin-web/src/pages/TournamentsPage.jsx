@@ -555,10 +555,12 @@ export default function TournamentsPage() {
 
                   <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 text-center">
                     <Radio className="mx-auto text-emerald-400 mb-1" size={20} />
-                    <div className="text-sm font-bold text-white truncate" title={detailModal.machine_id}>
-                      {detailModal.machine_id || "N/A"}
+                    <div className="text-sm font-bold text-white truncate" title={detailModal.authorized_machine_id || detailModal.machine_id}>
+                      {detailModal.authorized_machine_id || detailModal.machine_id || "N/A"}
                     </div>
-                    <div className="text-xs text-slate-400">Machine ID</div>
+                    <div className="text-xs text-slate-400">
+                      {detailModal.authorized_machine_id ? "👑 Authorized Machine ID" : "Machine ID"}
+                    </div>
                   </div>
                 </div>
 
@@ -928,11 +930,21 @@ export default function TournamentsPage() {
                       <span>{tournament.total_categories || 0} Hạng mục thi đấu</span>
                     </div>
 
-                    <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-                      <span className="font-mono bg-slate-950 px-2 py-1 rounded text-slate-300 break-all" title={tournament.machine_id}>
-                        {tournament.machine_id || "N/A"}
-                      </span>
-                      <span>Dung lượng: <strong className="text-slate-200">{formatDataSize(tournament.data_size)}</strong></span>
+                    <div className="pt-2 border-t border-slate-800/80 space-y-1.5 text-xs text-slate-400">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono bg-slate-950 px-2 py-1 rounded text-slate-300 break-all" title={tournament.machine_id}>
+                          🔑 Machine ID: {tournament.machine_id || "N/A"}
+                        </span>
+                        <span>Dung lượng: <strong className="text-slate-200">{formatDataSize(tournament.data_size)}</strong></span>
+                      </div>
+                      {tournament.authorized_machine_id && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-semibold">
+                          <span>👑 Máy nguồn chính:</span>
+                          <span className="font-mono bg-emerald-950/80 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                            {tournament.authorized_machine_id}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -695,17 +695,17 @@ export function parseCategoriesExcel(file) {
           // Parse gender
           let gender = "male";
           if (
-            genderRaw.includes("nữ") ||
-            genderRaw.includes("nu") ||
-            genderRaw.includes("female")
-          ) {
-            gender = "female";
-          } else if (
             genderRaw.includes("hỗn") ||
             genderRaw.includes("hon") ||
             genderRaw.includes("mix")
           ) {
             gender = "mixed";
+          } else if (
+            genderRaw.includes("nữ") ||
+            genderRaw.includes("nu") ||
+            genderRaw.includes("female")
+          ) {
+            gender = "female";
           }
 
           categories.push({

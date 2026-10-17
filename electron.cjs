@@ -603,6 +603,58 @@ ipcMain.handle(
   },
 );
 
+function sanitizeExportFileName(fileName, fallbackName) {
+  const baseName = path.basename(String(fileName || fallbackName || "export"));
+  const sanitized = baseName
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+    .replace(/[. ]+$/g, "")
+    .slice(0, 180);
+  return sanitized || fallbackName || "export";
+}
+
+function createBatchExportDirectory(parentDirectory, folderName) {
+  const safeFolderName = sanitizeExportFileName(folderName, "KSPORT_Export");
+  let exportDirectory = path.join(parentDirectory, safeFolderName);
+  let suffix = 2;
+  while (fs.existsSync(exportDirectory)) {
+    exportDirectory = path.join(parentDirectory, `${safeFolderName}_${suffix}`);
+    suffix += 1;
+  }
+  fs.mkdirSync(exportDirectory, { recursive: true });
+  return exportDirectory;
+}
+
+// Choose a folder once and save every generated Excel file into one subfolder.
+ipcMain.handle("export:saveBatch", async (event, { files, folderName }) => {
+  try {
+    if (!Array.isArray(files) || files.length === 0 || files.length > 500) {
+      return { success: false, error: "Danh sách file xuất không hợp lệ." };
+    }
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: "Chọn thư mục lưu các file",
+      defaultPath: app.getPath("documents"),
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true };
+    }
+
+    const exportDirectory = createBatchExportDirectory(result.filePaths[0], folderName);
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index] || {};
+      const fileName = sanitizeExportFileName(file.name, `CLB_${index + 1}.xlsx`);
+      const content = Buffer.from(String(file.contentBase64 || ""), "base64");
+      fs.writeFileSync(path.join(exportDirectory, fileName), content);
+    }
+
+    return { success: true, directoryPath: exportDirectory, fileCount: files.length };
+  } catch (error) {
+    console.error("Error in export:saveBatch:", error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Mở file HLV (JSON/Excel) cho Admin import
 ipcMain.handle("import:open", async () => {
   try {
@@ -1806,6 +1858,76 @@ ipcMain.handle("pdf:printBracketMulti", async (event, { pages, filename }) => {
 });
 
 // Khi Electron sẵn sàng
+// Choose one folder and render each HTML document as an independent A4 PDF.
+ipcMain.handle("pdf:printHtmlBatch", async (event, { documents, folderName }) => {
+  const tmpFiles = [];
+  try {
+    if (!Array.isArray(documents) || documents.length === 0 || documents.length > 500) {
+      return { success: false, error: "Danh sách PDF xuất không hợp lệ." };
+    }
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: "Chọn thư mục lưu các file PDF",
+      defaultPath: app.getPath("documents"),
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true };
+    }
+
+    const exportDirectory = createBatchExportDirectory(result.filePaths[0], folderName);
+    for (let index = 0; index < documents.length; index += 1) {
+      const document = documents[index] || {};
+      const printWin = new BrowserWindow({
+        show: false,
+        width: 1200,
+        height: 1600,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          offscreen: true,
+        },
+      });
+
+      try {
+        const tmpFile = writeTempHtml(String(document.htmlContent || ""));
+        tmpFiles.push(tmpFile);
+        await printWin.loadFile(tmpFile);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const pdfBuffer = await printWin.webContents.printToPDF({
+          printBackground: true,
+          pageSize: "A4",
+          landscape: false,
+          margins: { top: 0.35, bottom: 0.35, left: 0.35, right: 0.35 },
+          preferCSSPageSize: true,
+        });
+        const fileName = sanitizeExportFileName(document.name, `CLB_${index + 1}.pdf`);
+        fs.writeFileSync(path.join(exportDirectory, fileName), pdfBuffer);
+      } finally {
+        if (!printWin.isDestroyed()) printWin.close();
+      }
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("pdf:progress", {
+          current: index + 1,
+          total: documents.length,
+        });
+      }
+    }
+
+    tmpFiles.forEach((filePath) => cleanupTempFile(filePath));
+    return {
+      success: true,
+      directoryPath: exportDirectory,
+      fileCount: documents.length,
+    };
+  } catch (error) {
+    tmpFiles.forEach((filePath) => cleanupTempFile(filePath));
+    console.error("Error in pdf:printHtmlBatch:", error);
+    return { success: false, error: error.message };
+  }
+});
+
 app.whenReady().then(() => {
   // Khởi tạo SQLite Database
   const userDataPath = app.getPath("userData");

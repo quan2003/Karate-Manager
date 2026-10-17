@@ -25,12 +25,14 @@ import {
   estimateCategoryDuration,
   getCategoryAgeKey,
   getCategoryScheduleGroupKey,
+  getCategoryCustomPlanGroupKey,
 } from "../services/scheduleService";
 import {
   exportScheduleToPDF,
   exportScheduleToExcel,
 } from "../services/scheduleExportService";
 import { exportScheduleHorizontalToPDF } from "../services/scheduleHorizontalExportService";
+import { exportScheduleVerticalByMatToPDF } from "../services/scheduleVerticalByMatExportService";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import "./SchedulePage.css";
@@ -83,6 +85,12 @@ export default function SchedulePage() {
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [showConflictInfo, setShowConflictInfo] = useState(false);
   const [activeConflicts, setActiveConflicts] = useState([]);
+  const [showVerticalMatExportModal, setShowVerticalMatExportModal] = useState(false);
+  const [exportingVerticalMat, setExportingVerticalMat] = useState(false);
+  const [verticalMatExportProgress, setVerticalMatExportProgress] = useState({
+    percent: 0,
+    label: "",
+  });
   const [setupForm, setSetupForm] = useState({
     matCount: 4,
     competitionDays: 2,
@@ -96,6 +104,9 @@ export default function SchedulePage() {
     customPriorityOrder: [],
     athleteRestMinutes: 15,
     ageGroupsByDay: [],
+    customMatPlanByDay: [],
+    startSessionByDay: [],
+    startTimeByDay: [],
   });
 
   useEffect(() => {
@@ -202,6 +213,41 @@ export default function SchedulePage() {
     });
   }, [categories]);
 
+  const availableCustomPlanGroups = useMemo(() => {
+    const groups = new Map();
+    categories.forEach((category) => {
+      const key = getCategoryCustomPlanGroupKey(category);
+      if (groups.has(key)) {
+        groups.get(key).count += 1;
+        return;
+      }
+      const [discipline, ageKey, gender, competitionClass] = key.split(':');
+      const rawAgeLabel = String(category.ageGroup || '').trim();
+      const ageLabel = ageKey === '18'
+        ? '18 tuổi trở lên'
+        : (ageKey === 'unknown' ? 'Không rõ tuổi' : (rawAgeLabel || `${ageKey} tuổi`));
+      const genderLabel = gender === 'female'
+        ? 'Nữ'
+        : (gender === 'mixed' ? 'Hỗn hợp' : 'Nam');
+      const classLabel = competitionClass === 'absolute'
+        ? 'Vô địch tuyệt đối'
+        : (competitionClass === 'team'
+          ? 'Đồng đội'
+          : (competitionClass === 'mixed' ? 'Hỗn hợp' : 'Cá nhân'));
+      groups.set(key, {
+        key,
+        baseLabel: `${discipline === 'kumite' ? 'Kumite' : 'Kata'} - ${ageLabel} - ${genderLabel} ${classLabel}`,
+        count: 1,
+      });
+    });
+    return [...groups.values()]
+      .map((group) => ({
+        ...group,
+        label: `${group.baseLabel} (${group.count} nội dung)`,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'vi'));
+  }, [categories]);
+
   const setupEstimations = useMemo(() => {
     if (!showSetupModal || !categories) return null;
     const morningSlots = generateTimeSlotsFromRange(setupForm.morningStart, setupForm.morningEnd, 5);
@@ -302,6 +348,16 @@ export default function SchedulePage() {
 
   // Unassigned categories (not assigned on ANY day)
   const unassignedCategories = categories.filter(c => !schedule[c.id]);
+  const selectedDayPlanForDisplay =
+    tournament?.scheduleConfig?.customMatPlan?.[selectedDate] || {};
+  const selectedDayGroupKeys = new Set(
+    ['morning', 'afternoon'].flatMap((sessionKey) =>
+      Object.values(selectedDayPlanForDisplay?.[sessionKey] || {}).flatMap((keys) => keys || [])
+    )
+  );
+  const unassignedForSelectedDay = unassignedCategories.filter((category) =>
+    selectedDayGroupKeys.has(getCategoryCustomPlanGroupKey(category))
+  );
   // Assigned on current day
   const assignedOnDay = categories.filter(c => schedule[c.id]?.date === selectedDate);
   const assignedCategories = categories.filter(c => schedule[c.id]);
@@ -451,7 +507,9 @@ export default function SchedulePage() {
   };
 
   const handleAutoAssign = () => {
-    if (unassignedCategories.length === 0) {
+    const isCustomMatPlanMode =
+      tournament.scheduleConfig?.priorityMode === 'custom_mat_plan';
+    if (!isCustomMatPlanMode && unassignedCategories.length === 0) {
       toast.info("Tất cả nội dung đã được xếp lịch");
       return;
     }
@@ -460,6 +518,27 @@ export default function SchedulePage() {
       toast.error("Vui lòng chọn ngày thi đấu trước!");
       return;
     }
+
+    const selectedDayPlan =
+      tournament.scheduleConfig?.customMatPlan?.[selectedDate] || {};
+    const configuredGroupKeys = new Set(
+      ['morning', 'afternoon'].flatMap((sessionKey) =>
+        Object.values(selectedDayPlan?.[sessionKey] || {}).flatMap((keys) => keys || [])
+      )
+    );
+    if (isCustomMatPlanMode && configuredGroupKeys.size === 0) {
+      toast.info("Ngày này chưa được gán nhóm nội dung nào trong Setup.");
+      return;
+    }
+    const scheduleBeforeAutoAssign = isCustomMatPlanMode
+      ? Object.fromEntries(
+        Object.entries(schedule).filter(([categoryId, assignment]) => {
+          if (assignment.date === selectedDate) return false;
+          const category = categories.find((item) => item.id === categoryId);
+          return !category || !configuredGroupKeys.has(getCategoryCustomPlanGroupKey(category));
+        })
+      )
+      : schedule;
 
     const morningSlots = generateTimeSlotsFromRange(sessionConfig.morningStart, sessionConfig.morningEnd, 5);
     const afternoonSlots = generateTimeSlotsFromRange(sessionConfig.afternoonStart, sessionConfig.afternoonEnd, 5);
@@ -475,20 +554,39 @@ export default function SchedulePage() {
       matCount,
       sessionConfig,
       matchDurations,
-      schedule,
+      scheduleBeforeAutoAssign,
       {
         customEvents,
         priorityMode: tournament.scheduleConfig?.priorityMode || "standard_gender_order",
         customPriorityOrder: tournament.scheduleConfig?.customPriorityOrder || categories.map((category) => category.id),
         ageGroupsByDay: tournament.scheduleConfig?.ageGroupsByDay || {},
+        customMatPlan: tournament.scheduleConfig?.customMatPlan || {},
+        startSessionByDay: tournament.scheduleConfig?.startSessionByDay || {},
+        startTimeByDay: tournament.scheduleConfig?.startTimeByDay || {},
+        onlyConfiguredCustomPlan: isCustomMatPlanMode,
         athleteRestMinutes: tournament.scheduleConfig?.athleteRestMinutes ?? 15,
       }
     );
 
     saveSchedule(newSchedule);
-    const newlyScheduled = categories.filter(
-      (category) => !schedule[category.id] && newSchedule[category.id]
-    ).length;
+    const newlyScheduled = isCustomMatPlanMode
+      ? categories.filter((category) => newSchedule[category.id]?.date === selectedDate).length
+      : categories.filter(
+        (category) => !schedule[category.id] && newSchedule[category.id]
+      ).length;
+    if (isCustomMatPlanMode) {
+      const stillMissingForDay = categories.filter(
+        (category) =>
+          configuredGroupKeys.has(getCategoryCustomPlanGroupKey(category)) &&
+          newSchedule[category.id]?.date !== selectedDate
+      ).length;
+      if (stillMissingForDay > 0) {
+        toast.warning(`Đã xếp thêm ${newlyScheduled} nội dung; còn ${stillMissingForDay} nội dung đã cấu hình nhưng không đủ khung giờ ngày này.`);
+      } else {
+        toast.success(`Đã xếp ${newlyScheduled} nội dung theo đúng cấu hình ngày này.`);
+      }
+      return;
+    }
     const stillMissing = categories.filter((category) => !newSchedule[category.id]).length;
     if (stillMissing > 0) {
       toast.warning(`Đã xếp thêm ${newlyScheduled} nội dung; còn ${stillMissing} nội dung không đủ khung giờ ngày này.`);
@@ -524,6 +622,9 @@ export default function SchedulePage() {
         priorityMode: tournament.scheduleConfig?.priorityMode || "standard_gender_order",
         customPriorityOrder: tournament.scheduleConfig?.customPriorityOrder || categories.map((category) => category.id),
         ageGroupsByDay: tournament.scheduleConfig?.ageGroupsByDay || {},
+        customMatPlan: tournament.scheduleConfig?.customMatPlan || {},
+        startSessionByDay: tournament.scheduleConfig?.startSessionByDay || {},
+        startTimeByDay: tournament.scheduleConfig?.startTimeByDay || {},
         athleteRestMinutes: tournament.scheduleConfig?.athleteRestMinutes ?? 15,
       }
     );
@@ -550,7 +651,10 @@ export default function SchedulePage() {
       durations: matchDurations,
       priorityMode: tournament.scheduleConfig?.priorityMode || "standard_gender_order",
       ageGroupsByDay: tournament.scheduleConfig?.ageGroupsByDay || {},
-        customPriorityOrder: tournament.scheduleConfig?.customPriorityOrder || categories.map((category) => category.id),
+      customPriorityOrder: tournament.scheduleConfig?.customPriorityOrder || categories.map((category) => category.id),
+      customMatPlan: tournament.scheduleConfig?.customMatPlan || {},
+      startSessionByDay: tournament.scheduleConfig?.startSessionByDay || {},
+      startTimeByDay: tournament.scheduleConfig?.startTimeByDay || {},
       athleteRestMinutes: tournament.scheduleConfig?.athleteRestMinutes ?? 15,
     };
     dispatch({
@@ -586,8 +690,33 @@ export default function SchedulePage() {
             : availableAgeGroups.filter((group) => group.key.endsWith(':' + savedKey)).map((group) => group.key)
         ))];
       }),
+      customMatPlanByDay: (cfg.dates || []).map((date) =>
+        cfg.customMatPlan?.[date] || { morning: {}, afternoon: {} }
+      ),
+      startSessionByDay: (cfg.dates || []).map((date) =>
+        cfg.startSessionByDay?.[date] || 'morning'
+      ),
+      startTimeByDay: (cfg.dates || []).map((date) => {
+        const session = cfg.startSessionByDay?.[date] || 'morning';
+        return cfg.startTimeByDay?.[date] ||
+          (session === 'afternoon'
+            ? (cfg.afternoonStart || sessionConfig.afternoonStart)
+            : (cfg.morningStart || sessionConfig.morningStart));
+      }),
     });
     setShowSetupModal(true);
+  };
+
+  const updateCustomMatLane = (dayIndex, sessionKey, mat, updateLane) => {
+    setSetupForm((prev) => {
+      const plans = [...(prev.customMatPlanByDay || [])];
+      const dayPlan = plans[dayIndex] || { morning: {}, afternoon: {} };
+      const sessionPlan = { ...(dayPlan[sessionKey] || {}) };
+      const currentLane = [...(sessionPlan[mat] || [])];
+      sessionPlan[mat] = updateLane(currentLane);
+      plans[dayIndex] = { ...dayPlan, [sessionKey]: sessionPlan };
+      return { ...prev, customMatPlanByDay: plans };
+    });
   };
 
   // Apply setup
@@ -606,6 +735,28 @@ export default function SchedulePage() {
     const ageGroupsByDay = Object.fromEntries(
       dates.map((date, index) => [date, setupForm.ageGroupsByDay?.[index] || []])
     );
+    const customMatPlan = Object.fromEntries(
+      dates.map((date, index) => [
+        date,
+        setupForm.customMatPlanByDay?.[index] || { morning: {}, afternoon: {} },
+      ])
+    );
+    const startSessionByDay = Object.fromEntries(
+      dates.map((date, index) => [
+        date,
+        setupForm.startSessionByDay?.[index] || 'morning',
+      ])
+    );
+    const startTimeByDay = Object.fromEntries(
+      dates.map((date, index) => {
+        const session = setupForm.startSessionByDay?.[index] || 'morning';
+        return [
+          date,
+          setupForm.startTimeByDay?.[index] ||
+            (session === 'afternoon' ? setupForm.afternoonStart : setupForm.morningStart),
+        ];
+      })
+    );
     const config = {
       competitionDays: setupForm.competitionDays,
       startDate: setupForm.startDate,
@@ -620,6 +771,9 @@ export default function SchedulePage() {
       customPriorityOrder: setupForm.customPriorityOrder || categories.map((category) => category.id),
       athleteRestMinutes: setupForm.athleteRestMinutes ?? 15,
       ageGroupsByDay,
+      customMatPlan,
+      startSessionByDay,
+      startTimeByDay,
     };
     dispatch({
       type: ACTIONS.UPDATE_TOURNAMENT,
@@ -706,6 +860,49 @@ export default function SchedulePage() {
         toast.success("Đã xóa sự kiện");
       },
     });
+  };
+
+  const handleExportVerticalByMat = async (separateFiles) => {
+    if (exportingVerticalMat) return;
+    setExportingVerticalMat(true);
+    setVerticalMatExportProgress({
+      percent: 0,
+      label: separateFiles
+        ? "Đang chuẩn bị xuất từng thảm..."
+        : "Đang chuẩn bị file tổng hợp...",
+    });
+
+    try {
+      const result = await exportScheduleVerticalByMatToPDF(
+        schedule,
+        categories,
+        customEvents,
+        matCount,
+        tournament,
+        tournamentDays,
+        {
+          separateFiles,
+          onProgress: (progress) => setVerticalMatExportProgress({
+            percent: progress.percent || 0,
+            label: separateFiles
+              ? `[${progress.current}/${progress.total}] ${progress.matName}`
+              : "Đang tạo file PDF tổng hợp...",
+          }),
+        }
+      );
+      toast.success(
+        separateFiles
+          ? `Đã xuất ${result.fileCount} file PDF, mỗi thảm một file!`
+          : "Đã xuất một file PDF tổng hợp tất cả thảm!"
+      );
+      setShowVerticalMatExportModal(false);
+    } catch (error) {
+      console.error("Vertical schedule by mat export error:", error);
+      toast.error(error.message || "Không thể xuất PDF dọc theo thảm.");
+    } finally {
+      setExportingVerticalMat(false);
+      setVerticalMatExportProgress({ percent: 0, label: "" });
+    }
   };
 
   if (!tournament) {
@@ -893,6 +1090,14 @@ export default function SchedulePage() {
             >
               ↔️ PDF Ngang
             </button>
+            <button
+              className="btn btn-sm"
+              style={{background:'#f5f3ff',color:'#6d28d9',border:'1px solid #ddd6fe'}}
+              onClick={() => setShowVerticalMatExportModal(true)}
+              title="Xuất A4 dọc, lần lượt từng thảm, dạng bảng giống màn hình hiện tại"
+            >
+              ↕️ PDF Dọc Theo Thảm
+            </button>
             <div className="dropdown-container" style={{position:'relative', display:'inline-block'}}>
               <button 
                 className={`btn btn-sm ${isStepActive ? "hint-pulse" : ""}`} 
@@ -1004,9 +1209,15 @@ export default function SchedulePage() {
           {/* Unassigned Categories */}
           <div className="unassigned-panel">
             <h3 className="panel-title">
-              <span>📦 Chưa xếp lịch</span>
+              <span>📦 Chưa xếp toàn giải</span>
               <span className="panel-count">{unassignedCategories.length}</span>
             </h3>
+            {tournament.scheduleConfig?.priorityMode === 'custom_mat_plan' && (
+              <div style={{margin: '-2px 12px 9px', padding: '7px 9px', borderRadius: '6px', background: '#eff6ff', color: '#1d4ed8', fontSize: '11px', lineHeight: 1.4}}>
+                Ngày đang xem còn <strong>{unassignedForSelectedDay.length}</strong> nội dung theo Setup.
+                Nội dung của ngày khác vẫn được tính trong tổng {unassignedCategories.length}.
+              </div>
+            )}
             <div style={{padding: '0 12px 10px'}}>
               <input
                 type="text"
@@ -1664,6 +1875,73 @@ export default function SchedulePage() {
               </div>
             </div>
 
+            <div style={{marginTop: '14px'}}>
+              <div className="input-label">⏱️ Thời điểm bắt đầu từng ngày</div>
+              <div style={{fontSize: '11px', color: '#64748b', marginTop: '3px', marginBottom: '7px'}}>
+                Chọn “Buổi chiều” nếu ngày đó không tổ chức thi đấu vào buổi sáng.
+              </div>
+              <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px'}}>
+                {Array.from({length: setupForm.competitionDays}).map((_, dayIndex) => {
+                  const startSession = setupForm.startSessionByDay?.[dayIndex] || 'morning';
+                  const defaultStartTime = startSession === 'afternoon'
+                    ? setupForm.afternoonStart
+                    : setupForm.morningStart;
+                  const startTime = setupForm.startTimeByDay?.[dayIndex] || defaultStartTime;
+                  const sessionEnd = startSession === 'afternoon'
+                    ? setupForm.afternoonEnd
+                    : setupForm.morningEnd;
+                  return (
+                  <div key={dayIndex} style={{display: 'grid', gridTemplateColumns: 'auto 1fr 90px', alignItems: 'center', gap: '8px', padding: '8px', border: '1px solid #e2e8f0', borderRadius: '7px', background: '#f8fafc'}}>
+                    <span style={{fontSize: '12px', fontWeight: 700}}>Ngày {dayIndex + 1}</span>
+                    <select
+                      className="input"
+                      value={startSession}
+                      onChange={(event) => {
+                        const nextSession = event.target.value;
+                        setSetupForm((prev) => {
+                          const starts = [...(prev.startSessionByDay || [])];
+                          starts[dayIndex] = nextSession;
+                          const startTimes = [...(prev.startTimeByDay || [])];
+                          startTimes[dayIndex] = nextSession === 'afternoon'
+                            ? prev.afternoonStart
+                            : prev.morningStart;
+                          const plans = [...(prev.customMatPlanByDay || [])];
+                          if (nextSession === 'afternoon') {
+                            const dayPlan = plans[dayIndex] || { morning: {}, afternoon: {} };
+                            plans[dayIndex] = { ...dayPlan, morning: {} };
+                          }
+                          return {
+                            ...prev,
+                            startSessionByDay: starts,
+                            startTimeByDay: startTimes,
+                            customMatPlanByDay: plans,
+                          };
+                        });
+                      }}
+                    >
+                      <option value="morning">☀️ Buổi sáng</option>
+                      <option value="afternoon">🌤️ Buổi chiều</option>
+                    </select>
+                    <select
+                      className="input"
+                      value={startTime}
+                      title="Giờ bắt đầu ngày này"
+                      onChange={(event) => setSetupForm((prev) => {
+                        const startTimes = [...(prev.startTimeByDay || [])];
+                        startTimes[dayIndex] = event.target.value;
+                        return { ...prev, startTimeByDay: startTimes };
+                      })}
+                    >
+                      {ALL_TIME_OPTIONS
+                        .filter((time) => time >= defaultStartTime && time < sessionEnd)
+                        .map((time) => <option key={time} value={time}>{time}</option>)}
+                    </select>
+                  </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginTop:'16px'}}>
               <div className="input-group">
                 <label className="input-label">Ưu tiên xếp trước</label>
@@ -1683,6 +1961,8 @@ export default function SchedulePage() {
                   <option value="kumite_first">Kumite trước</option>
                   <option value="age_young_first">Lứa tuổi nhỏ trước</option>
                   <option value="age_old_first">Lứa tuổi lớn trước</option>
+                  <option value="day_group_order">Tùy chỉnh Kata/Kumite + lứa tuổi theo từng ngày</option>
+                  <option value="custom_mat_plan">Tùy chỉnh theo ngày, buổi và thảm</option>
                 </select>
               </div>
               <div className="input-group">
@@ -1693,10 +1973,125 @@ export default function SchedulePage() {
               </div>
             </div>
 
-            {setupForm.competitionDays > 1 &&
-              (setupForm.priorityMode === 'age_old_first' || setupForm.priorityMode === 'age_young_first') && (
+            {setupForm.priorityMode === 'custom_mat_plan' && (
               <div style={{marginTop: '14px'}}>
-                <div className='input-label'>📅 Chọn Kata/Kumite và lứa tuổi theo từng ngày</div>
+                <div className="input-label">🗂️ Chia nội dung theo ngày, buổi và thảm</div>
+                <div style={{fontSize: '11px', color: '#64748b', marginTop: '4px', marginBottom: '10px'}}>
+                  Thêm nhóm vào từng thảm rồi dùng ↑ ↓ để sắp STT. Nhóm bắt đầu trong buổi đã chọn; nếu buổi đó không đủ thời gian, các nội dung còn lại sẽ nối sang buổi kế tiếp trên đúng thảm.
+                </div>
+                <div style={{display: 'grid', gap: '12px'}}>
+                  {Array.from({length: setupForm.competitionDays}).map((_, dayIndex) => (
+                    <div key={dayIndex} style={{padding: '12px', border: '1px solid #cbd5e1', borderRadius: '10px', background: '#f8fafc'}}>
+                      <div style={{fontWeight: 800, fontSize: '14px', color: '#1e293b', marginBottom: '10px'}}>
+                        Ngày {dayIndex + 1}
+                      </div>
+                      {[
+                        {
+                          key: 'morning',
+                          label: '☀️ Buổi sáng',
+                          time: `${(setupForm.startSessionByDay?.[dayIndex] || 'morning') === 'morning'
+                            ? (setupForm.startTimeByDay?.[dayIndex] || setupForm.morningStart)
+                            : setupForm.morningStart} – ${setupForm.morningEnd}`,
+                        },
+                        {
+                          key: 'afternoon',
+                          label: '🌤️ Buổi chiều',
+                          time: `${(setupForm.startSessionByDay?.[dayIndex] || 'morning') === 'afternoon'
+                            ? (setupForm.startTimeByDay?.[dayIndex] || setupForm.afternoonStart)
+                            : setupForm.afternoonStart} – ${setupForm.afternoonEnd}`,
+                        },
+                      ]
+                        .filter((session) =>
+                          (setupForm.startSessionByDay?.[dayIndex] || 'morning') !== 'afternoon' ||
+                          session.key === 'afternoon'
+                        )
+                        .map((session) => (
+                        <div key={session.key} style={{marginTop: '10px'}}>
+                          <div style={{fontSize: '12px', fontWeight: 800, color: '#475569', marginBottom: '7px'}}>
+                            {session.label} · {session.time}
+                          </div>
+                          <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '8px'}}>
+                            {Array.from({length: setupForm.matCount}).map((__, matIndex) => {
+                              const mat = matIndex + 1;
+                              const lane = setupForm.customMatPlanByDay?.[dayIndex]?.[session.key]?.[mat] || [];
+                              const assignedKeys = new Set(
+                                (setupForm.customMatPlanByDay || []).flatMap((dayPlan) =>
+                                  ['morning', 'afternoon'].flatMap((sessionKey) =>
+                                    Object.values(dayPlan?.[sessionKey] || {}).flatMap((keys) => keys || [])
+                                  )
+                                )
+                              );
+                              return (
+                                <div key={mat} style={{padding: '9px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff'}}>
+                                  <div style={{fontSize: '12px', fontWeight: 800, color: '#2563eb', marginBottom: '6px'}}>
+                                    Thảm {mat}
+                                  </div>
+                                  <div style={{display: 'grid', gap: '5px'}}>
+                                    {lane.map((key, index) => {
+                                      const group = availableCustomPlanGroups.find((item) => item.key === key);
+                                      return (
+                                        <div key={key} style={{display: 'flex', alignItems: 'center', gap: '5px', padding: '6px', border: '1px solid #e2e8f0', borderRadius: '6px', background: '#f8fafc'}}>
+                                          <span style={{minWidth: '20px', fontWeight: 800, color: '#0f766e'}}>{index + 1}</span>
+                                          <span style={{flex: 1, fontSize: '11px', fontWeight: 600, lineHeight: 1.35}}>{group?.label || key}</span>
+                                          <button type="button" className="btn btn-sm" title="Đưa lên" disabled={index === 0}
+                                            onClick={() => updateCustomMatLane(dayIndex, session.key, mat, (items) => {
+                                              [items[index - 1], items[index]] = [items[index], items[index - 1]];
+                                              return items;
+                                            })}>↑</button>
+                                          <button type="button" className="btn btn-sm" title="Đưa xuống" disabled={index === lane.length - 1}
+                                            onClick={() => updateCustomMatLane(dayIndex, session.key, mat, (items) => {
+                                              [items[index], items[index + 1]] = [items[index + 1], items[index]];
+                                              return items;
+                                            })}>↓</button>
+                                          <button type="button" className="btn btn-sm" title="Bỏ khỏi thảm"
+                                            onClick={() => updateCustomMatLane(dayIndex, session.key, mat, (items) =>
+                                              items.filter((item) => item !== key)
+                                            )}>×</button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  <select
+                                    className="input"
+                                    value=""
+                                    style={{marginTop: '7px', fontSize: '11px', minHeight: '32px'}}
+                                    onChange={(event) => {
+                                      const key = event.target.value;
+                                      if (key) {
+                                        updateCustomMatLane(dayIndex, session.key, mat, (items) => [...items, key]);
+                                      }
+                                    }}
+                                  >
+                                    <option value="">+ Thêm nhóm nội dung...</option>
+                                    {availableCustomPlanGroups
+                                      .filter((group) => !assignedKeys.has(group.key))
+                                      .map((group) => (
+                                        <option key={group.key} value={group.key}>{group.label}</option>
+                                      ))}
+                                  </select>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(
+              setupForm.priorityMode === 'day_group_order' ||
+              (setupForm.competitionDays > 1 &&
+                (setupForm.priorityMode === 'age_old_first' || setupForm.priorityMode === 'age_young_first'))
+            ) && (
+              <div style={{marginTop: '14px'}}>
+                <div className='input-label'>
+                  📅 {setupForm.priorityMode === 'day_group_order'
+                    ? 'Chọn và sắp STT nhóm Kata/Kumite - lứa tuổi theo từng ngày'
+                    : 'Chọn Kata/Kumite và lứa tuổi theo từng ngày'}
+                </div>
                 <div style={{display: 'grid', gap: '8px', marginTop: '8px'}}>
                   {Array.from({length: setupForm.competitionDays}).map((_, dayIndex) => (
                     <div key={dayIndex} style={{padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc'}}>
@@ -1718,10 +2113,57 @@ export default function SchedulePage() {
                           );
                         })}
                       </div>
+                      {setupForm.priorityMode === 'day_group_order' && (() => {
+                        const selectedKeys = (setupForm.ageGroupsByDay?.[dayIndex] || [])
+                          .filter((key) => availableAgeGroups.some((group) => group.key === key));
+                        if (selectedKeys.length === 0) return (
+                          <div style={{fontSize: '11px', color: '#94a3b8', marginTop: '8px'}}>
+                            Chọn các nhóm phía trên, sau đó sắp STT tại đây.
+                          </div>
+                        );
+                        return (
+                          <div style={{marginTop: '10px', borderTop: '1px dashed #cbd5e1', paddingTop: '8px'}}>
+                            <div style={{fontSize: '11px', fontWeight: 700, color: '#475569', marginBottom: '5px'}}>
+                              Thứ tự thi đấu trong ngày
+                            </div>
+                            <div style={{display: 'grid', gap: '5px'}}>
+                              {selectedKeys.map((key, index) => {
+                                const group = availableAgeGroups.find((item) => item.key === key);
+                                return (
+                                  <div key={key} style={{display: 'flex', alignItems: 'center', gap: '7px', padding: '6px 8px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px'}}>
+                                    <span style={{width: '24px', fontWeight: 800, color: '#2563eb'}}>{index + 1}</span>
+                                    <span style={{flex: 1, fontSize: '12px', fontWeight: 600}}>{group?.label || key}</span>
+                                    <button type='button' className='btn btn-sm' disabled={index === 0}
+                                      onClick={() => setSetupForm((prev) => {
+                                        const byDay = [...(prev.ageGroupsByDay || [])];
+                                        const order = [...(byDay[dayIndex] || [])];
+                                        [order[index - 1], order[index]] = [order[index], order[index - 1]];
+                                        byDay[dayIndex] = order;
+                                        return {...prev, ageGroupsByDay: byDay};
+                                      })}>↑</button>
+                                    <button type='button' className='btn btn-sm' disabled={index === selectedKeys.length - 1}
+                                      onClick={() => setSetupForm((prev) => {
+                                        const byDay = [...(prev.ageGroupsByDay || [])];
+                                        const order = [...(byDay[dayIndex] || [])];
+                                        [order[index], order[index + 1]] = [order[index + 1], order[index]];
+                                        byDay[dayIndex] = order;
+                                        return {...prev, ageGroupsByDay: byDay};
+                                      })}>↓</button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
-                <div style={{fontSize: '11px', color: '#64748b', marginTop: '5px'}}>Có thể chọn cùng một nhóm ở nhiều ngày để hệ thống phân bổ. Chọn Kata - 12-14 tuổi ở Ngày 1 để đưa nhóm này lên ngày đầu. Nhóm chưa chọn sẽ tự đưa vào ngày cuối.</div>
+                <div style={{fontSize: '11px', color: '#64748b', marginTop: '5px'}}>
+                  {setupForm.priorityMode === 'day_group_order'
+                    ? 'Nhóm STT sau chỉ bắt đầu khi nhóm trước đã hoàn tất. Nhóm chưa chọn sẽ tự đưa vào ngày cuối.'
+                    : 'Có thể chọn cùng một nhóm ở nhiều ngày để hệ thống phân bổ. Chọn Kata - 12-14 tuổi ở Ngày 1 để đưa nhóm này lên ngày đầu. Nhóm chưa chọn sẽ tự đưa vào ngày cuối.'}
+                </div>
               </div>
             )}
 
@@ -1796,7 +2238,11 @@ export default function SchedulePage() {
                   return (
                     <div key={i} style={{fontSize:'12px',color:'#475569',padding:'2px 0'}}>
                       📅 <strong>Ngày {i + 1}</strong>: {d.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
-                      <span style={{color:'#94a3b8'}}> ({setupForm.morningStart}-{setupForm.morningEnd}, {setupForm.afternoonStart}-{setupForm.afternoonEnd})</span>
+                      <span style={{color:'#94a3b8'}}>
+                        {' '}({(setupForm.startSessionByDay?.[i] || 'morning') === 'afternoon'
+                          ? `${setupForm.startTimeByDay?.[i] || setupForm.afternoonStart}-${setupForm.afternoonEnd}`
+                          : `${setupForm.startTimeByDay?.[i] || setupForm.morningStart}-${setupForm.morningEnd}, ${setupForm.afternoonStart}-${setupForm.afternoonEnd}`})
+                      </span>
                     </div>
                   );
                 })}
@@ -1812,6 +2258,81 @@ export default function SchedulePage() {
                 ✅ Áp dụng & Lưu
               </button>
             </div>
+          </div>
+        </Modal>
+
+        <Modal
+          isOpen={showVerticalMatExportModal}
+          onClose={() => { if (!exportingVerticalMat) setShowVerticalMatExportModal(false); }}
+          title="Xuất PDF Dọc Theo Thảm"
+          size="large"
+        >
+          <div style={{color:'#475569',fontSize:'14px',marginBottom:'16px'}}>
+            Chọn cách tạo file. Cả hai chế độ đều dùng mẫu A4 dọc và sắp xếp lịch theo ngày, giờ của từng thảm.
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'14px'}}>
+            <button
+              type="button"
+              disabled={exportingVerticalMat}
+              onClick={() => handleExportVerticalByMat(false)}
+              style={{
+                padding:'20px',textAlign:'left',border:'2px solid #bfdbfe',borderRadius:'14px',
+                background:'linear-gradient(135deg,#eff6ff,#fff)',cursor:exportingVerticalMat?'wait':'pointer',
+                color:'#1e3a8a'
+              }}
+            >
+              <div style={{fontSize:'28px',marginBottom:'8px'}}>📚</div>
+              <div style={{fontSize:'17px',fontWeight:900,marginBottom:'6px'}}>Xuất Full — 1 file</div>
+              <div style={{fontSize:'13px',lineHeight:1.5,color:'#64748b'}}>
+                Gộp toàn bộ các thảm vào một file PDF. Mỗi thảm bắt đầu ở một nhóm trang riêng.
+              </div>
+              <div style={{marginTop:'10px',fontSize:'11px',fontWeight:700,color:'#2563eb',fontFamily:'monospace'}}>
+                LichThiDau_Doc_TheoTham_....pdf
+              </div>
+            </button>
+
+            <button
+              type="button"
+              disabled={exportingVerticalMat}
+              onClick={() => handleExportVerticalByMat(true)}
+              style={{
+                padding:'20px',textAlign:'left',border:'2px solid #ddd6fe',borderRadius:'14px',
+                background:'linear-gradient(135deg,#f5f3ff,#fff)',cursor:exportingVerticalMat?'wait':'pointer',
+                color:'#5b21b6'
+              }}
+            >
+              <div style={{fontSize:'28px',marginBottom:'8px'}}>🥋</div>
+              <div style={{fontSize:'17px',fontWeight:900,marginBottom:'6px'}}>Từng thảm — từng file</div>
+              <div style={{fontSize:'13px',lineHeight:1.5,color:'#64748b'}}>
+                Tạo riêng một file PDF cho mỗi thảm đang có lịch thi đấu, thuận tiện gửi và in riêng.
+              </div>
+              <div style={{marginTop:'10px',fontSize:'11px',fontWeight:700,color:'#7c3aed',fontFamily:'monospace'}}>
+                LichThiDau_Doc_Tham_1_....pdf
+              </div>
+            </button>
+          </div>
+
+          {exportingVerticalMat && (
+            <div style={{marginTop:'16px',padding:'13px 15px',background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'10px'}}>
+              <div style={{display:'flex',justifyContent:'space-between',gap:'12px',fontSize:'13px',fontWeight:700,color:'#475569',marginBottom:'7px'}}>
+                <span>{verticalMatExportProgress.label}</span>
+                <span>{verticalMatExportProgress.percent}%</span>
+              </div>
+              <div style={{height:'8px',background:'#e2e8f0',borderRadius:'5px',overflow:'hidden'}}>
+                <div style={{height:'100%',width:`${verticalMatExportProgress.percent}%`,background:'#7c3aed',transition:'width .2s ease'}} />
+              </div>
+            </div>
+          )}
+
+          <div className="modal-actions" style={{marginTop:'18px'}}>
+            <button
+              className="btn btn-secondary"
+              disabled={exportingVerticalMat}
+              onClick={() => setShowVerticalMatExportModal(false)}
+            >
+              Đóng
+            </button>
           </div>
         </Modal>
 

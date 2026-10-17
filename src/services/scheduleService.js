@@ -149,11 +149,11 @@ function getCategoryAgeOrder(category) {
   const text = explicitAge || normalizeAgeText(category.name);
   const labeledAge = text.match(/lua\s*tuoi\s*(\d+)/);
   if (labeledAge) return Number(labeledAge[1]);
+  const ageRange = text.match(/(\d+)\s*[-–]\s*(\d+)(?:\s*tuoi)?/);
+  if (ageRange) return Number(ageRange[1]);
+  const ageNumber = text.match(/(?:duoi\s*)?(\d+)\s*tuoi|^(?:u)?(\d+)$/);
+  if (ageNumber) return Number(ageNumber[1] || ageNumber[2]);
   if (text.includes('vo dich tuyet doi')) return 18;
-  if (explicitAge) {
-    const number = explicitAge.match(/\d+/);
-    if (number) return Number(number[0]);
-  }
   const groups = [
     ["nhi dong", 6],
     ["thieu nhi", 9],
@@ -168,8 +168,8 @@ function getCategoryAgeOrder(category) {
 function getCategoryGender(category) {
   const gender = String(category.gender || "").toLowerCase();
   const name = ` ${normalizeAgeText(category.name)} `;
-  if (gender === "female" || /\bnu\b/.test(name)) return "female";
   if (gender === "mixed" || name.includes("hon hop") || name.includes("mixed")) return "mixed";
+  if (gender === "female" || /\bnu\b/.test(name)) return "female";
   return "male";
 }
 
@@ -206,7 +206,10 @@ export function parseKarateCategory(category) {
     ageMin = getCategoryAgeOrder(category);
     ageMax = ageMin;
   }
-  if (name.includes('vo dich tuyet doi') || explicitAgeText.includes('vo dich tuyet doi')) {
+  if (
+    (name.includes('vo dich tuyet doi') || explicitAgeText.includes('vo dich tuyet doi')) &&
+    !Number.isFinite(ageMin)
+  ) {
     ageMin = 18;
     ageMax = Number.POSITIVE_INFINITY;
   }
@@ -250,17 +253,52 @@ export function parseKarateCategory(category) {
   return { discipline, eventType, gender, ageMin, ageMax, weightValue, weightType, priority };
 }
 
+function getCategoryPoolInfo(category) {
+  if (Number.isInteger(category.splitIndex)) {
+    return {
+      baseKey: String(category.baseId || category.originalCategoryId || category.name)
+        .toLowerCase(),
+      rank: category.splitIndex,
+    };
+  }
+  const name = normalizeAgeText(category.name).trim();
+  const letterMatch = name.match(/^(.*?)\s*[-–]\s*bang\s+([a-z])\s*$/);
+  if (letterMatch) {
+    return {
+      baseKey: letterMatch[1].trim(),
+      rank: letterMatch[2].charCodeAt(0) - 97,
+    };
+  }
+  const numericMatch = name.match(/^(.*?)\s*[-–]\s*bang\s+(\d+)(?:\s*\/\s*\d+)?\s*$/);
+  if (numericMatch) {
+    return {
+      baseKey: numericMatch[1].trim(),
+      rank: Math.max(0, Number(numericMatch[2]) - 1),
+    };
+  }
+  return null;
+}
+
 function compareKarateCategories(a, b, originalOrder) {
   const keyA = parseKarateCategory(a);
   const keyB = parseKarateCategory(b);
   const weightTypeA = keyA.weightType === "plus" ? 1 : 0;
   const weightTypeB = keyB.weightType === "plus" ? 1 : 0;
-  return keyA.priority - keyB.priority ||
+  const primaryDifference = keyA.priority - keyB.priority ||
     keyA.ageMin - keyB.ageMin ||
     keyA.ageMax - keyB.ageMax ||
     weightTypeA - weightTypeB ||
-    (keyA.weightValue ?? Number.POSITIVE_INFINITY) - (keyB.weightValue ?? Number.POSITIVE_INFINITY) ||
-    originalOrder.get(a.id) - originalOrder.get(b.id);
+    (keyA.weightValue ?? Number.POSITIVE_INFINITY) - (keyB.weightValue ?? Number.POSITIVE_INFINITY);
+  if (primaryDifference !== 0) return primaryDifference;
+
+  const poolA = getCategoryPoolInfo(a);
+  const poolB = getCategoryPoolInfo(b);
+  const baseKeyA = poolA?.baseKey || normalizeAgeText(a.name);
+  const baseKeyB = poolB?.baseKey || normalizeAgeText(b.name);
+  const baseDifference = baseKeyA.localeCompare(baseKeyB, 'vi');
+  if (baseDifference !== 0) return baseDifference;
+  if (poolA && poolB && poolA.rank !== poolB.rank) return poolA.rank - poolB.rank;
+  return originalOrder.get(a.id) - originalOrder.get(b.id);
 }
 
 export function sortCategoriesByKarateStandard(categories) {
@@ -367,6 +405,20 @@ export function getCategoryScheduleGroupKey(category) {
   return discipline + ':' + getCategoryAgeKey(category);
 }
 
+export function getCategoryCustomPlanGroupKey(category) {
+  const parsed = parseKarateCategory(category);
+  const normalizedName = normalizeAgeText(category.name);
+  const competitionClass = normalizedName.includes('vo dich tuyet doi')
+    ? 'absolute'
+    : (isTeamCategory(category) ? 'team' : 'individual');
+  return [
+    parsed.discipline,
+    getCategoryAgeKey(category),
+    parsed.gender,
+    competitionClass,
+  ].join(':');
+}
+
 function assignAgeGroupsToDays(categories, tournamentDays, durations, priorityMode) {
   if (
     tournamentDays.length <= 1 ||
@@ -409,16 +461,91 @@ export function smartAutoAssign(
     priorityMode = "standard_gender_order",
     customPriorityOrder = [],
     ageGroupsByDay = {},
+    customMatPlan = {},
+    startSessionByDay = {},
+    startTimeByDay = {},
+    onlyConfiguredCustomPlan = false,
   } = options;
   const originalOrder = new Map(categories.map((category, index) => [category.id, index]));
+  const isAgePriority =
+    priorityMode === 'age_young_first' || priorityMode === 'age_old_first';
+  const isDayGroupPriority = priorityMode === 'day_group_order';
+  const usesConfiguredDayGroups = isAgePriority || isDayGroupPriority;
+  const isCustomMatPlan = priorityMode === 'custom_mat_plan';
+  const categoryIdsByPlanGroup = new Map();
+  categories.forEach((category) => {
+    const key = getCategoryCustomPlanGroupKey(category);
+    if (!categoryIdsByPlanGroup.has(key)) categoryIdsByPlanGroup.set(key, []);
+    categoryIdsByPlanGroup.get(key).push(category.id);
+  });
+  const categoriesAssignedInCustomPlan = new Set();
+  Object.values(customMatPlan || {}).forEach((dayPlan) => {
+    ['morning', 'afternoon'].forEach((sessionKey) => {
+      Object.values(dayPlan?.[sessionKey] || {}).forEach((groupKeys) => {
+        (groupKeys || []).forEach((groupKey) => {
+          (categoryIdsByPlanGroup.get(groupKey) || []).forEach((categoryId) => {
+            categoriesAssignedInCustomPlan.add(categoryId);
+          });
+        });
+      });
+    });
+  });
+  const plannedCategorySlots = new Map();
+  tournamentDays.forEach((day, dayIndex) => {
+    ['morning', 'afternoon'].forEach((sessionKey, sessionIndex) => {
+      const sessionPlan = customMatPlan?.[day]?.[sessionKey] || {};
+      Object.entries(sessionPlan).forEach(([matValue, groupKeys]) => {
+        (groupKeys || []).forEach((groupKey, groupIndex) => {
+          (categoryIdsByPlanGroup.get(groupKey) || []).forEach((categoryId) => {
+            if (!plannedCategorySlots.has(categoryId)) {
+              plannedCategorySlots.set(categoryId, {
+                day,
+                dayIndex,
+                sessionKey,
+                sessionIndex,
+                mat: Number(matValue),
+                groupIndex,
+              });
+            }
+          });
+        });
+      });
+    });
+  });
+  const getConfiguredDayGroupRank = (category) => {
+    const groupKey = getCategoryScheduleGroupKey(category);
+    for (let dayIndex = 0; dayIndex < tournamentDays.length; dayIndex += 1) {
+      const groupIndex = (ageGroupsByDay[tournamentDays[dayIndex]] || []).indexOf(groupKey);
+      if (groupIndex >= 0) return dayIndex * 10000 + groupIndex;
+    }
+    return Number.MAX_SAFE_INTEGER;
+  };
   const prioritySortedCategories = [...categories].sort((a, b) =>
-    compareCategoriesByPriority(
-      a,
-      b,
-      priorityMode,
-      originalOrder,
-      customPriorityOrder
-    )
+    isCustomMatPlan
+      ? (() => {
+        const slotA = plannedCategorySlots.get(a.id);
+        const slotB = plannedCategorySlots.get(b.id);
+        if (slotA && slotB) {
+          return slotA.dayIndex - slotB.dayIndex ||
+            slotA.sessionIndex - slotB.sessionIndex ||
+            slotA.groupIndex - slotB.groupIndex ||
+            slotA.mat - slotB.mat ||
+            compareKarateCategories(a, b, originalOrder);
+        }
+        if (slotA) return -1;
+        if (slotB) return 1;
+        return compareKarateCategories(a, b, originalOrder);
+      })()
+      : isDayGroupPriority
+      ? getConfiguredDayGroupRank(a) - getConfiguredDayGroupRank(b) ||
+        compareKarateCategories(a, b, originalOrder)
+      : compareCategoriesByPriority(
+        a,
+        b,
+        priorityMode,
+        originalOrder,
+        customPriorityOrder
+      )
   );
   const sortedCategories = prioritySortedCategories;
   if (priorityMode === "karate_standard") {
@@ -430,20 +557,34 @@ export function smartAutoAssign(
     })));
     console.groupEnd();
   }
-  const isAgePriority =
-    priorityMode === 'age_young_first' || priorityMode === 'age_old_first';
-
-
   const sessions = [
     {
+      key: 'morning',
       start: convertTimeToMins(sessionConfig.morningStart || "07:00"),
       end: convertTimeToMins(sessionConfig.morningEnd || "11:30"),
     },
     {
+      key: 'afternoon',
       start: convertTimeToMins(sessionConfig.afternoonStart || "13:00"),
       end: convertTimeToMins(sessionConfig.afternoonEnd || "17:30"),
     },
   ].filter((session) => session.end > session.start);
+  const getSessionsForDay = (day) => {
+    const startSession = startSessionByDay?.[day] || 'morning';
+    const defaultStart = startSession === 'afternoon'
+      ? (sessionConfig.afternoonStart || '13:00')
+      : (sessionConfig.morningStart || '07:00');
+    const dayStart = convertTimeToMins(startTimeByDay?.[day] || defaultStart);
+    return sessions
+      .filter((session) =>
+        (startSession !== 'afternoon' || session.key === 'afternoon') &&
+        session.end > dayStart
+      )
+      .map((session) => ({
+        ...session,
+        start: Math.max(session.start, dayStart),
+      }));
+  };
 
   const newSchedule = { ...existingSchedule };
   const scheduleLog = {};
@@ -498,7 +639,9 @@ export function smartAutoAssign(
     );
 
   const findEarliestFreeSlot = (day, mat, duration, minimumStart = 0) => {
-    for (const session of sessions) {
+    const daySessions = getSessionsForDay(day);
+    if (daySessions.length === 0) return null;
+    for (const session of daySessions) {
       const firstStart = Math.max(session.start, Math.ceil(minimumStart / 5) * 5);
       for (let start = firstStart; start + duration <= session.end; start += 5) {
         const end = start + duration;
@@ -508,7 +651,7 @@ export function smartAutoAssign(
       }
     }
     // Bắt buộc xếp đủ: nối lịch sau phiên cuối khi khung chính thức đã kín.
-    let start = Math.max(minimumStart, sessions.length > 0 ? sessions[sessions.length - 1].end : 0);
+    let start = Math.max(minimumStart, daySessions[daySessions.length - 1].end);
     start = Math.ceil(start / 5) * 5;
     while (hasMatConflict(day, mat, start, start + duration)) start += 5;
     return start;
@@ -521,27 +664,45 @@ export function smartAutoAssign(
 
   const groupStarts = new Map();
   const lastGroupByDay = new Map();
+  const customLaneEnds = new Map();
+  const categoryPoolLanes = new Map();
   // Kata cùng lứa tuổi và các nhánh của cùng nhóm Vô địch tuyệt đối
   // phải xếp nối tiếp trên cùng ngày, cùng thảm.
   const kataAgeGroupLanes = new Map();
 
   for (const category of sortedCategories) {
     if (newSchedule[category.id]) continue;
+    const plannedSlot = isCustomMatPlan
+      ? plannedCategorySlots.get(category.id)
+      : null;
+    if (
+      isCustomMatPlan &&
+      !plannedSlot &&
+      (onlyConfiguredCustomPlan || categoriesAssignedInCustomPlan.has(category.id))
+    ) continue;
     const duration = estimateCategoryDuration(category, durations);
     const candidates = [];
+    const poolInfo = getCategoryPoolInfo(category);
+    const fixedPoolLane = poolInfo
+      ? categoryPoolLanes.get(poolInfo.baseKey)
+      : null;
     const kataAgeGroup = getKataAgeGroupKey(category);
-    const fixedKataLane = kataAgeGroup ? kataAgeGroupLanes.get(kataAgeGroup) : null;
+    const fixedKataLane = plannedSlot
+      ? null
+      : (kataAgeGroup ? kataAgeGroupLanes.get(kataAgeGroup) : null);
     const isKarateStandard = priorityMode === "karate_standard";
     const schedulingGroup = isKarateStandard
       ? getKarateSchedulingGroupKey(category)
-      : getCategoryAgeKey(category);
+      : (isDayGroupPriority
+        ? getCategoryScheduleGroupKey(category)
+        : getCategoryAgeKey(category));
     const ageKey = getCategoryAgeKey(category);
     const scheduleGroupKey = getCategoryScheduleGroupKey(category);
     const dayIncludesCategoryGroup = (day) => {
       const groups = ageGroupsByDay[day] || [];
       return groups.includes(scheduleGroupKey) || groups.includes(ageKey);
     };
-    const configuredAgeDays = isAgePriority
+    const configuredAgeDays = usesConfiguredDayGroups
       ? tournamentDays.filter(dayIncludesCategoryGroup)
       : [];
     const configuredGroups = Object.values(ageGroupsByDay);
@@ -549,27 +710,45 @@ export function smartAutoAssign(
     const groupHasConfiguredDay = configuredGroups.some(
       (groups) => groups?.includes(scheduleGroupKey) || groups?.includes(ageKey)
     );
-    const eligibleDays = isAgePriority && hasAgeDayConfig
-      ? (configuredAgeDays.length > 0
-        ? configuredAgeDays
-        : (groupHasConfiguredDay ? [] : [tournamentDays[tournamentDays.length - 1]]))
-      : tournamentDays;
+    const eligibleDays = plannedSlot
+      ? [plannedSlot.day]
+      : (usesConfiguredDayGroups && hasAgeDayConfig
+        ? (configuredAgeDays.length > 0
+          ? configuredAgeDays
+          : (groupHasConfiguredDay ? [] : [tournamentDays[tournamentDays.length - 1]]))
+        : tournamentDays);
 
     for (const day of eligibleDays) {
       if (fixedKataLane && fixedKataLane.day !== day) continue;
+      if (fixedPoolLane && fixedPoolLane.day !== day) continue;
       const lastGroup = lastGroupByDay.get(day);
       const groupStartKey = `${day}::${schedulingGroup}`;
       if (!groupStarts.has(groupStartKey)) {
-        // Nhóm mới vẫn được tận dụng khoảng trống từ đầu buổi trên thảm rảnh.
-        groupStarts.set(groupStartKey, 0);
+        // Custom STT groups run as phases: the next group starts only after
+        // every scheduled lane of the previous group has finished.
+        const previousGroupEnd = isDayGroupPriority
+          ? Math.max(
+            0,
+            ...scheduleLog[day]
+              .filter((item) => !item.isEvent)
+              .map((item) => item.endMins)
+          )
+          : 0;
+        groupStarts.set(groupStartKey, previousGroupEnd);
       }
       const categoryPhase = parseKarateCategory(category);
-      for (let mat = 1; mat <= matCount; mat += 1) {
+      const candidateMats = plannedSlot
+        ? [plannedSlot.mat]
+        : fixedPoolLane
+          ? [fixedPoolLane.mat]
+        : Array.from({ length: matCount }, (_, index) => index + 1);
+      for (const mat of candidateMats) {
+        if (mat < 1 || mat > matCount) continue;
         if (fixedKataLane && fixedKataLane.mat !== mat) continue;
         // Kumite chỉ cần chờ Kata cùng lứa tuổi trên chính thảm đang xét.
         // Không khóa các thảm khác đang trống, để tất cả thảm có thể bắt đầu
         // đồng thời từ đầu buổi.
-        const kataPhaseEnd = categoryPhase.discipline === 'kumite'
+        const kataPhaseEnd = !plannedSlot && categoryPhase.discipline === 'kumite'
           ? Math.max(
             0,
             ...scheduleLog[day]
@@ -582,11 +761,32 @@ export function smartAutoAssign(
           )
           : 0;
         const lane = tournamentDays.indexOf(day) * matCount + (mat - 1);
+        const daySessions = getSessionsForDay(day);
+        const plannedSession = plannedSlot
+          ? daySessions.find((session) => session.key === plannedSlot.sessionKey)
+          : null;
+        if (
+          plannedSlot &&
+          !plannedSession
+        ) continue;
+        const customLaneKey = plannedSlot
+          ? `${day}::${plannedSlot.sessionKey}::${mat}`
+          : null;
+        const minimumStart = plannedSlot
+          ? (customLaneEnds.get(customLaneKey) ?? plannedSession?.start ?? 0)
+          : Math.max(
+            groupStarts.get(groupStartKey),
+            kataPhaseEnd,
+            fixedPoolLane?.endMins || 0
+          );
+        // Nhóm tùy chỉnh bắt đầu không sớm hơn buổi đã chọn. Nếu phần còn lại
+        // của buổi không đủ, tiếp tục ở buổi kế tiếp (hoặc nối cuối ngày) trên
+        // đúng thảm, thay vì bỏ sót các hạng cân còn lại trong cùng nhóm.
         const earliestSlot = findEarliestFreeSlot(
           day,
           mat,
           duration,
-          Math.max(groupStarts.get(groupStartKey), kataPhaseEnd)
+          minimumStart
         );
         if (earliestSlot === null) continue;
         candidates.push({
@@ -595,7 +795,7 @@ export function smartAutoAssign(
           mat,
           lane,
           earliestSlot,
-          overtime: sessions.length > 0 && earliestSlot >= sessions[sessions.length - 1].end,
+          overtime: daySessions.length > 0 && earliestSlot >= daySessions[daySessions.length - 1].end,
           dayLoad: getLoad(day),
           matLoad: getLoad(day, mat),
         });
@@ -607,7 +807,7 @@ export function smartAutoAssign(
         a.earliestSlot - b.earliestSlot ||
         a.matLoad - b.matLoad ||
         a.mat - b.mat
-      : isAgePriority
+      : usesConfiguredDayGroups
         ? a.dayLoad - b.dayLoad ||
           a.earliestSlot - b.earliestSlot ||
           a.matLoad - b.matLoad ||
@@ -620,7 +820,7 @@ export function smartAutoAssign(
 
     const chosen = candidates[0];
     if (!chosen) continue;
-    if (kataAgeGroup && !fixedKataLane) {
+    if (kataAgeGroup && !fixedKataLane && !plannedSlot) {
       kataAgeGroupLanes.set(kataAgeGroup, { day: chosen.day, mat: chosen.mat });
     }
     if (!isKarateStandard) lastGroupByDay.set(chosen.day, schedulingGroup);
@@ -634,6 +834,17 @@ export function smartAutoAssign(
       order: itemsOnMat + 1,
       date: chosen.day,
     };
+    if (plannedSlot) {
+      const customLaneKey = `${chosen.day}::${plannedSlot.sessionKey}::${chosen.mat}`;
+      customLaneEnds.set(customLaneKey, chosen.earliestSlot + duration);
+    }
+    if (poolInfo) {
+      categoryPoolLanes.set(poolInfo.baseKey, {
+        day: chosen.day,
+        mat: chosen.mat,
+        endMins: chosen.earliestSlot + duration,
+      });
+    }
     addLogItem(chosen.day, {
       catId: category.id,
       mat: chosen.mat,
