@@ -5,7 +5,7 @@ export function athlete(id) {
 }
 
 export function createCompletedBracket(size, { activeSlots = null, categoryId = `category-${size}` } = {}) {
-  if (!Number.isInteger(size) || size < 4 || (size & (size - 1)) !== 0) throw new TypeError("size must be a power of two >= 4");
+  if (!Number.isInteger(size) || size < 2 || (size & (size - 1)) !== 0) throw new TypeError("size must be a power of two >= 2");
   const active = new Set(activeSlots || Array.from({ length: size }, (_, index) => index));
   const slots = Array.from({ length: size }, (_, index) => active.has(index) ? athlete(`a${index + 1}`) : null);
   const matches = [];

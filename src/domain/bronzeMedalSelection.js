@@ -55,7 +55,15 @@ export function selectDualBronzeMedalists({ bracket }) {
   const final = getFinalResult(bracket);
   if (!final.ok) return final;
   const semiRound = Number(bracket?.numRounds) - 1;
-  if (!Number.isFinite(semiRound) || semiRound < 1) return fail(MEDAL_SELECTION_STATUSES.INVALID_RESULT, { reason: "INVALID_NUM_ROUNDS" });
+  if (!Number.isFinite(semiRound) || semiRound < 0) return fail(MEDAL_SELECTION_STATUSES.INVALID_RESULT, { reason: "INVALID_NUM_ROUNDS" });
+  // A two-participant draw consists only of the final. It is complete with
+  // gold and silver and intentionally has no bronze medalists.
+  if (semiRound === 0) {
+    return ready(BRONZE_MODES.DUAL_BRONZE, final.gold, final.silver, null, null, {
+      finalMatchId: final.finalMatch.id,
+      bronzeMatchIds: [],
+    });
+  }
   // Keep BYE semifinals in the structural pair. A three-participant draw has
   // one contested semifinal and one BYE semifinal, so it legitimately awards
   // only one bronze medal.

@@ -52,6 +52,7 @@ export function createLegacyAutoAdvanceFixture() {
 }
 
 export const dualFixtures = Object.freeze({
+  two: createMedalFixture(2, { categoryId: "medals-2" }),
   four: createMedalFixture(4, { categoryId: "medals-4" }),
   eight: createMedalFixture(8, { categoryId: "medals-8" }),
   sixteen: createMedalFixture(16, { categoryId: "medals-16" }),

@@ -70,6 +70,13 @@ for (const [name, fixture] of Object.entries(dualFixtures)) {
   });
 }
 
+await test("two-participant draw awards only gold and silver", () => {
+  const result = selectCategoryMedalists(dualFixtures.two);
+  is(result.status, MEDAL_SELECTION_STATUSES.READY);
+  equal(Object.values(result.medals).map(id), ["a1", "a2", null, null]);
+  equal(result.sources.bronzeMatchIds, []);
+});
+
 await test("missing bronze_mode resolves DUAL", () => {
   const result = selectCategoryMedalists(dualFixtures.eight);
   is(result.mode, BRONZE_MODES.DUAL_BRONZE);
