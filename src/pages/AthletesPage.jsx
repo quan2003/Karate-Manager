@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useRef, useState, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   useTournament,
@@ -15,6 +15,10 @@ import {
   deleteSubmissions,
   removeAthletesFromClubSubmission,
 } from "../services/supabaseService";
+import {
+  KSPORT_CLOUD_API_URL,
+  getCloudAuthHeaders,
+} from "../services/cloudSyncService";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import * as XLSX from "xlsx";
@@ -52,6 +56,18 @@ export default function AthletesPage() {
   const [withdrawClubName, setWithdrawClubName] = useState("");
   const [selectedWithdrawAthleteIds, setSelectedWithdrawAthleteIds] = useState([]);
   const [withdrawingAthletes, setWithdrawingAthletes] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState({
+    open: false,
+    athleteId: "",
+    athleteName: "",
+    url: "",
+    publicApproved: false,
+  });
+  const [loadingPhotoId, setLoadingPhotoId] = useState("");
+  const [replacingPhoto, setReplacingPhoto] = useState(false);
+  const [publishingPhoto, setPublishingPhoto] = useState(false);
+  const [publishingAllPhotos, setPublishingAllPhotos] = useState(false);
+  const photoFileInputRef = useRef(null);
 
   if (!tournament) {
     return (
@@ -160,6 +176,167 @@ export default function AthletesPage() {
         }
         setConfirmDialog(p => ({ ...p, open: false }));
       }
+    });
+  };
+
+  const handleViewPhoto = async (athlete) => {
+    const athleteId = String(athlete.athleteId || "").trim();
+    if (!athleteId) {
+      toast.info("VĐV này chưa có mã ảnh thẻ để xem.");
+      return;
+    }
+
+    setLoadingPhotoId(athleteId);
+    try {
+      const response = await fetch(
+        `${KSPORT_CLOUD_API_URL}/api/media/athletes/${encodeURIComponent(athleteId)}/view-url`,
+        { headers: await getCloudAuthHeaders() },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.viewUrl) {
+        throw new Error(data?.message || "Không tìm thấy ảnh thẻ");
+      }
+      setPhotoPreview({
+        open: true,
+        athleteId,
+        athleteName: athlete.name,
+        url: data.viewUrl,
+        publicApproved: data.publicApproved === true,
+      });
+    } catch (error) {
+      toast.info(error.message || "Chưa có ảnh thẻ để xem.");
+    } finally {
+      setLoadingPhotoId("");
+    }
+  };
+
+  const handleReplacePhoto = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !photoPreview.athleteId) return;
+
+    if (!new Set(["image/jpeg", "image/png", "image/webp"]).has(file.type)) {
+      toast.error("Ảnh thẻ phải là JPG, PNG hoặc WebP.");
+      return;
+    }
+    if (file.size < 1 || file.size > 5 * 1024 * 1024) {
+      toast.error("Ảnh thẻ không được vượt quá 5 MB.");
+      return;
+    }
+
+    setReplacingPhoto(true);
+    try {
+      const authHeaders = await getCloudAuthHeaders();
+      const path = `/api/media/athletes/${encodeURIComponent(photoPreview.athleteId)}`;
+      const uploadRequest = await fetch(`${KSPORT_CLOUD_API_URL}${path}/upload-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ contentType: file.type, sizeBytes: file.size }),
+      });
+      const uploadData = await uploadRequest.json().catch(() => ({}));
+      if (!uploadRequest.ok || !uploadData?.uploadUrl || !uploadData?.objectKey) {
+        throw new Error(uploadData?.message || "Không thể chuẩn bị thay ảnh thẻ");
+      }
+
+      const put = await fetch(uploadData.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!put.ok) throw new Error("Không thể tải ảnh thẻ mới lên kho lưu trữ");
+
+      const complete = await fetch(`${KSPORT_CLOUD_API_URL}${path}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          objectKey: uploadData.objectKey,
+          contentType: file.type,
+          sizeBytes: file.size,
+        }),
+      });
+      const completed = await complete.json().catch(() => ({}));
+      if (!complete.ok) throw new Error(completed?.message || "Không thể lưu ảnh thẻ mới");
+
+      setPhotoPreview((current) => ({
+        ...current,
+        url: URL.createObjectURL(file),
+        publicApproved: false,
+      }));
+      toast.success("Đã thay ảnh thẻ. Ảnh vẫn ở chế độ riêng tư chờ duyệt.");
+    } catch (error) {
+      toast.error(error.message || "Không thể thay ảnh thẻ.");
+    } finally {
+      setReplacingPhoto(false);
+    }
+  };
+
+  const publishPhoto = async () => {
+    if (!photoPreview.athleteId) return;
+    setPublishingPhoto(true);
+    try {
+      const response = await fetch(
+        `${KSPORT_CLOUD_API_URL}/api/media/athletes/${encodeURIComponent(photoPreview.athleteId)}/publication`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(await getCloudAuthHeaders()) },
+          body: JSON.stringify({ isPublic: true }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.message || "Không thể công khai ảnh thẻ");
+      setPhotoPreview((current) => ({ ...current, publicApproved: true }));
+      toast.success("Đã duyệt và công khai ảnh thẻ.");
+    } catch (error) {
+      toast.error(error.message || "Không thể công khai ảnh thẻ.");
+    } finally {
+      setPublishingPhoto(false);
+    }
+  };
+
+  const handlePublishPhoto = () => {
+    setConfirmDialog({
+      open: true,
+      title: "Công khai ảnh thẻ",
+      message: "Ảnh sẽ được đánh dấu đã duyệt và có thể hiển thị trên các kênh công khai của giải. Bạn có muốn tiếp tục?",
+      type: "warning",
+      onConfirm: async () => {
+        setConfirmDialog((current) => ({ ...current, open: false }));
+        await publishPhoto();
+      },
+    });
+  };
+
+  const publishAllPhotos = async () => {
+    setPublishingAllPhotos(true);
+    try {
+      const response = await fetch(
+        `${KSPORT_CLOUD_API_URL}/api/media/tournaments/${encodeURIComponent(tournament.id)}/photos/publication`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(await getCloudAuthHeaders()) },
+          body: JSON.stringify({ isPublic: true }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.message || "Không thể công khai ảnh thẻ");
+      toast.success(`Đã duyệt và công khai ${data.count || 0} ảnh thẻ.`);
+    } catch (error) {
+      toast.error(error.message || "Không thể công khai ảnh thẻ.");
+    } finally {
+      setPublishingAllPhotos(false);
+    }
+  };
+
+  const handlePublishAllPhotos = () => {
+    setConfirmDialog({
+      open: true,
+      title: "Duyệt tất cả ảnh thẻ",
+      message: "Tất cả ảnh thẻ VĐV đã nộp cho giải này sẽ được công khai. Bạn có muốn tiếp tục?",
+      type: "warning",
+      onConfirm: async () => {
+        setConfirmDialog((current) => ({ ...current, open: false }));
+        await publishAllPhotos();
+      },
     });
   };
 
@@ -299,7 +476,14 @@ export default function AthletesPage() {
               
               if (!athletesToImportMap[categoryId]) athletesToImportMap[categoryId] = [];
               // Force athlete club and category ID to match
-              athletesToImportMap[categoryId].push({ ...a, club: clubName, eventId: categoryId });
+              athletesToImportMap[categoryId].push({
+                ...a,
+                club: clubName,
+                eventId: categoryId,
+                // A Supabase row ID identifies this submission only; it is
+                // never promoted to the cross-event athlete identity.
+                registrationSourceId: a.registrationSourceId || a.cloudAthleteId || a.id || null,
+              });
               totalAthletes++;
             });
           }
@@ -319,7 +503,11 @@ export default function AthletesPage() {
           if (tournament.categories.find(c => c.id === categoryId)) {
             dispatch({
               type: ACTIONS.IMPORT_ATHLETES,
-              payload: { categoryId, athletes: athletesToImportMap[categoryId] }
+              payload: {
+                categoryId,
+                athletes: athletesToImportMap[categoryId],
+                identityRegistryEnabled: tournament.identityRegistryEnabled === true,
+              }
             });
           }
         });
@@ -559,6 +747,16 @@ export default function AthletesPage() {
               </button>
             </div>
 
+            <button
+              className="btn btn-secondary"
+              onClick={handlePublishAllPhotos}
+              disabled={publishingAllPhotos}
+              title="Duyệt và công khai tất cả ảnh thẻ VĐV đã nộp cho giải này"
+              style={{ borderRadius: '8px' }}
+            >
+              {publishingAllPhotos ? "Đang duyệt ảnh..." : "Duyệt tất cả ảnh"}
+            </button>
+
             <button className="btn btn-secondary" onClick={handleExportExcel} style={{ borderRadius: '8px' }}>
               📥 Xuất Excel
             </button>
@@ -726,6 +924,14 @@ export default function AthletesPage() {
                       </span>
                     </td>
                     <td className="actions-col">
+                      <button
+                        className="btn-icon text-purple"
+                        onClick={() => handleViewPhoto(a)}
+                        disabled={loadingPhotoId === a.athleteId}
+                        title="Xem ảnh thẻ riêng tư"
+                      >
+                        {loadingPhotoId === a.athleteId ? "…" : "📷"}
+                      </button>
                       <button className="btn-icon text-blue" onClick={() => handleEdit(a)} title="Sửa thông tin">
                         ✏️
                       </button>
@@ -745,6 +951,53 @@ export default function AthletesPage() {
              Hiển thị <strong>{filteredAthletes.length}</strong> / {allAthletes.length} VĐV
           </div>
         </div>
+
+        <Modal
+          isOpen={photoPreview.open}
+          onClose={() => setPhotoPreview({ open: false, athleteId: "", athleteName: "", url: "", publicApproved: false })}
+          title={`Ảnh thẻ VĐV${photoPreview.athleteName ? ` — ${photoPreview.athleteName}` : ""}`}
+        >
+          {photoPreview.url && (
+            <>
+              <img
+                src={photoPreview.url}
+                alt={`Ảnh thẻ ${photoPreview.athleteName}`}
+                style={{ display: "block", width: "100%", maxHeight: "65vh", objectFit: "contain", borderRadius: "8px" }}
+              />
+              <input
+                ref={photoFileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleReplacePhoto}
+                style={{ display: "none" }}
+              />
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", flexWrap: "wrap", marginTop: "16px" }}>
+                {photoPreview.publicApproved ? (
+                  <span style={{ alignSelf: "center", color: "#15803d", fontWeight: 600 }}>
+                    ✓ Đã công khai
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={publishingPhoto || replacingPhoto}
+                    onClick={handlePublishPhoto}
+                  >
+                    {publishingPhoto ? "Đang công khai..." : "Duyệt & công khai"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={replacingPhoto}
+                  onClick={() => photoFileInputRef.current?.click()}
+                >
+                  {replacingPhoto ? "Đang thay ảnh..." : "Thay ảnh"}
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
 
         <Modal
           isOpen={showWithdrawAthletesModal}

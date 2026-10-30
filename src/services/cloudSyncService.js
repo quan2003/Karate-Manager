@@ -3,28 +3,52 @@
  * Quản lý đồng bộ tự động & thủ công từ Thư ký tổng (Client App) lên Server VPS của Super Admin
  */
 
-import { createBackupData } from './backupService.js';
-import { dbGetMachineId } from './dbService.js';
-import { getComputedCategoryResults } from '../domain/bronzeIntegration.js';
+import { createBackupData } from "./backupService.js";
+import { dbGetMachineId } from "./dbService.js";
+import { getComputedCategoryResults } from "../domain/bronzeIntegration.js";
+import { getCurrentLicense } from "./licenseService.js";
 
 // Danh sách các VPS Base URL (Ưu tiên Domain HTTPS proxy, sau đó tới Direct IP Port)
-const VPS_SERVERS = [
-  'https://admin.luuquancoder.id.vn',
-  'http://103.82.193.133:2000'
-];
+export const KSPORT_CLOUD_API_URL = "https://api.k-sport.net";
+const VPS_SERVERS = [KSPORT_CLOUD_API_URL];
 
 let vpsSyncedIds = null;
 let lastVPSCheckTime = 0;
 
-const SYNC_STATES_KEY = 'krt_cloud_sync_states';
-const RESULT_RELAY_ID_KEY = 'krt_cloud_result_relay_id';
+const SYNC_STATES_KEY = "krt_cloud_sync_states";
+const RESULT_RELAY_ID_KEY = "krt_cloud_result_relay_id";
+
+function getCloudIdentity() {
+  const license = getCurrentLicense();
+  const machineId = String(license?.machineId || "").trim();
+  if (
+    !license?.active ||
+    license.isTrial ||
+    !license.licenseKey ||
+    !machineId
+  ) {
+    throw new Error("Cloud sync yêu cầu bản quyền đang hoạt động trên máy này");
+  }
+  return { license, machineId };
+}
+
+export async function getCloudAuthHeaders() {
+  const { license, machineId } = getCloudIdentity();
+  return {
+    "X-K-Sport-License": license.licenseKey,
+    "X-K-Sport-Machine": machineId,
+  };
+}
 
 export function getOrCreateCloudResultRelayId() {
   const existing = localStorage.getItem(RESULT_RELAY_ID_KEY);
   if (existing) return existing;
-  const randomPart = typeof crypto !== "undefined" && crypto.randomUUID
-    ? `${crypto.randomUUID()}-${crypto.randomUUID()}`
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  const randomPart =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? `${crypto.randomUUID()}-${crypto.randomUUID()}`
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random()
+          .toString(36)
+          .slice(2)}`;
   const relayId = `KRC-${randomPart}`;
   localStorage.setItem(RESULT_RELAY_ID_KEY, relayId);
   return relayId;
@@ -45,19 +69,20 @@ export function saveSyncState(tournamentId, stateObj) {
     states[tournamentId] = {
       ...(states[tournamentId] || {}),
       ...stateObj,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
     localStorage.setItem(SYNC_STATES_KEY, JSON.stringify(states));
   } catch (e) {
-    console.error('Error saving sync state:', e);
+    console.error("Error saving sync state:", e);
   }
 }
-
 
 export function isTournamentAutoSyncEnabled(tournamentId) {
   if (!tournamentId) return false;
   const localState = getSyncStates()[tournamentId];
-  return localState?.autoSyncEnabled === true || Boolean(localState?.lastSyncedAt);
+  return (
+    localState?.autoSyncEnabled === true || Boolean(localState?.lastSyncedAt)
+  );
 }
 
 export async function checkVPSOnlineSyncList() {
@@ -67,21 +92,27 @@ export async function checkVPSOnlineSyncList() {
   }
 
   try {
+    const authHeaders = await getCloudAuthHeaders();
     for (const serverUrl of VPS_SERVERS) {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 4000);
         // Gọi Endpoint Công Khai (Public API không cần JWT token)
         const res = await fetch(`${serverUrl}/api/cloud-sync/synced-ids`, {
-          method: 'GET',
-          mode: 'cors',
-          signal: controller.signal
+          method: "GET",
+          mode: "cors",
+          headers: authHeaders,
+          signal: controller.signal,
         });
         clearTimeout(timeoutId);
         if (res.ok) {
           const data = await res.json();
-          if (data.success && (Array.isArray(data.ids) || Array.isArray(data.tournaments))) {
-            const idList = data.ids || (data.tournaments || []).map((t) => t.id);
+          if (
+            data.success &&
+            (Array.isArray(data.ids) || Array.isArray(data.tournaments))
+          ) {
+            const idList =
+              data.ids || (data.tournaments || []).map((t) => t.id);
             vpsSyncedIds = new Set(idList);
             lastVPSCheckTime = now;
             break;
@@ -105,16 +136,18 @@ export function getTournamentSyncStatus(tournamentId) {
   if (vpsSyncedIds !== null && !vpsSyncedIds.has(tournamentId)) {
     return {
       lastSyncedAt: null,
-      status: 'idle',
-      error: 'Chưa có trên VPS'
+      status: "idle",
+      error: "Chưa có trên VPS",
     };
   }
 
-  return localState || {
-    lastSyncedAt: null,
-    status: 'idle',
-    error: null
-  };
+  return (
+    localState || {
+      lastSyncedAt: null,
+      status: "idle",
+      error: null,
+    }
+  );
 }
 
 export function getCategoryMedalResults(cat, categoryResultsMap = {}) {
@@ -162,45 +195,69 @@ export function getCategoryMedalResults(cat, categoryResultsMap = {}) {
   if (!saved) return computed || {};
   if (!computed) return saved || {};
 
-  const fields = ["first", "second", "third1", "third2", "club1", "club2", "club3a", "club3b"];
+  const fields = [
+    "first",
+    "second",
+    "third1",
+    "third2",
+    "club1",
+    "club2",
+    "club3a",
+    "club3b",
+  ];
   const merged = {};
   fields.forEach((f) => {
-    merged[f] = saved[f] && typeof saved[f] === 'string' && saved[f].trim() !== "" ? saved[f] : (computed[f] || "");
+    merged[f] =
+      saved[f] && typeof saved[f] === "string" && saved[f].trim() !== ""
+        ? saved[f]
+        : computed[f] || "";
   });
   return merged;
 }
 
 /**
  * Đẩy dữ liệu giải đấu lên Server VPS của Super Admin (Thử qua các Endpoint)
- * @param {string} tournamentId 
+ * @param {string} tournamentId
  * @param {Object} tournamentObj (Optional)
  * @returns {Promise<Object>} { success: boolean, message: string, syncedAt: string }
  */
-export async function pushTournamentToCloud(tournamentId, tournamentObj = null) {
+export async function pushTournamentToCloud(
+  tournamentId,
+  tournamentObj = null
+) {
   if (!tournamentId) {
-    return { success: false, message: 'Thiếu ID giải đấu để đồng bộ' };
+    return { success: false, message: "Thiếu ID giải đấu để đồng bộ" };
   }
 
-  saveSyncState(tournamentId, { status: 'syncing', error: null });
+  saveSyncState(tournamentId, { status: "syncing", error: null });
 
   try {
     // 1. Tạo gói dữ liệu .kbackup cho giải này
-    const backupResult = await createBackupData(`Đồng bộ Cloud tự động`, tournamentId);
+    const backupResult = await createBackupData(
+      `Đồng bộ Cloud tự động`,
+      tournamentId
+    );
     if (!backupResult.success || !backupResult.data) {
-      throw new Error(backupResult.error || 'Không thể đóng gói dữ liệu giải đấu');
+      throw new Error(
+        backupResult.error || "Không thể đóng gói dữ liệu giải đấu"
+      );
     }
 
     const backupData = backupResult.data;
-    const tournamentData = tournamentObj || (backupData.data?.tournaments && backupData.data.tournaments[0]);
+    const tournamentData =
+      tournamentObj ||
+      (backupData.data?.tournaments && backupData.data.tournaments[0]);
 
     if (!tournamentData) {
-      throw new Error('Dữ liệu giải đấu rỗng');
+      throw new Error("Dữ liệu giải đấu rỗng");
     }
 
     // 2. Thu thập metadata & Bảng xếp hạng Toàn đoàn
-    const machineId = await dbGetMachineId();
+    const { machineId } = getCloudIdentity();
+    const authHeaders = await getCloudAuthHeaders();
     const totalAthletes = (tournamentData.categories || []).reduce(
-      (sum, cat) => sum + (cat.athletes ? cat.athletes.length : 0), 0
+      (sum, cat) => sum + (cat.athletes ? cat.athletes.length : 0),
+      0
     );
     const totalCategories = (tournamentData.categories || []).length;
 
@@ -210,28 +267,48 @@ export async function pushTournamentToCloud(tournamentId, tournamentObj = null) 
     const categoryResults = tournamentData.categoryResults || {};
 
     (tournamentData.categories || []).forEach((category) => {
+      // Draft or amended results remain private until an Admin confirms them.
+      const confirmed = categoryResults[category.id];
+      if (!confirmed?.confirmedAt) return;
       const results = getCategoryMedalResults(category, categoryResults);
       const catName = category.name || category.eventName || "Hạng mục";
 
       const first = results.first || "";
-      const club1 = results.club1 || results.firstClub || category.athletes?.find(a => a.name === first)?.club || "";
+      const club1 = results.club1 || results.firstClub || "";
       const second = results.second || "";
-      const club2 = results.club2 || results.secondClub || category.athletes?.find(a => a.name === second)?.club || "";
+      const club2 = results.club2 || results.secondClub || "";
       const third1 = results.third1 || results.third || "";
-      const club3a = results.club3a || results.third1Club || category.athletes?.find(a => a.name === third1)?.club || "";
+      const club3a = results.club3a || results.third1Club || "";
       const third2 = results.third2 || "";
-      const club3b = results.club3b || results.third2Club || category.athletes?.find(a => a.name === third2)?.club || "";
+      const club3b = results.club3b || results.third2Club || "";
+      const resolveAthleteId = (name, club) => {
+        const candidates = (category.athletes || []).filter(
+          (athlete) => athlete?.name === name && athlete?.club === club
+        );
+        // Ambiguous names are deliberately not published as medalists. This
+        // prevents a medal being assigned to the wrong athlete.
+        return candidates.length === 1
+          ? candidates[0].athleteId || candidates[0].id
+          : null;
+      };
 
       const winners = {
         categoryName: catName,
+        categoryId: category.id,
+        confirmedAt: confirmed.confirmedAt,
+        confirmedBy: confirmed.confirmedBy || "ADMIN",
         gold: first || null,
         goldClub: club1 || null,
+        goldAthleteId: resolveAthleteId(first, club1),
         silver: second || null,
         silverClub: club2 || null,
+        silverAthleteId: resolveAthleteId(second, club2),
         bronze1: third1 || null,
         bronze1Club: club3a || null,
+        bronze1AthleteId: resolveAthleteId(third1, club3a),
         bronze2: third2 || null,
         bronze2Club: club3b || null,
+        bronze2AthleteId: resolveAthleteId(third2, club3b),
       };
 
       if (winners.gold || winners.silver || winners.bronze1) {
@@ -239,52 +316,71 @@ export async function pushTournamentToCloud(tournamentId, tournamentObj = null) 
       }
 
       const addMedal = (club, type) => {
-        if (!club || typeof club !== 'string') return;
+        if (!club || typeof club !== "string") return;
         const normalized = club.trim();
         if (!normalized) return;
         if (!clubMedals[normalized]) {
-          clubMedals[normalized] = { club: normalized, gold: 0, silver: 0, bronze: 0, total: 0 };
+          clubMedals[normalized] = {
+            club: normalized,
+            gold: 0,
+            silver: 0,
+            bronze: 0,
+            total: 0,
+          };
         }
         clubMedals[normalized][type] += 1;
         clubMedals[normalized].total += 1;
       };
 
-      if (winners.goldClub) addMedal(winners.goldClub, 'gold');
-      if (winners.silverClub) addMedal(winners.silverClub, 'silver');
-      if (winners.bronze1Club) addMedal(winners.bronze1Club, 'bronze');
-      if (winners.bronze2Club) addMedal(winners.bronze2Club, 'bronze');
+      if (winners.goldClub) addMedal(winners.goldClub, "gold");
+      if (winners.silverClub) addMedal(winners.silverClub, "silver");
+      if (winners.bronze1Club) addMedal(winners.bronze1Club, "bronze");
+      if (winners.bronze2Club) addMedal(winners.bronze2Club, "bronze");
     });
 
     const delegationRankings = Object.values(clubMedals)
-      .sort((a, b) => b.gold - a.gold || b.silver - a.silver || b.bronze - a.bronze)
+      .sort(
+        (a, b) => b.gold - a.gold || b.silver - a.silver || b.bronze - a.bronze
+      )
       .map((item, idx) => ({ rank: idx + 1, ...item }));
 
     const localStates = getSyncStates();
     const currentSyncState = localStates[tournamentId] || {};
-    const authorizedMachineId = currentSyncState.authorizedMachineId || tournamentData.authorizedMachineId || machineId;
+    const savedAuthorizedMachineId =
+      currentSyncState.authorizedMachineId ||
+      tournamentData.authorizedMachineId ||
+      "";
+    // Older builds stored the backup-only `machine_*` ID here. It was never a
+    // licensed machine identity, so migrate it to the active license machine.
+    const authorizedMachineId = String(savedAuthorizedMachineId).startsWith(
+      "KRT-"
+    )
+      ? savedAuthorizedMachineId
+      : machineId;
 
     const payload = {
       tournamentId: tournamentData.id,
       tournamentName: tournamentData.name,
-      machineId: machineId || 'KRT-UNKNOWN',
+      machineId: machineId || "KRT-UNKNOWN",
       authorizedMachineId,
       authorized_machine_id: authorizedMachineId,
       isAuthorizedSource: machineId === authorizedMachineId,
-      startDate: tournamentData.startDate || tournamentData.date || '',
-      endDate: tournamentData.endDate || tournamentData.date || '',
-      location: tournamentData.location || '',
+      startDate: tournamentData.startDate || tournamentData.date || "",
+      endDate: tournamentData.endDate || tournamentData.date || "",
+      location: tournamentData.location || "",
       totalAthletes,
       totalCategories,
       backupData,
       summary: {
-        syncedFrom: 'Client Admin App',
-        clientAppVersion: '1.0.1',
+        syncedFrom: "Client Admin App",
+        clientAppVersion: "1.0.1",
         delegationRankings,
         medalists,
         totalClubs: Object.keys(clubMedals).length,
         machineId,
-        authorizedMachineId
-      }
+        authorizedMachineId,
+      },
+      isPublic: tournamentData.isPublic === true,
     };
 
     // 3. Gọi API Push lên VPS (Thử lần lượt qua các server domain/IP)
@@ -297,13 +393,14 @@ export async function pushTournamentToCloud(tournamentId, tournamentObj = null) 
         const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s fast timeout per server
 
         const response = await fetch(`${serverUrl}/api/cloud-sync/tournament`, {
-          method: 'POST',
-          mode: 'cors',
+          method: "POST",
+          mode: "cors",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
+            ...authHeaders,
           },
           body: JSON.stringify(payload),
-          signal: controller.signal
+          signal: controller.signal,
         });
 
         clearTimeout(timeoutId);
@@ -313,58 +410,74 @@ export async function pushTournamentToCloud(tournamentId, tournamentObj = null) 
           break; // Đã đẩy thành công!
         } else {
           const errData = await response.json().catch(() => ({}));
-          lastError = errData.message || (response.status === 413 ? 'Dữ liệu quá dung lượng cho phép (HTTP 413)' : `Lỗi HTTP ${response.status}`);
+          lastError =
+            errData.message ||
+            (response.status === 413
+              ? "Dữ liệu quá dung lượng cho phép (HTTP 413)"
+              : `Lỗi HTTP ${response.status}`);
         }
       } catch (err) {
-        lastError = (err.name === 'AbortError') 
-          ? 'Hết thời gian chờ (8s)'
-          : (err.message === 'Failed to fetch' ? 'Không thể kết nối VPS Server (Kiểm tra mạng / SSL)' : err.message);
+        lastError =
+          err.name === "AbortError"
+            ? "Hết thời gian chờ (8s)"
+            : err.message === "Failed to fetch"
+            ? "Không thể kết nối VPS Server (Kiểm tra mạng / SSL)"
+            : err.message;
       }
     }
 
     if (!successRes) {
-      throw new Error(lastError || 'Không thể kết nối đến VPS Server');
+      throw new Error(lastError || "Không thể kết nối đến VPS Server");
     }
 
     const syncedAt = successRes.syncedAt || new Date().toISOString();
 
     saveSyncState(tournamentId, {
-      status: 'synced',
+      status: "synced",
       lastSyncedAt: syncedAt,
       autoSyncEnabled: true,
       authorizedMachineId,
-      error: null
+      error: null,
     });
 
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('krt_cloud_sync_update', {
-        detail: { tournamentId, syncedAt, status: 'synced', authorizedMachineId }
-      }));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("krt_cloud_sync_update", {
+          detail: {
+            tournamentId,
+            syncedAt,
+            status: "synced",
+            authorizedMachineId,
+          },
+        })
+      );
     }
 
     return {
       success: true,
-      message: successRes.message || 'Đồng bộ lên VPS thành công!',
-      syncedAt
+      message: successRes.message || "Đồng bộ lên VPS thành công!",
+      syncedAt,
     };
   } catch (error) {
-    console.error('Lỗi khi đồng bộ lên VPS:', error);
+    console.error("Lỗi khi đồng bộ lên VPS:", error);
     const errorMsg = error.message;
 
     saveSyncState(tournamentId, {
-      status: 'error',
-      error: errorMsg
+      status: "error",
+      error: errorMsg,
     });
 
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('krt_cloud_sync_update', {
-        detail: { tournamentId, status: 'error', error: errorMsg }
-      }));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("krt_cloud_sync_update", {
+          detail: { tournamentId, status: "error", error: errorMsg },
+        })
+      );
     }
 
     return {
       success: false,
-      message: errorMsg
+      message: errorMsg,
     };
   }
 }
@@ -375,7 +488,11 @@ export async function pushTournamentToCloud(tournamentId, tournamentObj = null) 
  */
 let debouncedSyncTimeouts = {};
 
-export function triggerDebouncedCloudSync(tournamentId, tournamentObj, delayMs = 3000) {
+export function triggerDebouncedCloudSync(
+  tournamentId,
+  tournamentObj,
+  delayMs = 3000
+) {
   // Giải mới chỉ nằm cục bộ cho tới khi người dùng chủ động đồng bộ lần đầu.
   if (!isTournamentAutoSyncEnabled(tournamentId)) return;
 
@@ -386,9 +503,11 @@ export function triggerDebouncedCloudSync(tournamentId, tournamentObj, delayMs =
   debouncedSyncTimeouts[tournamentId] = setTimeout(() => {
     delete debouncedSyncTimeouts[tournamentId];
     if (navigator.onLine && isTournamentAutoSyncEnabled(tournamentId)) {
-      console.log(`[Realtime Cloud Sync] Tự động đồng bộ giải [${tournamentId}] lên VPS...`);
-      pushTournamentToCloud(tournamentId, tournamentObj).catch(err => {
-        console.warn('[Realtime Cloud Sync] Lỗi đẩy ngầm:', err);
+      console.log(
+        `[Realtime Cloud Sync] Tự động đồng bộ giải [${tournamentId}] lên VPS...`
+      );
+      pushTournamentToCloud(tournamentId, tournamentObj).catch((err) => {
+        console.warn("[Realtime Cloud Sync] Lỗi đẩy ngầm:", err);
       });
     }
   }, delayMs);
@@ -397,12 +516,22 @@ export function triggerDebouncedCloudSync(tournamentId, tournamentObj, delayMs =
 /**
  * Phân quyền / Xác nhận Machine ID nguồn chính cho giải đấu
  */
-export async function setAuthorizedMachineForTournament(tournamentId, targetMachineId = null) {
-  if (!tournamentId) return { success: false, message: 'Thiếu ID giải đấu' };
+export async function setAuthorizedMachineForTournament(
+  tournamentId,
+  targetMachineId = null
+) {
+  if (!tournamentId) return { success: false, message: "Thiếu ID giải đấu" };
 
-  const selectedMachineId = targetMachineId || (await dbGetMachineId());
+  let selectedMachineId = targetMachineId;
+  if (!selectedMachineId) {
+    try {
+      selectedMachineId = getCloudIdentity().machineId;
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  }
   saveSyncState(tournamentId, {
-    authorizedMachineId: selectedMachineId
+    authorizedMachineId: selectedMachineId,
   });
 
   // Re-push để cập nhật authorizedMachineId trên VPS
@@ -413,7 +542,7 @@ export async function setAuthorizedMachineForTournament(tournamentId, targetMach
     authorizedMachineId: selectedMachineId,
     message: pushRes.success
       ? `👑 Đã xác nhận Mã máy [${selectedMachineId}] là Máy Nguồn Chính cho giải đấu!`
-      : pushRes.message
+      : pushRes.message,
   };
 }
 
@@ -435,12 +564,15 @@ export function startAutoSyncEngine(getTournamentsFn) {
     lastAutoSyncTime = now;
 
     try {
-      const tournaments = typeof getTournamentsFn === 'function' ? getTournamentsFn() : [];
+      const tournaments =
+        typeof getTournamentsFn === "function" ? getTournamentsFn() : [];
       if (Array.isArray(tournaments) && tournaments.length > 0) {
         for (const t of tournaments) {
           if (!isTournamentAutoSyncEnabled(t.id)) continue;
           const syncStatus = getTournamentSyncStatus(t.id);
-          const lastSynced = syncStatus.lastSyncedAt ? new Date(syncStatus.lastSyncedAt).getTime() : 0;
+          const lastSynced = syncStatus.lastSyncedAt
+            ? new Date(syncStatus.lastSyncedAt).getTime()
+            : 0;
           // Chỉ tự cập nhật các giải đã được người dùng đồng bộ thành công trước đó.
           if (now - lastSynced > 2 * 60 * 1000) {
             await pushTournamentToCloud(t.id, t);
@@ -477,22 +609,30 @@ async function requestCloudResultRelay(path, options = {}, timeoutMs = 8000) {
       lastError = data.message || `Lỗi HTTP ${response.status}`;
     } catch (error) {
       clearTimeout(timeoutId);
-      lastError = error.name === "AbortError"
-        ? "Hết thời gian chờ máy chủ Cloud"
-        : error.message;
+      lastError =
+        error.name === "AbortError"
+          ? "Hết thời gian chờ máy chủ Cloud"
+          : error.message;
     }
   }
   throw new Error(lastError);
 }
 
 /** Gửi một lô kết quả tới một hoặc nhiều Machine ID nhận Cloud. */
-export async function pushResultsToCloudRelay(targetChannelIds, tournamentId, events = []) {
-  const targets = [...new Set(
-    (Array.isArray(targetChannelIds) ? targetChannelIds : [targetChannelIds])
-      .map((value) => String(value || "").trim())
-      .filter(Boolean)
-  )];
-  if (targets.length === 0) return { success: false, message: "Thiếu Machine ID máy nhận" };
+export async function pushResultsToCloudRelay(
+  targetChannelIds,
+  tournamentId,
+  events = []
+) {
+  const targets = [
+    ...new Set(
+      (Array.isArray(targetChannelIds) ? targetChannelIds : [targetChannelIds])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    ),
+  ];
+  if (targets.length === 0)
+    return { success: false, message: "Thiếu Machine ID máy nhận" };
   if (!tournamentId) return { success: false, message: "Thiếu ID giải đấu" };
   if (!Array.isArray(events) || events.length === 0) {
     return { success: false, message: "Chưa có kết quả để đồng bộ" };
@@ -500,26 +640,38 @@ export async function pushResultsToCloudRelay(targetChannelIds, tournamentId, ev
 
   try {
     const sourceMachineId = await dbGetMachineId();
-    return await requestCloudResultRelay("/api/cloud-sync/results", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        targetChannels: targets,
-        sourceMachineId: sourceMachineId || "KRT-UNKNOWN",
-        tournamentId,
-        events,
-      }),
-    }, 12000);
+    return await requestCloudResultRelay(
+      "/api/cloud-sync/results",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetChannels: targets,
+          sourceMachineId: sourceMachineId || "KRT-UNKNOWN",
+          tournamentId,
+          events,
+        }),
+      },
+      12000
+    );
   } catch (error) {
     return { success: false, message: error.message };
   }
 }
 
 /** Nhận các kết quả Cloud mới dành cho Machine ID hiện tại. */
-export async function pullResultsFromCloudRelay(channelId, tournamentId, since = "") {
+export async function pullResultsFromCloudRelay(
+  channelId,
+  tournamentId,
+  since = ""
+) {
   const normalizedChannelId = String(channelId || "").trim();
   if (!normalizedChannelId || !tournamentId) {
-    return { success: false, events: [], message: "Thiếu Mã nhận Cloud hoặc ID giải đấu" };
+    return {
+      success: false,
+      events: [],
+      message: "Thiếu Mã nhận Cloud hoặc ID giải đấu",
+    };
   }
   const params = new URLSearchParams({
     channelId: normalizedChannelId,
@@ -527,9 +679,12 @@ export async function pullResultsFromCloudRelay(channelId, tournamentId, since =
   });
   if (since) params.set("since", since);
   try {
-    const data = await requestCloudResultRelay(`/api/cloud-sync/results?${params.toString()}`, {
-      method: "GET",
-    });
+    const data = await requestCloudResultRelay(
+      `/api/cloud-sync/results?${params.toString()}`,
+      {
+        method: "GET",
+      }
+    );
     return {
       success: true,
       events: data.events || [],
@@ -543,13 +698,23 @@ export async function pullResultsFromCloudRelay(channelId, tournamentId, since =
 
 export async function checkCloudResultRelay(targetMachineId) {
   const normalizedTarget = String(targetMachineId || "").trim();
-  if (!normalizedTarget) return { success: false, message: "Thiếu Machine ID máy nhận" };
-  const params = new URLSearchParams({ channelId: normalizedTarget, health: "1" });
+  if (!normalizedTarget)
+    return { success: false, message: "Thiếu Machine ID máy nhận" };
+  const params = new URLSearchParams({
+    channelId: normalizedTarget,
+    health: "1",
+  });
   try {
-    const data = await requestCloudResultRelay(`/api/cloud-sync/results?${params.toString()}`, {
-      method: "GET",
-    });
-    return { success: true, message: data.message || "Cloud VPS đang hoạt động" };
+    const data = await requestCloudResultRelay(
+      `/api/cloud-sync/results?${params.toString()}`,
+      {
+        method: "GET",
+      }
+    );
+    return {
+      success: true,
+      message: data.message || "Cloud VPS đang hoạt động",
+    };
   } catch (error) {
     return { success: false, message: error.message };
   }
@@ -559,14 +724,21 @@ export async function checkCloudResultRelay(targetMachineId) {
  * Lấy danh sách giải đấu khả dụng trên VPS Server
  */
 export async function fetchCloudTournamentsList() {
+  let authHeaders;
+  try {
+    authHeaders = await getCloudAuthHeaders();
+  } catch (error) {
+    return { success: false, tournaments: [], message: error.message };
+  }
   for (const serverUrl of VPS_SERVERS) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000);
       const res = await fetch(`${serverUrl}/api/cloud-sync/synced-ids`, {
-        method: 'GET',
-        mode: 'cors',
-        signal: controller.signal
+        method: "GET",
+        mode: "cors",
+        headers: authHeaders,
+        signal: controller.signal,
       });
       clearTimeout(timeoutId);
       if (res.ok) {
@@ -579,36 +751,54 @@ export async function fetchCloudTournamentsList() {
       // thử server tiếp theo
     }
   }
-  return { success: false, tournaments: [], message: 'Không thể kết nối đến máy chủ Cloud VPS' };
+  return {
+    success: false,
+    tournaments: [],
+    message: "Không thể kết nối đến máy chủ Cloud VPS",
+  };
 }
 
 /**
  * Tải trực tiếp gói .kbackup của một giải đấu từ VPS về Client App
- * @param {string} tournamentId 
+ * @param {string} tournamentId
  */
 export async function downloadCloudBackupData(tournamentId) {
-  if (!tournamentId) return { success: false, message: 'Thiếu ID giải đấu' };
+  if (!tournamentId) return { success: false, message: "Thiếu ID giải đấu" };
+
+  let authHeaders;
+  try {
+    authHeaders = await getCloudAuthHeaders();
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
 
   for (const serverUrl of VPS_SERVERS) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout for full backup json
-      const res = await fetch(`${serverUrl}/api/cloud-sync/download-kbackup/${tournamentId}`, {
-        method: 'GET',
-        mode: 'cors',
-        signal: controller.signal
-      });
+      const res = await fetch(
+        `${serverUrl}/api/cloud-sync/download-kbackup/${tournamentId}`,
+        {
+          method: "GET",
+          mode: "cors",
+          headers: authHeaders,
+          signal: controller.signal,
+        }
+      );
       clearTimeout(timeoutId);
       if (res.ok) {
         const backupData = await res.json();
         return { success: true, data: backupData };
       } else {
         const errData = await res.json().catch(() => ({}));
-        return { success: false, message: errData.message || `Lỗi HTTP ${res.status}` };
+        return {
+          success: false,
+          message: errData.message || `Lỗi HTTP ${res.status}`,
+        };
       }
     } catch (e) {
       // thử server kế tiếp
     }
   }
-  return { success: false, message: 'Không thể tải gói dữ liệu từ Cloud VPS' };
+  return { success: false, message: "Không thể tải gói dữ liệu từ Cloud VPS" };
 }

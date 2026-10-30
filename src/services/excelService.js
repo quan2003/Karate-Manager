@@ -122,6 +122,9 @@ export function parseExcelFile(file) {
 
         // Skip header row if exists
         const startRow = isHeaderRow(jsonData[0]) ? 1 : 0;
+        const identityHeader = startRow === 1 ? (jsonData[0] || []) : [];
+        const athleteIdCol = findHeaderColumn(identityHeader, ["mã vđv k-sport", "ma vdv k-sport", "athlete id", "athleteid"]);
+        const clubIdCol = findHeaderColumn(identityHeader, ["mã clb k-sport", "ma clb k-sport", "club id", "clubid"]);
 
         const athletes = [];
         const errors = [];
@@ -195,6 +198,8 @@ export function parseExcelFile(file) {
             isTeam,
             teamCode,
             seed: seed && seed >= 1 && seed <= 8 ? seed : null,
+            athleteId: athleteIdCol >= 0 && row[athleteIdCol] ? String(row[athleteIdCol]).trim() : null,
+            clubId: clubIdCol >= 0 && row[clubIdCol] ? String(row[clubIdCol]).trim() : null,
           });
         }
 
@@ -326,6 +331,9 @@ export function parseCoachExcelFile(file) {
 
         const athletes = [];
         const errors = [];
+        const identityHeader = startRow === 1 ? (jsonData[0] || []) : [];
+        const athleteIdCol = findHeaderColumn(identityHeader, ["mã vđv k-sport", "ma vdv k-sport", "athlete id", "athleteid"]);
+        const clubIdCol = findHeaderColumn(identityHeader, ["mã clb k-sport", "ma clb k-sport", "club id", "clubid"]);
         const header = headerRow || [];
 
         for (let i = startRow; i < jsonData.length; i++) {
@@ -407,6 +415,8 @@ export function parseCoachExcelFile(file) {
             isTeam,
             teamCode,
             seed: seed && seed >= 1 && seed <= 8 ? seed : null,
+            athleteId: athleteIdCol >= 0 && row[athleteIdCol] ? String(row[athleteIdCol]).trim() : null,
+            clubId: clubIdCol >= 0 && row[clubIdCol] ? String(row[clubIdCol]).trim() : null,
             country: "VN",
           });
         }
@@ -470,6 +480,8 @@ export function exportAthletesToExcel(
     "Hạt giống",
   ];
 
+  headers.push("Mã VĐV K-SPORT", "Mã CLB K-SPORT");
+
   const data = [
     headers,
     ...athletes.map((a) => [
@@ -483,6 +495,8 @@ export function exportAthletesToExcel(
       a.isTeam ? "Có" : "Không",
       a.teamCode || "",
       a.seed || "",
+      a.athleteId || "",
+      a.clubId || "",
     ]),
   ];
 
@@ -501,6 +515,8 @@ export function exportAthletesToExcel(
     { wch: 10 }, // Team
     { wch: 12 }, // Team code
     { wch: 10 }, // Seed
+    { wch: 24 }, // K-SPORT athlete ID
+    { wch: 24 }, // K-SPORT club ID
   ];
   worksheet["!cols"] = colWidths;
 

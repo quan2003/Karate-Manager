@@ -53,6 +53,8 @@ export default function HomePage() {
     startDate: new Date().toISOString().split("T")[0],
     endDate: new Date().toISOString().split("T")[0],
     location: "",
+    isPublic: false,
+    identityRegistryEnabled: true,
     default_bronze_mode: BRONZE_MODES.DUAL_BRONZE,
     defaultEligibilityPolicy: { version: 1 },
   });
@@ -84,6 +86,8 @@ export default function HomePage() {
       startDate: new Date().toISOString().split("T")[0],
       endDate: new Date().toISOString().split("T")[0],
       location: "",
+      isPublic: false,
+      identityRegistryEnabled: true,
       default_bronze_mode: BRONZE_MODES.DUAL_BRONZE,
       defaultEligibilityPolicy: { version: 1 },
     });
@@ -104,6 +108,7 @@ export default function HomePage() {
           tournament.date ||
           new Date().toISOString().split("T")[0],
         location: tournament.location || "",
+        isPublic: tournament.isPublic === true,
         ...(Object.prototype.hasOwnProperty.call(tournament, "default_bronze_mode")
           ? { default_bronze_mode: tournament.default_bronze_mode }
           : {}),
@@ -851,6 +856,22 @@ export default function HomePage() {
                 }
                 placeholder="VD: Nhà thi đấu Quốc gia"
               />
+            </div>
+            <div className="input-group">
+              <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={formData.isPublic}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, isPublic: e.target.checked }))}
+                  style={{ marginTop: "3px" }}
+                />
+                <span>
+                  <strong>Công khai trên website K-SPORT</strong>
+                  <small style={{ display: "block", marginTop: "3px" }}>
+                    Chỉ công bố tên VĐV, CLB, nội dung, lịch và kết quả thi đấu. Ngày sinh, liên hệ, cân nặng, giấy tờ và dữ liệu vận hành không được đưa lên API công khai.
+                  </small>
+                </span>
+              </label>
             </div>
             <div className="input-group">
               <label className="input-label">Chế độ huy chương đồng</label>

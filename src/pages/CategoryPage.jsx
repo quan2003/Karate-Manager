@@ -202,7 +202,12 @@ export default function CategoryPage() {
   const handleAddAthlete = (data) => {
     dispatch({
       type: ACTIONS.ADD_ATHLETE,
-      payload: { categoryId: id, ...data, isTeam: isTeamCategory ? Boolean(data.isTeam) : false },
+      payload: {
+        categoryId: id,
+        ...data,
+        identityRegistryEnabled: tournament.identityRegistryEnabled === true,
+        isTeam: isTeamCategory ? Boolean(data.isTeam) : false,
+      },
     });
     setShowAddModal(false);
   };

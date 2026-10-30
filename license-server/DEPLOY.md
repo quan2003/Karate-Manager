@@ -35,6 +35,7 @@ Sau khi cài đặt xong, bạn **PHẢI** tạo file `.env` để bảo mật s
    ```
 2. Sửa nội dung file `.env`:
    - JWT_SECRET: Dùng chuỗi ngẫu nhiên tối thiểu 64 ký tự; API quản trị chỉ chấp nhận JWT từ Admin Web.
+   - `PUBLIC_API_TOKEN` (tùy chọn): token chỉ đọc cho website. Nếu đặt, cấu hình cùng giá trị ở `KSPORT_PUBLIC_API_TOKEN` của `k-sport-web`.
    - `PORT`: Mặc định 2000.
 
 3. Khởi động lại Server để áp dụng cấu hình:

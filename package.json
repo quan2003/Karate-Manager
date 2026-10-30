@@ -16,7 +16,7 @@
     "electron:build:mac": "npm run build && electron-builder --mac",
     "electron:build:all": "npm run build && electron-builder -mwl",
     "electron:build:dir": "npm run build && electron-builder --win --x64 --dir",
-    "deploy-server": "scp license-server/server.js root@103.82.193.133:/root/karate-app/license-server/ && ssh root@103.82.193.133 \"pm2 restart all\"",
+    "deploy-server": "scp license-server/server.js license-server/public-data.js root@103.82.193.133:/root/license-server/ && ssh root@103.82.193.133 \"cd /root/license-server && pm2 restart karate-license-api --update-env\"",
     "version": "node scripts/update-version-date.js && git add package.json",
     "rebuild-sqlite": "electron-rebuild -f -w better-sqlite3",
     "test:display": "node --test scripts/test-display.cjs"

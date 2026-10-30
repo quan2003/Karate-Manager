@@ -1960,8 +1960,9 @@ function finishRound() {
       maybeProposeWinner("timer-ended");
       return;
     }
-    alert("Kh\u00f4ng th\u1ec3 t\u1ef1 x\u00e1c \u0111\u1ecbnh ng\u01b0\u1eddi th\u1eafng round. Th\u01b0 k\u00fd ph\u1ea3i ch\u1ecdn Red Wins ho\u1eb7c Blue Wins.");
-    return;
+    // A team bout may end tied.  There is no round winner to select in this
+    // case, and the tie must be recorded without changing either team total.
+    addMatchLog("system", "", "Round h\u00f2a - kh\u00f4ng c\u00f3 \u0111\u1ed9i th\u1eafng round.");
   }
 
   // Determine round winner

@@ -56,6 +56,20 @@ function normalizeCategoryImportKey(value) {
     .replace(/\s+/g, " ");
 }
 
+function findKnownClubId(tournaments, clubName) {
+  const key = normalizeCategoryImportKey(clubName);
+  if (!key) return null;
+  for (const tournament of tournaments || []) {
+    for (const category of tournament.categories || []) {
+      const match = (category.athletes || []).find(
+        (athlete) => athlete.clubId && normalizeCategoryImportKey(athlete.club) === key,
+      );
+      if (match) return match.clubId;
+    }
+  }
+  return null;
+}
+
 function buildImportedCategory(
   cat,
   existingCategory = null,
@@ -701,8 +715,11 @@ function tournamentReducer(state, action) {
       break;
 
     case ACTIONS.ADD_ATHLETE: {
+      const existingClubId = findKnownClubId(state.tournaments, action.payload.club);
       const newAthlete = {
         id: uuidv4(),
+        athleteId: action.payload.identityRegistryEnabled === true ? uuidv4() : null,
+        clubId: action.payload.clubId || existingClubId || (action.payload.identityRegistryEnabled === true && action.payload.club ? uuidv4() : null),
         name: action.payload.name,
         gender: action.payload.gender || null,
         birthDate: action.payload.birthDate || null,
@@ -1109,6 +1126,9 @@ function tournamentReducer(state, action) {
     }
 
     case ACTIONS.IMPORT_ATHLETES:
+      // Keep one club ID for every incoming row of the same import, including
+      // a brand-new club that does not exist in an earlier tournament yet.
+      const incomingClubIds = new Map();
       newState = {
         ...state,
         tournaments: state.tournaments.map((t) => ({
@@ -1122,28 +1142,25 @@ function tournamentReducer(state, action) {
                     ...action.payload.athletes
                       .filter(
                         (newA) =>
+                          // A name and club are not an identity. Deduplicate
+                          // only a repeated source registration, never people.
+                          !newA.registrationSourceId ||
                           !c.athletes.some(
-                            (oldA) =>
-                              oldA.name
-                                .trim()
-                                .normalize("NFC")
-                                .toLowerCase() ===
-                                newA.name
-                                  .trim()
-                                  .normalize("NFC")
-                                  .toLowerCase() &&
-                              (oldA.club || "")
-                                .trim()
-                                .normalize("NFC")
-                                .toLowerCase() ===
-                                (newA.club || "")
-                                  .trim()
-                                  .normalize("NFC")
-                                  .toLowerCase(),
+                            (oldA) => oldA.registrationSourceId === newA.registrationSourceId,
                           ),
                       )
                       .map((a) => ({
                         id: uuidv4(),
+                        athleteId: a.athleteId || (action.payload.identityRegistryEnabled === true ? uuidv4() : null),
+                        clubId: a.clubId || findKnownClubId(state.tournaments, a.club) || (() => {
+                          if (action.payload.identityRegistryEnabled !== true || !a.club) return null;
+                          const clubKey = normalizeCategoryImportKey(a.club);
+                          if (incomingClubIds.has(clubKey)) return incomingClubIds.get(clubKey);
+                          const clubId = uuidv4();
+                          incomingClubIds.set(clubKey, clubId);
+                          return clubId;
+                        })(),
+                        registrationSourceId: a.registrationSourceId || a.cloudAthleteId || a.id || null,
                         cloudAthleteId: a.cloudAthleteId || a.id || null,
                         name: a.name,
                         gender: a.gender || null,

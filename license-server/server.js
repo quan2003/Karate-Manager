@@ -8,9 +8,13 @@ const crypto = require("crypto");
 const { Pool } = require("pg");
 const nodemailer = require("nodemailer");
 const bcrypt = require("bcryptjs");
+const { createPublicTournamentData, filterPublicRanking, publicId } = require("./public-data");
+const { getR2Config, presignR2 } = require("./r2-storage");
 
-// Load Environment Variables
-dotenv.config();
+// Load the same on-disk configuration in every PM2 cluster worker. PM2 can
+// retain different historical environment values per worker; overriding them
+// here prevents a token issued by worker A being rejected by worker B.
+dotenv.config({ override: true });
 
 const app = express();
 const PORT = process.env.PORT || 2000;
@@ -43,9 +47,12 @@ pool.query("SELECT NOW()", (err, res) => {
     initializeSchema();
     initializeAdminSchema();
     initializeAccountsSchema();
+    initializeContentSchema();
     initializeRequestsSchema();
     initializeCommerceSchema();
     initializeTournamentsSchema();
+    initializeAthleteMediaSchema();
+    initializePublicRegistrationSchema();
     // Start cleanup jobs after schemas are ready
     setTimeout(() => {
       cleanupRevokedExpiredLicenses();
@@ -122,15 +129,26 @@ const initializeAccountsSchema = async () => {
   try {
     await pool.query(createTableQuery);
 
-    // Seed default admin account if none exists
-    const existing = await pool.query("SELECT COUNT(*) FROM admin_accounts");
-    if (parseInt(existing.rows[0].count) === 0) {
-      const defaultPassword = await bcrypt.hash("admin123", 10);
+    // Never create a known default password. The first website administrator
+    // is seeded only when the VPS provides both environment variables.
+    const initialUsername = String(process.env.WEB_ADMIN_USERNAME || "").trim();
+    const initialPassword = String(process.env.WEB_ADMIN_INITIAL_PASSWORD || "");
+    if (initialUsername && initialPassword.length >= 12) {
+      const passwordHash = await bcrypt.hash(initialPassword, 12);
       await pool.query(
-        `INSERT INTO admin_accounts (username, password_hash, display_name) VALUES ($1, $2, $3) ON CONFLICT (username) DO NOTHING`,
-        ["admin", defaultPassword, "Super Admin"]
+        `INSERT INTO admin_accounts (username, password_hash, display_name)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (username) DO NOTHING`,
+        [initialUsername, passwordHash, process.env.WEB_ADMIN_DISPLAY_NAME || "K-SPORT Admin"]
       );
-      console.log("Default admin account created (admin / admin123)");
+      console.log(`Website admin account is ready: ${initialUsername}`);
+    } else {
+      console.warn("Website admin seed skipped: WEB_ADMIN_USERNAME and a 12+ character WEB_ADMIN_INITIAL_PASSWORD are required.");
+    }
+    const legacy = await pool.query("SELECT password_hash FROM admin_accounts WHERE username = 'admin' LIMIT 1");
+    if (legacy.rowCount && await bcrypt.compare("admin123", legacy.rows[0].password_hash)) {
+      await pool.query("DELETE FROM admin_accounts WHERE username = 'admin'");
+      console.log("Removed insecure legacy admin account.");
     }
     console.log("Accounts Schema initialized successfully.");
   } catch (err) {
@@ -157,6 +175,47 @@ const initializeRequestsSchema = async () => {
     console.log("Requests Schema initialized successfully.");
   } catch (err) {
     console.error("Error creating requests schema:", err);
+  }
+};
+
+// Public-website content is intentionally kept separate from tournament data.
+// Only an authenticated website administrator can create or publish it.
+const initializeContentSchema = async () => {
+  try {
+    await pool.query("CREATE EXTENSION IF NOT EXISTS pgcrypto;");
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public_news (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        slug VARCHAR(180) UNIQUE NOT NULL,
+        title VARCHAR(300) NOT NULL,
+        category VARCHAR(120) NOT NULL DEFAULT 'Tin tức',
+        summary TEXT NOT NULL DEFAULT '',
+        body JSONB NOT NULL DEFAULT '[]'::jsonb,
+        image_url TEXT NOT NULL DEFAULT '',
+        published_at DATE NOT NULL DEFAULT CURRENT_DATE,
+        is_published BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS public_banners (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        eyebrow VARCHAR(180) NOT NULL DEFAULT '',
+        title VARCHAR(300) NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        image_url TEXT NOT NULL DEFAULT '',
+        primary_label VARCHAR(100) NOT NULL DEFAULT '',
+        primary_href VARCHAR(500) NOT NULL DEFAULT '',
+        secondary_label VARCHAR(100) NOT NULL DEFAULT '',
+        secondary_href VARCHAR(500) NOT NULL DEFAULT '',
+        position INTEGER NOT NULL DEFAULT 0,
+        is_published BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    console.log("Public content schema initialized successfully.");
+  } catch (err) {
+    console.error("Error creating public content schema:", err);
   }
 };
 
@@ -259,12 +318,72 @@ const initializeTournamentsSchema = async () => {
         status VARCHAR(50) DEFAULT 'ACTIVE',
         is_purged BOOLEAN DEFAULT FALSE,
         backup_data JSONB,
-        summary JSONB DEFAULT '{}'::jsonb
+        summary JSONB DEFAULT '{}'::jsonb,
+        owner_license_id UUID,
+        authorized_machine_id VARCHAR(255),
+        is_public BOOLEAN DEFAULT FALSE,
+        public_data JSONB
       );
+      ALTER TABLE cloud_tournaments ADD COLUMN IF NOT EXISTS owner_license_id UUID;
+      ALTER TABLE cloud_tournaments ADD COLUMN IF NOT EXISTS authorized_machine_id VARCHAR(255);
+      ALTER TABLE cloud_tournaments ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE;
+      ALTER TABLE cloud_tournaments ADD COLUMN IF NOT EXISTS public_data JSONB;
+      CREATE INDEX IF NOT EXISTS idx_cloud_public_read
+        ON cloud_tournaments (last_synced_at DESC)
+        WHERE is_public = TRUE AND public_data IS NOT NULL;
     `);
     console.log("Tournaments schema initialized successfully.");
   } catch (err) {
     console.error("Error creating tournaments schema:", err);
+  }
+};
+
+// New table only: it never backfills or mutates historical tournaments.
+const initializeAthleteMediaSchema = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS athlete_media (
+        athlete_id TEXT PRIMARY KEY,
+        owner_license_id UUID NOT NULL,
+        public_athlete_id VARCHAR(64) UNIQUE NOT NULL,
+        object_key TEXT NOT NULL,
+        content_type VARCHAR(100) NOT NULL,
+        size_bytes INTEGER NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 5242880),
+        is_public BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        approved_at TIMESTAMPTZ,
+        approved_by TEXT
+      );
+      ALTER TABLE athlete_media ADD COLUMN IF NOT EXISTS owner_license_id UUID;
+      CREATE INDEX IF NOT EXISTS idx_athlete_media_public
+        ON athlete_media (public_athlete_id) WHERE is_public = TRUE;
+    `);
+    console.log("Athlete media schema initialized successfully.");
+  } catch (err) {
+    console.error("Error creating athlete media schema:", err);
+  }
+};
+
+// Records the source of photos submitted from the public registration site.
+// It is intentionally separate from historical tournament data and remains
+// private until an authenticated Admin approves the photo for publication.
+const initializePublicRegistrationSchema = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public_registration_media (
+        athlete_id TEXT PRIMARY KEY,
+        tournament_id VARCHAR(255) NOT NULL,
+        club_id TEXT NOT NULL,
+        owner_license_id UUID NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_public_registration_media_tournament
+        ON public_registration_media (tournament_id);
+    `);
+    console.log("Public registration media schema initialized successfully.");
+  } catch (err) {
+    console.error("Error creating public registration media schema:", err);
   }
 };
 
@@ -548,6 +667,41 @@ const authMiddleware = (req, res, next) => {
     req.user = user;
     next();
   });
+};
+
+// Desktop cloud writes use the customer's active license as a scoped
+// credential. The machine must already be activated through /api/license/verify;
+// this middleware never activates a new machine as a side effect.
+const cloudLicenseMiddleware = async (req, res, next) => {
+  const licenseKey = String(req.headers["x-k-sport-license"] || "").trim();
+  const machineId = String(req.headers["x-k-sport-machine"] || "").trim();
+  if (!licenseKey || !machineId) {
+    return res.status(401).json({ success: false, message: "Cloud sync yêu cầu license và Machine ID" });
+  }
+  if (licenseKey.length > 4096 || machineId.length > 255) {
+    return res.status(400).json({ success: false, message: "Thông tin xác thực Cloud không hợp lệ" });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT id, activated_machines
+       FROM licenses
+       WHERE (key = $1 OR raw_key = $1)
+         AND status = 'active'
+         AND expiry_date > NOW()
+       LIMIT 1`,
+      [licenseKey]
+    );
+    const license = result.rows[0];
+    if (!license || !(license.activated_machines || []).includes(machineId)) {
+      return res.status(403).json({ success: false, message: "License hoặc Machine ID không có quyền Cloud sync" });
+    }
+    req.cloudLicense = { id: license.id, machineId, activatedMachines: license.activated_machines || [] };
+    return next();
+  } catch (err) {
+    console.error("Cloud license authentication error:", err);
+    return res.status(500).json({ success: false, message: "Không thể xác thực Cloud sync" });
+  }
 };
 // --- Auth Routes ---
 // Google Auth Route (Updated to accept Access Token)
@@ -1735,27 +1889,714 @@ app.post("/api/license/request/resolve", authMiddleware, async (req, res) => {
 
 // === CLOUD SYNC & TOURNAMENT MANAGEMENT ENDPOINTS ===
 
+const publicReadMiddleware = (req, res, next) => {
+  const configuredToken = String(process.env.PUBLIC_API_TOKEN || "").trim();
+  if (!configuredToken) return next();
+  const suppliedToken = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+  const expected = Buffer.from(configuredToken);
+  const supplied = Buffer.from(suppliedToken);
+  if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
+    return res.status(401).json({ success: false, message: "Public API token không hợp lệ" });
+  }
+  return next();
+};
+
+const loadPublicData = async () => {
+  const result = await pool.query(`
+    SELECT id, name, start_date, end_date, location, backup_data, summary, public_data
+    FROM cloud_tournaments
+    WHERE is_public = TRUE AND public_data IS NOT NULL
+    ORDER BY last_synced_at DESC
+  `);
+  return result.rows.map((row) => {
+    // Rebuild the narrow public DTO from the stored backup. This keeps newly
+    // added safe fields (event date and computed match statistics) available
+    // for already-public tournaments without requiring a second sync.
+    if (row.backup_data) {
+      return createPublicTournamentData({
+        tournamentId: row.id,
+        tournamentName: row.name,
+        startDate: row.start_date,
+        endDate: row.end_date,
+        location: row.location,
+        backupData: row.backup_data,
+        summary: row.summary,
+      });
+    }
+    return row.public_data;
+  }).filter(Boolean);
+};
+
+const refreshEventStatus = (event) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const status = event?.date && today < event.date
+    ? "Sắp diễn ra"
+    : event?.endDate && today > event.endDate
+      ? "Đã kết thúc"
+      : "Đang diễn ra";
+  return { ...event, status };
+};
+
+const publicCollection = (field, transform = (item) => item) => async (req, res) => {
+  try {
+    const datasets = await loadPublicData();
+    let items = datasets.flatMap((dataset) => Array.isArray(dataset?.[field]) ? dataset[field] : []).map(transform);
+    if (field === "athletes" && items.length) {
+      const ids = items.map((item) => item.id).filter(Boolean);
+      const media = await pool.query(
+        "SELECT public_athlete_id FROM athlete_media WHERE is_public = TRUE AND public_athlete_id = ANY($1::text[])",
+        [ids],
+      );
+      const visible = new Set(media.rows.map((row) => row.public_athlete_id));
+      items = items.map((item) => visible.has(item.id)
+        ? { ...item, photoUrl: `/api/public/athletes/${encodeURIComponent(item.id)}/photo` }
+        : item);
+    }
+    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+    return res.json({ items });
+  } catch (err) {
+    console.error(`Public API ${field} error:`, err);
+    return res.status(500).json({ items: [], message: "Không thể tải dữ liệu công khai" });
+  }
+};
+
+const athletePhotoMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const athletePhotoExtension = (contentType) => ({
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+}[contentType]);
+
+// Public registration uploads are deliberately opt-in. They still require a
+// known K-SPORT tournament and are rate-limited because the caller is a coach,
+// not an authenticated Desktop/Admin client.
+const publicRegistrationMediaLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.headers["x-forwarded-for"]?.split(",")[0].trim() || req.ip,
+});
+
+const resolveRegistrationTournamentOwner = async (tournamentId) => {
+  const result = await pool.query(
+    `SELECT id, owner_license_id
+     FROM cloud_tournaments
+     WHERE id = $1 AND is_purged = FALSE AND owner_license_id IS NOT NULL
+     LIMIT 1`,
+    [tournamentId],
+  );
+  return result.rows[0] || null;
+};
+
+const validatePublicRegistrationPhoto = async (req, res) => {
+  if (String(process.env.PUBLIC_REGISTRATION_UPLOADS_ENABLED || "").toLowerCase() !== "true") {
+    res.status(503).json({ success: false, message: "ChÆ°a báº­t upload áº£nh Ä‘Äƒng kÃ½ cÃ´ng khai" });
+    return null;
+  }
+  const athleteId = String(req.params.athleteId || "").trim();
+  const tournamentId = String(req.body?.tournamentId || "").trim();
+  const clubId = String(req.body?.clubId || "").trim();
+  const contentType = String(req.body?.contentType || "").toLowerCase().trim();
+  const sizeBytes = Number(req.body?.sizeBytes);
+  if (!athleteId || athleteId.length > 300 || !tournamentId || tournamentId.length > 255 || !clubId || clubId.length > 300 ||
+      !athletePhotoMimeTypes.has(contentType) || !Number.isInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > 5242880) {
+    res.status(400).json({ success: false, message: "ThÃ´ng tin áº£nh thÃ¨ hoáº·c Ä‘Äƒng kÃ½ khÃ´ng há»£p lá»‡" });
+    return null;
+  }
+  if (!getR2Config()) {
+    res.status(503).json({ success: false, message: "R2 chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh" });
+    return null;
+  }
+  const tournament = await resolveRegistrationTournamentOwner(tournamentId);
+  if (!tournament) {
+    res.status(404).json({ success: false, message: "Giáº£i Ä‘áº¥u chÆ°a sáºµn sÃ ng nháº­n áº£nh Ä‘Äƒng kÃ½ K-SPORT" });
+    return null;
+  }
+  return { athleteId, tournamentId, clubId, contentType, sizeBytes, ownerLicenseId: tournament.owner_license_id };
+};
+
+app.post("/api/public/registration/athletes/:athleteId/photo-upload-url", publicRegistrationMediaLimiter, async (req, res) => {
+  try {
+    const input = await validatePublicRegistrationPhoto(req, res);
+    if (!input) return;
+    const objectKey = `registration-athletes/${input.tournamentId.replace(/[^a-zA-Z0-9_-]/g, "_")}/${input.athleteId.replace(/[^a-zA-Z0-9_-]/g, "_")}/${crypto.randomUUID()}.${athletePhotoExtension(input.contentType)}`;
+    const reservation = await pool.query(`
+      INSERT INTO public_registration_media (athlete_id, tournament_id, club_id, owner_license_id, updated_at)
+      VALUES ($1, $2, $3, $4, NOW())
+      ON CONFLICT (athlete_id) DO UPDATE SET
+        tournament_id = EXCLUDED.tournament_id,
+        club_id = EXCLUDED.club_id,
+        updated_at = NOW()
+      WHERE public_registration_media.owner_license_id = EXCLUDED.owner_license_id
+      RETURNING athlete_id
+    `, [input.athleteId, input.tournamentId, input.clubId, input.ownerLicenseId]);
+    if (!reservation.rowCount) return res.status(403).json({ success: false, message: "Há»“ sÆ¡ VÄV thuá»™c giáº£i K-SPORT khÃ¡c" });
+    return res.json({
+      success: true,
+      objectKey,
+      uploadUrl: presignR2({ method: "PUT", key: objectKey, expiresSeconds: 300 }),
+      expiresInSeconds: 300,
+    });
+  } catch (err) {
+    console.error("Public registration photo signature error:", err);
+    return res.status(500).json({ success: false, message: "KhÃ´ng thá»ƒ táº¡o URL upload áº£nh" });
+  }
+});
+
+app.post("/api/public/registration/athletes/:athleteId/photo-complete", publicRegistrationMediaLimiter, async (req, res) => {
+  try {
+    const input = await validatePublicRegistrationPhoto(req, res);
+    if (!input) return;
+    const objectKey = String(req.body?.objectKey || "").trim();
+    const safePrefix = `registration-athletes/${input.tournamentId.replace(/[^a-zA-Z0-9_-]/g, "_")}/${input.athleteId.replace(/[^a-zA-Z0-9_-]/g, "_")}/`;
+    if (!objectKey.startsWith(safePrefix)) {
+      return res.status(400).json({ success: false, message: "KhÃ³a áº£nh khÃ´ng há»£p lá»‡" });
+    }
+    const reserved = await pool.query(
+      `SELECT athlete_id FROM public_registration_media
+       WHERE athlete_id = $1 AND tournament_id = $2 AND club_id = $3 AND owner_license_id = $4`,
+      [input.athleteId, input.tournamentId, input.clubId, input.ownerLicenseId],
+    );
+    if (!reserved.rowCount) return res.status(409).json({ success: false, message: "PhiÃªn upload áº£nh Ä‘Ã£ háº¿t háº¡n hoáº·c khÃ´ng tá»“n táº¡i" });
+    const saved = await pool.query(`
+      INSERT INTO athlete_media (athlete_id, owner_license_id, public_athlete_id, object_key, content_type, size_bytes, is_public, updated_at, approved_at, approved_by)
+      VALUES ($1, $2, $3, $4, $5, $6, FALSE, NOW(), NULL, NULL)
+      ON CONFLICT (athlete_id) DO UPDATE SET
+        public_athlete_id = EXCLUDED.public_athlete_id,
+        object_key = EXCLUDED.object_key,
+        content_type = EXCLUDED.content_type,
+        size_bytes = EXCLUDED.size_bytes,
+        is_public = FALSE,
+        updated_at = NOW(),
+        approved_at = NULL,
+        approved_by = NULL
+      WHERE athlete_media.owner_license_id = EXCLUDED.owner_license_id
+      RETURNING athlete_id
+    `, [input.athleteId, input.ownerLicenseId, publicId("athlete", input.athleteId), objectKey, input.contentType, input.sizeBytes]);
+    if (!saved.rowCount) return res.status(403).json({ success: false, message: "Há»“ sÆ¡ VÄV thuá»™c giáº£i K-SPORT khÃ¡c" });
+    return res.json({ success: true, photoStatus: "pending_admin_review", publicApproved: false });
+  } catch (err) {
+    console.error("Public registration photo complete error:", err);
+    return res.status(500).json({ success: false, message: "KhÃ´ng thá»ƒ lÆ°u thÃ´ng tin áº£nh thÃ¨" });
+  }
+});
+
+// The client uploads directly to a private R2 bucket. The VPS only issues a
+// short-lived signature, so card photos never consume VPS disk or bandwidth.
+app.post("/api/media/athletes/:athleteId/upload-url", cloudLicenseMiddleware, async (req, res) => {
+  const athleteId = String(req.params.athleteId || "").trim();
+  const contentType = String(req.body?.contentType || "").toLowerCase().trim();
+  const sizeBytes = Number(req.body?.sizeBytes);
+  if (!athleteId || athleteId.length > 300 || !athletePhotoMimeTypes.has(contentType) || !Number.isInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > 5242880) {
+    return res.status(400).json({ success: false, message: "Ảnh thẻ phải là JPG, PNG hoặc WebP và không quá 5 MB" });
+  }
+  if (!getR2Config()) return res.status(503).json({ success: false, message: "R2 chưa được cấu hình" });
+  const objectKey = `athletes/${athleteId.replace(/[^a-zA-Z0-9_-]/g, "_")}/${crypto.randomUUID()}.${athletePhotoExtension(contentType)}`;
+  try {
+    return res.json({
+      success: true,
+      objectKey,
+      uploadUrl: presignR2({ method: "PUT", key: objectKey, expiresSeconds: 300 }),
+      expiresInSeconds: 300,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Không thể tạo URL upload ảnh" });
+  }
+});
+
+app.post("/api/media/athletes/:athleteId/complete", cloudLicenseMiddleware, async (req, res) => {
+  const athleteId = String(req.params.athleteId || "").trim();
+  const objectKey = String(req.body?.objectKey || "").trim();
+  const contentType = String(req.body?.contentType || "").toLowerCase().trim();
+  const sizeBytes = Number(req.body?.sizeBytes);
+  const safePrefix = `athletes/${athleteId.replace(/[^a-zA-Z0-9_-]/g, "_")}/`;
+  if (!athleteId || !objectKey.startsWith(safePrefix) || !athletePhotoMimeTypes.has(contentType) || !Number.isInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > 5242880) {
+    return res.status(400).json({ success: false, message: "Thông tin ảnh thẻ không hợp lệ" });
+  }
+  try {
+    const result = await pool.query(`
+      INSERT INTO athlete_media (athlete_id, owner_license_id, public_athlete_id, object_key, content_type, size_bytes, is_public, updated_at, approved_at, approved_by)
+      VALUES ($1, $2, $3, $4, $5, $6, FALSE, NOW(), NULL, NULL)
+      ON CONFLICT (athlete_id) DO UPDATE SET
+        public_athlete_id = EXCLUDED.public_athlete_id,
+        object_key = EXCLUDED.object_key,
+        content_type = EXCLUDED.content_type,
+        size_bytes = EXCLUDED.size_bytes,
+        is_public = FALSE,
+        updated_at = NOW(),
+        approved_at = NULL,
+        approved_by = NULL
+      WHERE athlete_media.owner_license_id = EXCLUDED.owner_license_id
+      RETURNING athlete_id
+    `, [athleteId, req.cloudLicense.id, publicId("athlete", athleteId), objectKey, contentType, sizeBytes]);
+    if (!result.rowCount) return res.status(403).json({ success: false, message: "Hồ sơ ảnh thuộc license khác" });
+    return res.json({ success: true, publicApproved: false });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Không thể lưu thông tin ảnh thẻ" });
+  }
+});
+
+app.post("/api/media/athletes/:athleteId/publication", cloudLicenseMiddleware, async (req, res) => {
+  const athleteId = String(req.params.athleteId || "").trim();
+  const isPublic = req.body?.isPublic === true;
+  try {
+    const updated = await pool.query(`
+      UPDATE athlete_media
+      SET is_public = $2, approved_at = CASE WHEN $2 THEN NOW() ELSE NULL END,
+          approved_by = CASE WHEN $2 THEN 'ADMIN' ELSE NULL END
+      WHERE athlete_id = $1 AND owner_license_id = $3
+      RETURNING public_athlete_id, is_public
+    `, [athleteId, isPublic, req.cloudLicense.id]);
+    if (!updated.rowCount) return res.status(404).json({ success: false, message: "Chưa có ảnh thẻ để duyệt" });
+    return res.json({ success: true, athleteId: updated.rows[0].public_athlete_id, publicApproved: updated.rows[0].is_public });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Không thể cập nhật quyền công khai ảnh" });
+  }
+});
+
+// Card photos submitted from the public registration form stay private until
+// approval. A licensed Desktop/Admin client can still request a short-lived
+// viewing URL for review without making the photo publicly accessible.
+app.get("/api/media/athletes/:athleteId/view-url", cloudLicenseMiddleware, async (req, res) => {
+  const athleteId = String(req.params.athleteId || "").trim();
+  if (!athleteId || athleteId.length > 300) {
+    return res.status(400).json({ success: false, message: "Mã VĐV không hợp lệ" });
+  }
+  try {
+    const media = await pool.query(
+      `SELECT object_key, content_type, is_public
+       FROM athlete_media
+       WHERE athlete_id = $1 AND owner_license_id = $2
+       LIMIT 1`,
+      [athleteId, req.cloudLicense.id],
+    );
+    if (!media.rowCount) {
+      return res.status(404).json({ success: false, message: "Chưa có ảnh thẻ cho VĐV này" });
+    }
+    return res.json({
+      success: true,
+      contentType: media.rows[0].content_type,
+      publicApproved: media.rows[0].is_public,
+      viewUrl: presignR2({ method: "GET", key: media.rows[0].object_key, expiresSeconds: 300 }),
+      expiresInSeconds: 300,
+    });
+  } catch (err) {
+    console.error("Athlete card-photo view URL error:", err);
+    return res.status(500).json({ success: false, message: "Không thể mở ảnh thẻ" });
+  }
+});
+
+// Lets the owner of a tournament approve all currently submitted card photos
+// in one review action. The photos remain scoped to that tournament/license.
+app.post("/api/media/tournaments/:tournamentId/photos/publication", cloudLicenseMiddleware, async (req, res) => {
+  const tournamentId = String(req.params.tournamentId || "").trim();
+  const isPublic = req.body?.isPublic === true;
+  if (!tournamentId || tournamentId.length > 255) {
+    return res.status(400).json({ success: false, message: "Mã giải đấu không hợp lệ" });
+  }
+  try {
+    const tournament = await pool.query(
+      `SELECT id FROM cloud_tournaments
+       WHERE id = $1 AND owner_license_id = $2 AND is_purged = FALSE
+       LIMIT 1`,
+      [tournamentId, req.cloudLicense.id],
+    );
+    if (!tournament.rowCount) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy giải đấu thuộc license này" });
+    }
+    const updated = await pool.query(
+      `UPDATE athlete_media AS media
+       SET is_public = $1,
+           approved_at = CASE WHEN $1 THEN NOW() ELSE NULL END,
+           approved_by = CASE WHEN $1 THEN 'ADMIN_BATCH' ELSE NULL END
+       FROM public_registration_media AS registration
+       WHERE media.athlete_id = registration.athlete_id
+         AND registration.tournament_id = $2
+         AND media.owner_license_id = $3
+         AND registration.owner_license_id = $3
+       RETURNING media.athlete_id`,
+      [isPublic, tournamentId, req.cloudLicense.id],
+    );
+    return res.json({ success: true, publicApproved: isPublic, count: updated.rowCount });
+  } catch (err) {
+    console.error("Tournament card-photo publication error:", err);
+    return res.status(500).json({ success: false, message: "Không thể cập nhật quyền ảnh thẻ của giải" });
+  }
+});
+
+app.get("/api/public/athletes/:publicAthleteId/photo", async (req, res) => {
+  try {
+    const media = await pool.query(
+      "SELECT object_key FROM athlete_media WHERE public_athlete_id = $1 AND is_public = TRUE",
+      [String(req.params.publicAthleteId || "").trim()],
+    );
+    if (!media.rowCount) return res.status(404).end();
+    return res.redirect(302, presignR2({ method: "GET", key: media.rows[0].object_key, expiresSeconds: 300 }));
+  } catch {
+    return res.status(404).end();
+  }
+});
+
+app.get("/api/public/events", publicReadMiddleware, async (req, res) => {
+  try {
+    const datasets = await loadPublicData();
+    const items = datasets.map((dataset) => refreshEventStatus(dataset.event)).filter((event) => event?.slug);
+    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+    return res.json({ items });
+  } catch (err) {
+    console.error("Public API events error:", err);
+    return res.status(500).json({ items: [], message: "Không thể tải danh sách giải đấu" });
+  }
+});
+
+app.get("/api/public/events/:slug", publicReadMiddleware, async (req, res) => {
+  try {
+    const datasets = await loadPublicData();
+    const event = datasets.map((dataset) => dataset.event).find((item) => item?.slug === req.params.slug);
+    if (!event) return res.status(404).json({ message: "Không tìm thấy giải đấu" });
+    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+    return res.json(refreshEventStatus(event));
+  } catch {
+    return res.status(500).json({ message: "Không thể tải giải đấu" });
+  }
+});
+
+app.get("/api/public/schedule", publicReadMiddleware, publicCollection("schedule"));
+app.get("/api/public/results", publicReadMiddleware, publicCollection("results"));
+app.get(["/api/public/ranking", "/ranking"], publicReadMiddleware, async (req, res) => {
+  try {
+    const items = filterPublicRanking(
+      (await loadPublicData()).flatMap((dataset) => Array.isArray(dataset?.ranking) ? dataset.ranking : []),
+      req.query,
+    );
+    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+    return res.json({ items });
+  } catch (err) {
+    console.error("Public API ranking error:", err);
+    return res.status(500).json({ items: [], message: "Không thể tải dữ liệu xếp hạng" });
+  }
+});
+const publicNewsRow = (row) => ({
+  slug: row.slug,
+  title: row.title,
+  category: row.category,
+  summary: row.summary,
+  body: Array.isArray(row.body) ? row.body : [],
+  image: row.image_url,
+  publishedAt: String(row.published_at).slice(0, 10),
+});
+
+const publicBannerRow = (row) => ({
+  id: row.id,
+  eyebrow: row.eyebrow,
+  title: row.title,
+  description: row.description,
+  image: row.image_url,
+  primaryLabel: row.primary_label,
+  primaryHref: row.primary_href,
+  secondaryLabel: row.secondary_label,
+  secondaryHref: row.secondary_href,
+  position: row.position,
+});
+
+const contentText = (value, maxLength = 5000) => String(value || "").trim().slice(0, maxLength);
+const contentSlug = (value) => contentText(value, 180).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+const publicContentImagePrefix = "public-content/";
+const contentImageMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const contentUrl = (value) => {
+  const url = contentText(value, 2000);
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.toString() : "";
+  } catch {
+    return "";
+  }
+};
+
+const readNewsPayload = (body) => {
+  const title = contentText(body?.title, 300);
+  const slug = contentSlug(body?.slug || title);
+  const bodyItems = Array.isArray(body?.body)
+    ? body.body.map((item) => contentText(item, 5000)).filter(Boolean).slice(0, 40)
+    : contentText(body?.body, 5000).split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 40);
+  if (!title || !slug) return null;
+  return {
+    slug,
+    title,
+    category: contentText(body?.category, 120) || "Tin tức",
+    summary: contentText(body?.summary, 1000),
+    body: bodyItems,
+    imageUrl: contentUrl(body?.imageUrl || body?.image),
+    publishedAt: /^\d{4}-\d{2}-\d{2}$/.test(String(body?.publishedAt || "")) ? body.publishedAt : new Date().toISOString().slice(0, 10),
+    isPublished: body?.isPublished === true,
+  };
+};
+
+const readBannerPayload = (body) => {
+  const title = contentText(body?.title, 300);
+  if (!title) return null;
+  return {
+    eyebrow: contentText(body?.eyebrow, 180),
+    title,
+    description: contentText(body?.description, 1200),
+    imageUrl: contentUrl(body?.imageUrl || body?.image),
+    primaryLabel: contentText(body?.primaryLabel, 100),
+    primaryHref: contentUrl(body?.primaryHref),
+    secondaryLabel: contentText(body?.secondaryLabel, 100),
+    secondaryHref: contentUrl(body?.secondaryHref),
+    position: Math.max(0, Math.min(999, Number.parseInt(body?.position, 10) || 0)),
+    isPublished: body?.isPublished === true,
+  };
+};
+
+// CMS media is uploaded directly from the browser to R2. The VPS only issues
+// a short-lived signed URL and exposes a safe redirect for public reading.
+app.post("/api/admin/content/upload-url", authMiddleware, (req, res) => {
+  const contentType = String(req.body?.contentType || "").toLowerCase().trim();
+  const sizeBytes = Number(req.body?.sizeBytes);
+  if (!contentImageMimeTypes.has(contentType) || !Number.isInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > 8 * 1024 * 1024) {
+    return res.status(400).json({ message: "Ảnh phải là JPG, PNG hoặc WebP và không quá 8 MB" });
+  }
+  if (!getR2Config()) return res.status(503).json({ message: "Kho ảnh R2 chưa được cấu hình" });
+  const objectKey = `${publicContentImagePrefix}${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${athletePhotoExtension(contentType)}`;
+  const forwardedProtocol = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
+  const origin = `${forwardedProtocol}://${req.get("host")}`;
+  try {
+    return res.json({
+      success: true,
+      objectKey,
+      uploadUrl: presignR2({ method: "PUT", key: objectKey, expiresSeconds: 300 }),
+      fileUrl: `${origin}/api/public/content-media/${encodeURIComponent(objectKey)}`,
+      expiresInSeconds: 300,
+    });
+  } catch (err) {
+    console.error("Content media signature error:", err);
+    return res.status(500).json({ message: "Không thể tạo URL tải ảnh lên" });
+  }
+});
+
+app.get("/api/public/content-media/:key", (req, res) => {
+  const objectKey = String(req.params.key || "");
+  if (!objectKey.startsWith(publicContentImagePrefix) || objectKey.length > 500) {
+    return res.status(404).end();
+  }
+  try {
+    return res.redirect(302, presignR2({ method: "GET", key: objectKey, expiresSeconds: 900 }));
+  } catch (err) {
+    return res.status(503).end();
+  }
+});
+
+app.get("/api/admin/content/news", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM public_news ORDER BY published_at DESC, created_at DESC");
+    return res.json({ items: result.rows.map((row) => ({ ...publicNewsRow(row), id: row.id, isPublished: row.is_published })) });
+  } catch (err) {
+    return res.status(500).json({ message: "Không thể tải bài viết" });
+  }
+});
+
+app.post("/api/admin/content/news", authMiddleware, async (req, res) => {
+  const item = readNewsPayload(req.body);
+  if (!item) return res.status(400).json({ message: "Tiêu đề bài viết không hợp lệ" });
+  try {
+    const result = await pool.query(
+      `INSERT INTO public_news (slug, title, category, summary, body, image_url, published_at, is_published)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8) RETURNING *`,
+      [item.slug, item.title, item.category, item.summary, JSON.stringify(item.body), item.imageUrl, item.publishedAt, item.isPublished],
+    );
+    return res.status(201).json({ item: { ...publicNewsRow(result.rows[0]), id: result.rows[0].id, isPublished: result.rows[0].is_published } });
+  } catch (err) {
+    return res.status(409).json({ message: "Đường dẫn bài viết đã tồn tại" });
+  }
+});
+
+app.put("/api/admin/content/news/:id", authMiddleware, async (req, res) => {
+  const item = readNewsPayload(req.body);
+  if (!item) return res.status(400).json({ message: "Tiêu đề bài viết không hợp lệ" });
+  try {
+    const result = await pool.query(
+      `UPDATE public_news SET slug=$1,title=$2,category=$3,summary=$4,body=$5::jsonb,image_url=$6,published_at=$7,is_published=$8,updated_at=NOW()
+       WHERE id=$9 RETURNING *`,
+      [item.slug, item.title, item.category, item.summary, JSON.stringify(item.body), item.imageUrl, item.publishedAt, item.isPublished, req.params.id],
+    );
+    if (!result.rowCount) return res.status(404).json({ message: "Không tìm thấy bài viết" });
+    return res.json({ item: { ...publicNewsRow(result.rows[0]), id: result.rows[0].id, isPublished: result.rows[0].is_published } });
+  } catch (err) {
+    return res.status(409).json({ message: "Đường dẫn bài viết đã tồn tại" });
+  }
+});
+
+app.delete("/api/admin/content/news/:id", authMiddleware, async (req, res) => {
+  const result = await pool.query("DELETE FROM public_news WHERE id=$1 RETURNING id", [req.params.id]);
+  return result.rowCount ? res.json({ success: true }) : res.status(404).json({ message: "Không tìm thấy bài viết" });
+});
+
+app.get("/api/admin/content/banners", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM public_banners ORDER BY position ASC, created_at ASC");
+    return res.json({ items: result.rows.map((row) => ({ ...publicBannerRow(row), isPublished: row.is_published })) });
+  } catch (err) {
+    return res.status(500).json({ message: "Không thể tải banner" });
+  }
+});
+
+app.post("/api/admin/content/banners", authMiddleware, async (req, res) => {
+  const item = readBannerPayload(req.body);
+  if (!item) return res.status(400).json({ message: "Tiêu đề banner không hợp lệ" });
+  const result = await pool.query(
+    `INSERT INTO public_banners (eyebrow,title,description,image_url,primary_label,primary_href,secondary_label,secondary_href,position,is_published)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [item.eyebrow, item.title, item.description, item.imageUrl, item.primaryLabel, item.primaryHref, item.secondaryLabel, item.secondaryHref, item.position, item.isPublished],
+  );
+  return res.status(201).json({ item: { ...publicBannerRow(result.rows[0]), isPublished: result.rows[0].is_published } });
+});
+
+app.put("/api/admin/content/banners/:id", authMiddleware, async (req, res) => {
+  const item = readBannerPayload(req.body);
+  if (!item) return res.status(400).json({ message: "Tiêu đề banner không hợp lệ" });
+  const result = await pool.query(
+    `UPDATE public_banners SET eyebrow=$1,title=$2,description=$3,image_url=$4,primary_label=$5,primary_href=$6,secondary_label=$7,secondary_href=$8,position=$9,is_published=$10,updated_at=NOW()
+     WHERE id=$11 RETURNING *`,
+    [item.eyebrow, item.title, item.description, item.imageUrl, item.primaryLabel, item.primaryHref, item.secondaryLabel, item.secondaryHref, item.position, item.isPublished, req.params.id],
+  );
+  return result.rowCount
+    ? res.json({ item: { ...publicBannerRow(result.rows[0]), isPublished: result.rows[0].is_published } })
+    : res.status(404).json({ message: "Không tìm thấy banner" });
+});
+
+app.delete("/api/admin/content/banners/:id", authMiddleware, async (req, res) => {
+  const result = await pool.query("DELETE FROM public_banners WHERE id=$1 RETURNING id", [req.params.id]);
+  return result.rowCount ? res.json({ success: true }) : res.status(404).json({ message: "Không tìm thấy banner" });
+});
+
+app.get("/api/public/news", publicReadMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM public_news WHERE is_published=TRUE ORDER BY published_at DESC, created_at DESC");
+    return res.json({ items: result.rows.map(publicNewsRow) });
+  } catch (err) {
+    return res.status(500).json({ items: [], message: "Không thể tải tin tức" });
+  }
+});
+app.get("/api/public/news/:slug", publicReadMiddleware, async (req, res) => {
+  const result = await pool.query("SELECT * FROM public_news WHERE slug=$1 AND is_published=TRUE LIMIT 1", [req.params.slug]);
+  return result.rowCount ? res.json(publicNewsRow(result.rows[0])) : res.status(404).json({ message: "Không tìm thấy bài viết" });
+});
+app.get("/api/public/banners", publicReadMiddleware, async (req, res) => {
+  const result = await pool.query("SELECT * FROM public_banners WHERE is_published=TRUE ORDER BY position ASC, created_at ASC");
+  return res.json({ items: result.rows.map(publicBannerRow) });
+});
+
+app.get("/api/public/athletes", publicReadMiddleware, publicCollection("athletes"));
+app.get("/api/public/athletes/:id", publicReadMiddleware, async (req, res) => {
+  try {
+    const athlete = (await loadPublicData())
+      .flatMap((dataset) => dataset.athletes || [])
+      .find((item) => item.id === req.params.id);
+    if (!athlete) return res.status(404).json({ message: "Không tìm thấy vận động viên" });
+    const media = await pool.query(
+      "SELECT 1 FROM athlete_media WHERE public_athlete_id = $1 AND is_public = TRUE LIMIT 1",
+      [athlete.id],
+    );
+    return res.json(media.rowCount
+      ? { ...athlete, photoUrl: `/api/public/athletes/${encodeURIComponent(athlete.id)}/photo` }
+      : athlete);
+  } catch {
+    return res.status(500).json({ message: "Không thể tải vận động viên" });
+  }
+});
+
+app.get("/api/public/clubs", publicReadMiddleware, async (req, res) => {
+  try {
+    const merged = new Map();
+    for (const club of (await loadPublicData()).flatMap((dataset) => dataset.clubs || [])) {
+      const current = merged.get(club.id);
+      merged.set(club.id, current ? { ...current, athleteCount: current.athleteCount + club.athleteCount } : club);
+    }
+    return res.json({ items: [...merged.values()] });
+  } catch {
+    return res.status(500).json({ items: [], message: "Không thể tải câu lạc bộ" });
+  }
+});
+
+app.get("/api/public/clubs/:id", publicReadMiddleware, async (req, res) => {
+  try {
+    const clubs = (await loadPublicData()).flatMap((dataset) => dataset.clubs || []);
+    const matches = clubs.filter((item) => item.id === req.params.id);
+    if (!matches.length) return res.status(404).json({ message: "Không tìm thấy câu lạc bộ" });
+    return res.json({ ...matches[0], athleteCount: matches.reduce((sum, item) => sum + item.athleteCount, 0) });
+  } catch {
+    return res.status(500).json({ message: "Không thể tải câu lạc bộ" });
+  }
+});
+
 /**
  * 1. PUSH TOURNAMENT SYNC (Client App -> VPS)
  */
-app.post(["/api/cloud-sync/tournament", "/cloud-sync/tournament"], async (req, res) => {
+app.post(["/api/cloud-sync/tournament", "/cloud-sync/tournament"], cloudLicenseMiddleware, async (req, res) => {
   try {
-    const { tournamentId, tournamentName, machineId, startDate, endDate, location, totalAthletes, totalCategories, backupData, summary } = req.body;
+    const {
+      tournamentId, tournamentName, machineId, authorizedMachineId, startDate, endDate,
+      location, totalAthletes, totalCategories, backupData, summary, isPublic,
+    } = req.body || {};
 
-    if (!tournamentId || !tournamentName) {
+    if (!tournamentId || !tournamentName || String(tournamentId).length > 255 || String(tournamentName).length > 500) {
       return res.status(400).json({ success: false, message: "Thiếu tournamentId hoặc tournamentName" });
+    }
+    if (String(machineId || "") !== req.cloudLicense.machineId) {
+      return res.status(403).json({ success: false, message: "Machine ID trong dữ liệu không khớp thông tin xác thực" });
     }
 
     const jsonString = JSON.stringify(backupData || {});
-    const dataSize = jsonString.length;
+    const dataSize = Buffer.byteLength(jsonString, "utf8");
+    if (dataSize > 15 * 1024 * 1024) {
+      return res.status(413).json({ success: false, message: "Gói Cloud sync vượt quá giới hạn 15 MB" });
+    }
+
+    const existing = await pool.query(
+      `SELECT owner_license_id, machine_id, authorized_machine_id
+       FROM cloud_tournaments WHERE id = $1`,
+      [String(tournamentId)]
+    );
+    const current = existing.rows[0];
+    if (current?.owner_license_id && String(current.owner_license_id) !== String(req.cloudLicense.id)) {
+      return res.status(403).json({ success: false, message: "Giải đấu thuộc một license khác" });
+    }
+    const isUnownedLegacyRecord = Boolean(current && !current.owner_license_id);
+    const belongsToActivatedMachine = req.cloudLicense.activatedMachines.includes(current?.machine_id);
+    const canClaimLegacyRecord = isUnownedLegacyRecord && (
+      !current.machine_id ||
+      current.machine_id === req.cloudLicense.machineId ||
+      belongsToActivatedMachine
+    );
+    if (isUnownedLegacyRecord && !canClaimLegacyRecord) {
+      return res.status(403).json({ success: false, message: "Không thể nhận quyền sở hữu bản Cloud từ máy khác" });
+    }
+    // Old rows predate license ownership. Once their machine can be tied to the
+    // authenticated license, let the current request nominate the new source.
+    // Owned rows continue to enforce their designated source machine.
+    if (!isUnownedLegacyRecord && current?.authorized_machine_id && current.authorized_machine_id !== req.cloudLicense.machineId) {
+      return res.status(403).json({ success: false, message: "Chỉ Máy Nguồn Chính được phép cập nhật giải đấu này" });
+    }
+
+    const requestedAuthorizedMachine = String(authorizedMachineId || req.cloudLicense.machineId).trim();
+    if (!req.cloudLicense.activatedMachines.includes(requestedAuthorizedMachine)) {
+      return res.status(400).json({ success: false, message: "Máy Nguồn Chính chưa được kích hoạt trên license này" });
+    }
+    const publicData = isPublic === true
+      ? createPublicTournamentData({ tournamentId, tournamentName, startDate, endDate, location, backupData, summary })
+      : null;
 
     const query = `
       INSERT INTO cloud_tournaments (
         id, name, machine_id, start_date, end_date, location, 
         total_athletes, total_categories, data_size, last_synced_at, 
-        status, is_purged, backup_data, summary
+        status, is_purged, backup_data, summary, owner_license_id,
+        authorized_machine_id, is_public, public_data
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), 'ACTIVE', FALSE, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), 'ACTIVE', FALSE, $10, $11, $12, $13, $14, $15)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         machine_id = EXCLUDED.machine_id,
@@ -1767,7 +2608,13 @@ app.post(["/api/cloud-sync/tournament", "/cloud-sync/tournament"], async (req, r
         data_size = EXCLUDED.data_size,
         last_synced_at = NOW(),
         backup_data = EXCLUDED.backup_data,
-        summary = EXCLUDED.summary;
+        summary = EXCLUDED.summary,
+        owner_license_id = COALESCE(cloud_tournaments.owner_license_id, EXCLUDED.owner_license_id),
+        authorized_machine_id = EXCLUDED.authorized_machine_id,
+        is_public = EXCLUDED.is_public,
+        public_data = EXCLUDED.public_data,
+        is_purged = FALSE,
+        status = 'ACTIVE';
     `;
 
     await pool.query(query, [
@@ -1781,7 +2628,11 @@ app.post(["/api/cloud-sync/tournament", "/cloud-sync/tournament"], async (req, r
       totalCategories || 0,
       dataSize,
       backupData || {},
-      summary || {}
+      summary || {},
+      req.cloudLicense.id,
+      requestedAuthorizedMachine,
+      isPublic === true,
+      publicData
     ]);
 
     res.json({
@@ -1816,7 +2667,11 @@ app.get(["/api/cloud-sync/tournaments", "/cloud-sync/tournaments"], authMiddlewa
         status VARCHAR(50) DEFAULT 'ACTIVE',
         is_purged BOOLEAN DEFAULT FALSE,
         backup_data JSONB,
-        summary JSONB DEFAULT '{}'::jsonb
+        summary JSONB DEFAULT '{}'::jsonb,
+        owner_license_id UUID,
+        authorized_machine_id VARCHAR(255),
+        is_public BOOLEAN DEFAULT FALSE,
+        public_data JSONB
       );
     `);
 
@@ -1838,16 +2693,16 @@ app.get(["/api/cloud-sync/tournaments", "/cloud-sync/tournaments"], authMiddlewa
 /**
  * 2b. PUBLIC ENDPOINT FOR CLIENT APP TO CHECK SYNC STATUS
  */
-app.get(["/api/cloud-sync/synced-ids", "/cloud-sync/synced-ids"], async (req, res) => {
+app.get(["/api/cloud-sync/synced-ids", "/cloud-sync/synced-ids"], cloudLicenseMiddleware, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
-        id, name, machine_id, start_date, end_date, location, 
-        total_athletes, total_categories, data_size, last_synced_at
+        id, name, start_date, end_date, location,
+        total_athletes, total_categories, last_synced_at, is_public
       FROM cloud_tournaments
-      WHERE is_purged = FALSE
+      WHERE is_purged = FALSE AND owner_license_id = $1
       ORDER BY last_synced_at DESC
-    `);
+    `, [req.cloudLicense.id]);
     const ids = result.rows.map((r) => r.id);
     res.json({ success: true, tournaments: result.rows, ids });
   } catch (err) {
@@ -1856,12 +2711,15 @@ app.get(["/api/cloud-sync/synced-ids", "/cloud-sync/synced-ids"], async (req, re
 });
 
 /**
- * 3. DOWNLOAD .KBACKUP FILE FOR TOURNAMENT (Super Admin)
+ * 3. DOWNLOAD OWNED .KBACKUP FILE (licensed desktop client)
  */
-app.get(["/api/cloud-sync/download-kbackup/:id", "/cloud-sync/download-kbackup/:id"], async (req, res) => {
+app.get(["/api/cloud-sync/download-kbackup/:id", "/cloud-sync/download-kbackup/:id"], cloudLicenseMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query("SELECT * FROM cloud_tournaments WHERE id = $1", [id]);
+    const result = await pool.query(
+      "SELECT * FROM cloud_tournaments WHERE id = $1 AND owner_license_id = $2",
+      [id, req.cloudLicense.id]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Không tìm thấy giải đấu" });

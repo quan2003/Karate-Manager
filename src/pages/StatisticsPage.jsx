@@ -598,12 +598,38 @@ export default function StatisticsPage() {
             club2: normalizedForm.club2,
             club3a: normalizedForm.club3a,
             club3b: normalizedForm.club3b,
+            // Editing an already-confirmed result requires a fresh Admin review.
+            confirmedAt: null,
+            confirmedBy: null,
           },
         },
       },
     });
     setShowResultModal(null);
     toast.success("Đã lưu kết quả!");
+  };
+
+  const handleConfirmResult = (categoryId) => {
+    const saved = tournament.categoryResults?.[categoryId];
+    if (!saved?.first?.trim() || !saved?.second?.trim()) {
+      toast.error("Cần có HCV và HCB trước khi xác nhận công bố.");
+      return;
+    }
+    dispatch({
+      type: ACTIONS.UPDATE_TOURNAMENT,
+      payload: {
+        id: tournament.id,
+        categoryResults: {
+          ...(tournament.categoryResults || {}),
+          [categoryId]: {
+            ...saved,
+            confirmedAt: new Date().toISOString(),
+            confirmedBy: "ADMIN",
+          },
+        },
+      },
+    });
+    toast.success("Đã xác nhận kết quả. Huy chương và ranking sẽ được công khai khi đồng bộ.");
   };
 
   const handleOpenResultModal = (cat) => {
@@ -7177,6 +7203,19 @@ export default function StatisticsPage() {
                   ))}
                 </datalist>{" "}
                 <div className="modal-actions">
+                  {tournament.categoryResults?.[showResultModal]?.confirmedAt ? (
+                    <span className="text-success" style={{ marginRight: "auto", fontSize: "12px", fontWeight: 700 }}>
+                      ✓ Đã xác nhận công bố
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-success"
+                      onClick={() => handleConfirmResult(showResultModal)}
+                    >
+                      ✓ Xác nhận công bố
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="btn btn-secondary"
