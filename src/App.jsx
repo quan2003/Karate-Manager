@@ -13,7 +13,8 @@ import SecretaryPage from "./pages/SecretaryPage";
 import StatisticsPage from "./pages/StatisticsPage";
 import SchedulePage from "./pages/SchedulePage";
 import AthletesPage from "./pages/AthletesPage";
-import CertificatePage from "./pages/CertificatePage";
+import CardPrintPage from "./pages/CardPrintPage";
+import CertificateBatchPage from "./pages/CertificateBatchPage";
 import RefereesPage from "./pages/RefereesPage";
 import DisplayPage from "./pages/DisplayPage";
 import SmartFileRouter from "./components/SmartFileRouter/SmartFileRouter";
@@ -164,7 +165,7 @@ function App() {
                     path="/certificate/:id"
                     element={
                       <LicenseGuard>
-                        <CertificatePage />
+                        <CertificateBatchPage />
                       </LicenseGuard>
                     }
                   />
@@ -193,6 +194,14 @@ function App() {
                     element={
                       <LicenseGuard>
                         <SecretaryPage />
+                      </LicenseGuard>
+                    }
+                  />
+                  <Route
+                    path="/cards/:id"
+                    element={
+                      <LicenseGuard>
+                        <CardPrintPage />
                       </LicenseGuard>
                     }
                   />

@@ -34,6 +34,8 @@ export async function exportToExcel(data) {
   // Sheet 2: Danh sách VĐV
   const athleteHeaders = [
     "STT",
+    "Mã VĐV K-SPORT",
+    "Tên file ảnh thẻ",
     "Họ tên",
     "Ngày sinh",
     "Giới tính",
@@ -54,6 +56,8 @@ export async function exportToExcel(data) {
     }
     return [
       i + 1,
+      a.athleteId || "",
+      a.photoFileName || "",
       a.name,
       birthDisplay,
       a.gender === "male" ? "Nam" : (a.gender === "female" ? "Nữ" : "—"),
@@ -72,6 +76,8 @@ export async function exportToExcel(data) {
   // Set column widths
   athleteSheet["!cols"] = [
     { wch: 5 }, // STT
+    { wch: 38 }, // Mã VĐV K-SPORT
+    { wch: 30 }, // Tên file ảnh thẻ
     { wch: 25 }, // Họ tên
     { wch: 12 }, // Ngày sinh
     { wch: 10 }, // Giới tính

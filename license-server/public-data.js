@@ -4,6 +4,15 @@ const crypto = require("crypto");
 const text = (value, maxLength = 300) =>
   typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 
+// Lịch thi đấu cũ có thể lưu số thảm là number, còn một số bản xuất file
+// dùng matId/matNumber/tatamiId. Dữ liệu public cần chấp nhận các dạng này,
+// nếu không website sẽ chỉ nhận được nhãn "Thảm" mà không có số thảm.
+const matNumber = (assignment = {}, category = {}) => {
+  const value = assignment.mat ?? category.matId ?? category.matNumber ?? category.tatamiId;
+  if (value === undefined || value === null) return "";
+  return String(value).trim().slice(0, 20);
+};
+
 const publicId = (...parts) =>
   crypto.createHash("sha256").update(parts.map((part) => String(part || "")).join("\u001f")).digest("hex").slice(0, 20);
 
@@ -58,35 +67,205 @@ function filterPublicRanking(items, query = {}) {
   );
 }
 
-function buildMedalLookup(summary) {
+const normalizedLookupValue = (value) => text(value, 300)
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/[đĐ]/g, "d")
+  .toLowerCase()
+  .replace(/\s+/g, " ")
+  .trim();
+
+// Club labels in exported registrations are sometimes stored with an
+// administrative prefix (for example, "Xã Lạc Sơn") and sometimes without it
+// ("Lạc Sơn"). They identify the same club for a single tournament, while
+// the original label remains the public display value.
+const publicClubIdentity = (value) => normalizedLookupValue(value)
+  .replace(/^(xa|phuong|thi tran)\s+/i, "");
+
+function athleteProfileIdentity(athlete, club) {
+  const stableId = text(
+    athlete?.profileId || athlete?.personId || athlete?.athleteId || athlete?.sourceAthleteId,
+    300,
+  );
+  if (stableId) return `source:${stableId}`;
+
+  // Older tournament exports create a registration ID for every category.
+  // The public profile must still stay within one athlete, club and
+  // tournament. Birth year/gender only strengthen the internal hash; neither
+  // value is included in the public DTO.
+  const birthYear = text(athlete?.birthYear || athlete?.yearOfBirth || athlete?.birthDate, 50);
+  const gender = text(athlete?.gender || athlete?.sex, 30);
+  return `registration:${normalizedLookupValue(participantName(athlete))}\u001f${publicClubIdentity(club)}\u001f${birthYear}\u001f${normalizedLookupValue(gender)}`;
+}
+
+// Registration imports can assign a different source ID when the same person
+// enters an individual event and a team event.  Build one identity map for a
+// tournament before creating public IDs so those entries lead to one profile.
+// We only do this when the name/club group has no conflicting biographical
+// details; competitors with the same name at the same club remain separate.
+function buildPublicProfileIdentityResolver(tournament) {
+  const groups = new Map();
+  for (const category of Array.isArray(tournament?.categories) ? tournament.categories : []) {
+    for (const athlete of Array.isArray(category?.athletes) ? category.athletes : []) {
+      const name = normalizedLookupValue(participantName(athlete));
+      const club = publicClubIdentity(participantClub(athlete));
+      if (!name || !club) continue;
+      const key = `${name}\u001f${club}`;
+      if (!groups.has(key)) groups.set(key, { birthYears: new Set(), genders: new Set() });
+      const group = groups.get(key);
+      const birthYear = text(athlete?.birthYear || athlete?.yearOfBirth || athlete?.birthDate, 50);
+      const gender = normalizedLookupValue(athlete?.gender || athlete?.sex);
+      if (birthYear) group.birthYears.add(birthYear);
+      if (gender) group.genders.add(gender);
+    }
+  }
+
+  return (athlete, club) => {
+    const name = normalizedLookupValue(participantName(athlete));
+    const clubIdentity = publicClubIdentity(club);
+    const group = groups.get(`${name}\u001f${clubIdentity}`);
+    if (name && clubIdentity && group && group.birthYears.size <= 1 && group.genders.size <= 1) {
+    const profileId = text(athlete?.profileId || athlete?.personId, 300);
+    if (profileId) return `source:${profileId}`;
+    return `person:${name}\u001f${clubIdentity}`;
+    }
+    return athleteProfileIdentity(athlete, club);
+  };
+}
+
+const sameLookupValue = (left, right) => {
+  const normalizedLeft = normalizedLookupValue(left);
+  const normalizedRight = normalizedLookupValue(right);
+  return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
+};
+
+function isTeamCategory(category) {
+  return /\b(dong doi|team|teams)\b/.test(normalizedLookupValue(category?.name || category?.eventName));
+}
+
+function configuredTeamSize(category, tournament) {
+  const configured = Number(category?.teamConfig?.main ?? category?.teamSize ?? tournament?.teamMedalsSettings?.kata);
+  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 3;
+}
+
+function generatedTeamMembersForMedal(category, tournament, teamName, club) {
+  if (!isTeamCategory(category)) return [];
+  const members = Array.isArray(category?.athletes) ? category.athletes : [];
+  const byClub = new Map();
+  for (const member of members) {
+    const memberClub = participantClub(member);
+    if (!memberClub) continue;
+    const key = normalizedLookupValue(memberClub);
+    if (!byClub.has(key)) byClub.set(key, { club: memberClub, members: [] });
+    byClub.get(key).members.push(member);
+  }
+
+  for (const { club: sourceClub, members: clubMembers } of byClub.values()) {
+    const codedTeams = new Map();
+    const uncodedMembers = [];
+    for (const member of clubMembers) {
+      const teamCode = text(member?.teamCode, 80);
+      if (teamCode) {
+        const key = normalizedLookupValue(teamCode);
+        if (!codedTeams.has(key)) codedTeams.set(key, { code: teamCode, members: [] });
+        codedTeams.get(key).members.push(member);
+      } else {
+        uncodedMembers.push(member);
+      }
+    }
+    for (const { code, members: teamMembers } of codedTeams.values()) {
+      if (sameLookupValue(`${sourceClub} - Đội ${code}`, teamName) && (!club || sameLookupValue(sourceClub, club))) return teamMembers;
+    }
+    const teamSize = configuredTeamSize(category, tournament);
+    const groupCount = Math.floor(uncodedMembers.length / teamSize);
+    for (let index = 0; index < groupCount; index += 1) {
+      const teamMembers = uncodedMembers.slice(index * teamSize, (index + 1) * teamSize);
+      const label = groupCount > 1 || codedTeams.size > 0 ? `${sourceClub} - Đội ${index + 1}` : sourceClub;
+      if (sameLookupValue(label, teamName) && (!club || sameLookupValue(sourceClub, club))) return teamMembers;
+    }
+  }
+  return [];
+}
+
+function teamMembersForMedal(category, tournament, position, teamName, club) {
+  const savedTeam = tournament?.categoryResults?.[category?.id]?.awardTeams?.[position];
+  if (Array.isArray(savedTeam?.members) && savedTeam.members.length) return savedTeam.members;
+
+  const participants = [
+    ...(Array.isArray(category?.bracket?.matches) ? category.bracket.matches : []),
+    ...(Array.isArray(category?.bracket?.auxiliaryMatches) ? category.bracket.auxiliaryMatches : []),
+  ].flatMap((match) => [match?.athlete1, match?.athlete2, match?.winner]);
+  const team = participants.find((participant) =>
+    participant?.isTeam === true &&
+    Array.isArray(participant?.members) &&
+    participant.members.length > 0 &&
+    sameLookupValue(participantName(participant), teamName) &&
+    (!club || !participantClub(participant) || sameLookupValue(participantClub(participant), club))
+  );
+  return Array.isArray(team?.members) ? team.members : generatedTeamMembersForMedal(category, tournament, teamName, club);
+}
+
+function buildMedalLookup(summary, tournament) {
   const lookup = new Map();
   const labels = [
-    ["gold", "goldClub", "Huy chương vàng"],
-    ["silver", "silverClub", "Huy chương bạc"],
-    ["bronze1", "bronze1Club", "Huy chương đồng"],
-    ["bronze2", "bronze2Club", "Huy chương đồng"],
+    ["gold", "goldClub", "Huy chương vàng", "first"],
+    ["silver", "silverClub", "Huy chương bạc", "second"],
+    ["bronze1", "bronze1Club", "Huy chương đồng", "third1"],
+    ["bronze2", "bronze2Club", "Huy chương đồng", "third2"],
   ];
   for (const medal of Array.isArray(summary?.medalists) ? summary.medalists : []) {
     if (!text(medal?.confirmedAt, 50)) continue;
     const category = text(medal?.categoryName, 300);
-    for (const [nameKey, clubKey, label] of labels) {
+    const sourceCategory = (Array.isArray(tournament?.categories) ? tournament.categories : []).find((item) =>
+      (medal?.categoryId && String(item?.id) === String(medal.categoryId)) ||
+      sameLookupValue(item?.name || item?.eventName, category)
+    );
+    for (const [nameKey, clubKey, label, position] of labels) {
       const name = text(medal?.[nameKey], 200);
       const club = text(medal?.[clubKey], 200);
       const athleteId = text(medal?.[`${nameKey}AthleteId`], 300);
       if (athleteId) lookup.set(`id:${athleteId}\u001f${category}`, label);
+      // Team results store the team name rather than an individual athlete ID.
+      // Publish the confirmed medal on every listed member's public profile.
+      if (!athleteId && sourceCategory && name) {
+        for (const member of teamMembersForMedal(sourceCategory, tournament, position, name, club)) {
+          const memberId = participantId(member);
+          if (memberId) lookup.set(`id:${memberId}\u001f${category}`, label);
+        }
+      }
     }
   }
   return lookup;
 }
 
-function buildMatches(tournament, event) {
+function completedCategoryNames(summary) {
+  return new Set(
+    (Array.isArray(summary?.medalists) ? summary.medalists : [])
+      .filter((medal) => text(medal?.confirmedAt, 50))
+      .map((medal) => text(medal?.categoryName, 300))
+      .filter(Boolean)
+  );
+}
+
+function hasCompletedStatus(value) {
+  const normalized = text(value, 100)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .toLowerCase();
+  return ["finished", "completed", "closed", "done", "complete", "da thi dau xong", "hoan thanh", "da xong"].includes(normalized);
+}
+
+function buildMatches(tournament, event, summary) {
   const matches = [];
+  const completedCategories = completedCategoryNames(summary);
   for (const category of Array.isArray(tournament?.categories) ? tournament.categories : []) {
     const categoryName = text(category?.name || category?.eventName, 300);
+    const categoryCompleted = hasCompletedStatus(category?.status) || completedCategories.has(categoryName);
     const assignment = tournament?.schedule?.[category?.id] || {};
     const date = isoDate(assignment.date || event.date);
     const time = /^\d{2}:\d{2}$/.test(text(assignment.time, 5)) ? text(assignment.time, 5) : "";
-    const tatami = text(assignment.mat, 20);
+    const tatami = matNumber(assignment, category);
     const categoryMatches = [
       ...(Array.isArray(category?.bracket?.matches) ? category.bracket.matches : []),
       ...(Array.isArray(category?.bracket?.auxiliaryMatches) ? category.bracket.auxiliaryMatches : []),
@@ -97,13 +276,16 @@ function buildMatches(tournament, event) {
       const red = participantName(match.athlete1);
       const blue = participantName(match.athlete2);
       if (!red && !blue) continue;
-      const finished = Boolean(match.winner) && match.resultStatus !== "UNDER_APPEAL";
+      // Kata can be finalized directly in the results tab, without a winner
+      // assigned to every bracket row. A category with confirmed medals is no
+      // longer an upcoming schedule item.
+      const finished = match.resultStatus !== "UNDER_APPEAL" && (Boolean(match.winner) || categoryCompleted);
       const state = finished ? "Đã kết thúc" : "Sắp diễn ra";
       const item = {
         id: publicId(event.slug, category?.id, match.id || match.matchCode),
         time,
         date,
-        tatami: tatami ? `Tatami ${tatami}` : "",
+        tatami: tatami ? `Thảm ${tatami}` : "",
         category: categoryName,
         red,
         blue,
@@ -184,8 +366,9 @@ function createPublicTournamentData({ tournamentId, tournamentName, startDate, e
     categories,
   };
 
-  const medalLookup = buildMedalLookup(summary);
+  const medalLookup = buildMedalLookup(summary, tournament);
   const competitionStats = buildAthleteCompetitionStats(tournament);
+  const resolveProfileIdentity = buildPublicProfileIdentityResolver(tournament);
   const athletes = [];
   const athleteKeys = new Set();
   const clubs = new Map();
@@ -200,7 +383,9 @@ function createPublicTournamentData({ tournamentId, tournamentName, startDate, e
       if (!athleteKeys.has(key)) {
         athleteKeys.add(key);
         const publicResult = medalLookup.get(`id:${sourceAthleteId}\u001f${categoryName}`);
-        const athleteId = publicId("athlete", sourceAthleteId);
+        const clubIdentity = publicClubIdentity(club);
+        const durableProfileId = text(athlete?.profileId || athlete?.personId, 300);
+        const athleteId = publicId("athlete", durableProfileId || resolveProfileIdentity(athlete, club));
         const countryCode = text(athlete?.country || athlete?.nationality || athlete?.nation, 4)
           .toUpperCase()
           .replace(/[^A-Z]/g, "");
@@ -215,9 +400,11 @@ function createPublicTournamentData({ tournamentId, tournamentName, startDate, e
           id: athleteId,
           athleteCode: `${countryCode || "VDV"}-${athleteId.slice(0, 8).toUpperCase()}`,
           name,
-          clubId: club ? publicId("club", club) : undefined,
+          clubId: club ? publicId("club", clubIdentity) : undefined,
           club,
           category: categoryName,
+          eventId: event.id,
+          eventSlug: event.slug,
           ...(text(athlete?.country || athlete?.nationality || athlete?.nation || athlete?.countryName, 100) ? { country: text(athlete?.country || athlete?.nationality || athlete?.nation || athlete?.countryName, 100) } : {}),
           totalMatches: stats.totalMatches,
           wins: stats.wins,
@@ -267,11 +454,11 @@ function createPublicTournamentData({ tournamentId, tournamentName, startDate, e
   return {
     schemaVersion: 2,
     event,
-    schedule: buildMatches(tournament, event).filter((match) => match.state !== "Đã kết thúc"),
-    results: buildMatches(tournament, event).filter((match) => match.state === "Đã kết thúc"),
+    schedule: buildMatches(tournament, event, summary).filter((match) => match.state !== "Đã kết thúc"),
+    results: buildMatches(tournament, event, summary).filter((match) => match.state === "Đã kết thúc"),
     athletes,
     clubs: [...clubs.entries()].map(([name, athleteCount]) => ({
-      id: publicId("club", name),
+      id: publicId("club", publicClubIdentity(name)),
       name,
       region: "",
       athleteCount,

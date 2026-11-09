@@ -1,4 +1,4 @@
-import { getTeamsFromAthletes } from "./teamDraw.js";
+import { getCategoryCompetitionType, getTeamsFromAthletes } from "./teamDraw.js";
 
 const normalizeText = (value) =>
   String(value || "")
@@ -7,15 +7,7 @@ const normalizeText = (value) =>
     .toLowerCase();
 
 export const isTeamFeeCategory = (category) => {
-  const name = normalizeText(category?.name);
-  return Boolean(
-    category?.isTeam ||
-      name.includes("đồng đội") ||
-      name.includes("dong doi") ||
-      name.includes("hỗn hợp") ||
-      name.includes("hon hop") ||
-      name.includes("team")
-  );
+  return getCategoryCompetitionType(category) === "team";
 };
 
 export const calculateClubFeeSummary = ({ categories = [], clubs = [], feeSettings = {}, tournament = {} }) => {

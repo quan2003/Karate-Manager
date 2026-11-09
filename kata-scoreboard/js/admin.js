@@ -23,6 +23,7 @@ let state = {
     matchInfo: 2,
   },
   scoringStarted: false, // Track if scoring has started
+  showIdleLogo: true, // Audience display waits on the branded idle screen.
   aka: {
     athlete: "",
     unit: "",
@@ -885,6 +886,8 @@ function clearAthleteSearch(side) {
 
 // Adjust score
 function adjustScore(side, delta) {
+  // A score action starts the next match, so remove the idle logo screen.
+  state.showIdleLogo = false;
   // Mark that scoring has started
   state.scoringStarted = true;
 
@@ -1107,6 +1110,7 @@ function resetAll() {
     state.ao.unit = "";
     state.ao.team = "";
     state.scoringStarted = false; // Reset scoring status
+    state.showIdleLogo = true;
     
     // Clear pending match data
     pendingMatchData = null;
@@ -1146,6 +1150,7 @@ function resetMatch() {
     state.timer.seconds = state.timer.presetSeconds || 300;
     state.timer.deciseconds = 0;
     state.scoringStarted = false;
+    state.showIdleLogo = true;
 
     // Clear UI inputs
     document.getElementById("akaAthleteSelect").selectedIndex = 0;
@@ -1173,6 +1178,9 @@ function resetMatch() {
 
 // Open display window
 function openDisplay() {
+  // Navigating the existing display window starts its normal scoreboard view.
+  state.showIdleLogo = false;
+  saveState();
   displayWindow = window.open(
     "display.html",
     "KarateScoreboardDisplay",
@@ -1974,6 +1982,7 @@ function loadPendingMatch() {
   // ALWAYS reset match-specific state for a clean start
   state.swapPositions = false;
   state.scoringStarted = false;
+  state.showIdleLogo = false;
 
   // Load existing scores if match has data (for re-editing), otherwise reset to 0
   if (
@@ -2096,6 +2105,7 @@ function finishMatch() {
   state.aka.kataName = "";
   state.ao.kataName = "";
   state.scoringStarted = false;
+  state.showIdleLogo = true;
 
   if (document.getElementById("akaScore")) document.getElementById("akaScore").textContent = 0;
   if (document.getElementById("aoScore")) document.getElementById("aoScore").textContent = 0;

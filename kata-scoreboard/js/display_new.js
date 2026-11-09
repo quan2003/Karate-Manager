@@ -5,12 +5,20 @@ const STORAGE_KEY = "karate_scoreboard";
 let state = null;
 let currentWinnerSide = null; // Tracks which side is currently winning
 let announcementShownForWinner = null; // Tracks who we already showed the big announcement for
+let applyInitialIdleLogo = new URLSearchParams(window.location.search).has("idle");
 
 // Load state from localStorage
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
     state = JSON.parse(saved);
+    // A close-button navigation starts in idle mode. Persist it once so a
+    // later "Mở màn hình khán giả" action can reliably turn it off again.
+    if (applyInitialIdleLogo) {
+      state.showIdleLogo = true;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      applyInitialIdleLogo = false;
+    }
     updateDisplay();
   }
 }
@@ -18,6 +26,16 @@ function loadState() {
 // Update display from state
 function updateDisplay() {
   if (!state) return;
+
+  // After the operator closes a completed match, keep the audience display
+  // clean and branded until the next match is loaded.
+  const idleLogoScreen = document.getElementById("idleLogoScreen");
+  if (idleLogoScreen) {
+    const hasCompetitors = Boolean(state.aka?.athlete || state.aka?.team || state.ao?.athlete || state.ao?.team);
+    const shouldShowIdleLogo = Boolean(state.showIdleLogo) || !hasCompetitors;
+    idleLogoScreen.classList.toggle("show", shouldShowIdleLogo);
+    idleLogoScreen.setAttribute("aria-hidden", String(!shouldShowIdleLogo));
+  }
 
   document.body.classList.toggle("team-mode", state.contentType === "team");
 

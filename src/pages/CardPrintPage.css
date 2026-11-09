@@ -1,0 +1,531 @@
+.card-print-page { padding: 28px 0 48px; }
+.card-print-heading { display:flex; justify-content:space-between; gap:20px; align-items:flex-end; margin-bottom:22px; }
+.card-print-heading h1 { font-size:28px; margin:4px 0; }.card-print-heading p,.back-link { color:var(--color-text-secondary); }.back-link { text-decoration:none; font-size:14px; }.card-designer { display:grid; grid-template-columns:minmax(280px,1fr) minmax(320px,1.2fr); gap:24px; background:#fff; border:1px solid var(--color-border); border-radius:14px; padding:20px; box-shadow:var(--shadow-sm); }.card-settings { display:flex; flex-direction:column; gap:13px; }.card-settings h3 { margin:0; }.card-settings label { display:grid; gap:5px; font-size:13px; font-weight:600; }.card-settings input:not([type="color"]) { width:100%; padding:9px 10px; border:1px solid #cbd5e1; border-radius:7px; }.card-settings input[type="color"] { width:54px; height:34px; padding:2px; border:1px solid #cbd5e1; border-radius:6px; }.template-actions { display:flex; gap:8px; flex-wrap:wrap; }.card-settings small { color:#64748b; line-height:1.45; }.card-preview { display:flex; align-items:center; justify-content:center; min-height:230px; padding:16px; background:#eef2ff; border-radius:10px; }
+.credential-card { width:240px; height:380px; position:relative; overflow:hidden; border-radius:14px; color:#fff; background:linear-gradient(150deg,#0b1326 0%,#172554 56%,#111827 100%); box-shadow:0 13px 25px rgba(15,23,42,.3); isolation:isolate; }.credential-background { position:absolute; inset:0; z-index:-2; width:100%; height:100%; object-fit:cover; }.credential-shade { position:absolute; inset:0; z-index:-1; background:linear-gradient(158deg,rgba(3,7,18,.92),rgba(10,25,55,.68)); }.credential-content { height:100%; position:relative; padding:17px 18px 14px; display:flex; flex-direction:column; }.credential-head { display:flex; gap:10px; align-items:center; min-width:0; }.credential-head strong { font-size:13px; letter-spacing:.7px; display:block; line-height:1.1; }.credential-head small { display:block; max-width:160px; font-size:8px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:.8; }.credential-mark { display:grid; place-items:center; width:29px; height:29px; flex:0 0 29px; border:2px solid var(--card-accent); border-radius:50%; color:var(--card-accent); font-size:19px; font-weight:800; }.credential-main { display:flex; gap:11px; align-items:center; flex:1; flex-direction:column; justify-content:center; min-height:0; padding:10px 0; text-align:center; }.credential-photo { width:122px; height:163px; flex:0 0 122px; border:3px solid #fff; background:#e2e8f0; color:#334155; overflow:hidden; display:grid; place-items:center; font-size:54px; font-weight:700; }.credential-photo img { width:100%; height:100%; object-fit:cover; }.credential-details { min-width:0; }.credential-role { display:inline-block; color:#fff; background:var(--card-accent); font-size:8px; font-weight:800; letter-spacing:.55px; padding:3px 7px; margin-bottom:6px; }.credential-details h2 { font-size:17px; line-height:1.12; margin:0 0 6px; overflow-wrap:anywhere; }.credential-details p { margin:0; font-size:10px; color:#dbeafe; }.credential-details .credential-category { margin-top:3px; font-size:8px; }.credential-foot { margin-top:auto; padding-top:8px; border-top:1px solid rgba(255,255,255,.32); font-size:8px; font-weight:700; letter-spacing:.35px; display:flex; justify-content:space-between; }.credential-access { color:var(--card-accent); }.card-list-panel { margin-top:20px; padding:18px; background:#fff; border:1px solid var(--color-border); border-radius:14px; }.card-filters { display:flex; gap:9px; flex-wrap:wrap; }.card-filters select,.card-filters input { padding:8px 10px; min-width:155px; border:1px solid #cbd5e1; border-radius:7px; }.card-filters input { flex:1; }.card-person-list { margin-top:14px; max-height:380px; overflow:auto; border-top:1px solid #e2e8f0; }.card-person { display:flex; gap:10px; align-items:center; padding:9px 5px; border-bottom:1px solid #e2e8f0; cursor:pointer; }.card-person span { min-width:0; flex:1; }.card-person strong,.card-person small { display:block; }.card-person small { font-size:12px; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }.text-button { color:#0369a1; border:0; background:transparent; cursor:pointer; }.empty-state { color:#64748b; padding:20px; text-align:center; }.print-cards { display:none; }
+@media (max-width:720px) { .card-print-heading,.card-designer { grid-template-columns:1fr; flex-direction:column; align-items:stretch; }.card-print-button { align-self:stretch; } }
+@media print { @page { size:A4 portrait; margin:10mm; } body, #root, .app { background:#fff !important; min-height:0 !important; } body::before { display:none !important; } .app-footer, .card-print-heading, .card-designer, .card-list-panel, .onboarding-checklist, .help-floating-button { display:none !important; } .card-print-page { display:block !important; padding:0 !important; } .card-print-page .container { max-width:none !important; width:auto !important; padding:0 !important; margin:0 !important; } .print-cards { display:grid !important; grid-template-columns:repeat(3, 54mm); gap:5mm 7mm; align-content:start; } .credential-card { display:block !important; width:54mm; height:85.6mm; border-radius:2.5mm; box-shadow:none; break-inside:avoid; page-break-inside:avoid; } .credential-content { padding:4mm 4.2mm 3.2mm; }.credential-head strong { font-size:3mm; }.credential-head small { font-size:1.9mm; max-width:34mm; }.credential-mark { width:7mm; height:7mm; flex-basis:7mm; font-size:4mm; }.credential-main { gap:2.6mm; padding:2.5mm 0; }.credential-photo { width:28mm; height:37mm; flex-basis:28mm; border-width:.7mm; font-size:12mm; }.credential-role { font-size:2mm; padding:1mm 1.6mm; margin-bottom:1.5mm; }.credential-details h2 { font-size:3.8mm; margin-bottom:1.2mm; }.credential-details p { font-size:2.3mm; }.credential-details .credential-category { font-size:1.9mm; }.credential-foot { padding-top:1.8mm; font-size:1.9mm; } }
+
+/* QR is deliberately kept white and high-contrast so handheld scanners read it reliably. */
+.credential-foot { min-height:34px; align-items:flex-end; }
+.credential-qr { width:45px; height:45px; padding:2px; margin-top:-22px; background:#fff; object-fit:contain; }
+.credential-logo { width:29px; height:29px; flex:0 0 29px; object-fit:contain; }
+.credential-details h2 { color:#fff !important; font-weight:800; text-shadow:0 2px 5px rgba(0,0,0,.95); background:rgba(0,0,0,.28); padding:4px 7px; border-radius:5px; }
+.card-settings select { width:100%; padding:9px 10px; border:1px solid #cbd5e1; border-radius:7px; background:#fff; color:#1f2937; }
+.card-size-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.credential-card { background:radial-gradient(circle at 75% 18%,rgba(30,64,175,.38),transparent 34%),linear-gradient(155deg,#050b18 0%,#0b1835 58%,#07101f 100%); }
+.credential-card::before { content:""; position:absolute; z-index:-1; width:130px; height:360px; top:-120px; right:-82px; transform:rotate(28deg); background:linear-gradient(180deg,var(--card-accent),transparent); opacity:.22; }
+.credential-card::after { content:""; position:absolute; z-index:-1; width:190px; height:4px; left:-38px; bottom:54px; transform:rotate(-18deg); background:linear-gradient(90deg,transparent,var(--card-accent),transparent); opacity:.55; }
+.credential-background--cover { object-fit:cover; opacity:1; }
+.credential-background--watermark { width:82%; height:82%; left:50%; top:50%; inset:auto; transform:translate(-50%,-50%); object-fit:contain; opacity:.14; filter:grayscale(.2); }
+.credential-background--watermark + .credential-shade { background:linear-gradient(158deg,rgba(3,7,18,.48),rgba(10,25,55,.28)); }
+.credential-background { z-index:0; }
+.credential-shade { z-index:1; }
+.credential-content { z-index:2; }
+.credential-card::before, .credential-card::after { z-index:1; pointer-events:none; }
+.credential-foot { min-height:28px; }
+.credential-qr { width:34px; height:34px; margin-top:-13px; }
+.credential-card--event { color:#111827; background:radial-gradient(circle at 20% 15%,rgba(14,165,233,.08),transparent 26%),repeating-linear-gradient(150deg,rgba(148,163,184,.08) 0 2px,transparent 2px 10px),#fff; border:1px solid #dbe3ec; }
+.credential-card--event .credential-shade { background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,.66)); }
+.credential-card--event .credential-background--cover + .credential-shade { background:rgba(255,255,255,.70); }
+.credential-card--event .credential-background--watermark + .credential-shade { background:rgba(255,255,255,.42); }
+.credential-card--event .credential-head { padding-bottom:7px; border-bottom:0; }
+.credential-card--event .credential-head .credential-logo { transform:none; }
+.credential-card--event .credential-head strong { color:#087fbd; font-size:13px; font-weight:900; text-transform:uppercase; }
+.credential-card--event .credential-head small { color:#334155; opacity:1; }
+.credential-card--event .credential-main { justify-content:flex-start; gap:7px; padding:10px 0 5px; }
+.credential-identity-row { width:100%; display:flex; align-items:center; justify-content:center; gap:13px; }
+.credential-card--event .credential-photo { width:78px; height:104px; flex:0 0 78px; border:2px solid #111827; background:#f1f5f9; font-size:34px; }
+.credential-access-code { width:86px; height:58px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; background:var(--role-color); border:3px double #fff; outline:2px solid var(--role-color); }
+.credential-access-code small { font-size:7px; font-weight:700; letter-spacing:.8px; }.credential-access-code strong { font-size:33px; line-height:1; }
+.credential-card--event .credential-details { width:100%; }
+.credential-card--event .credential-role { color:var(--role-color); background:transparent; font-size:15px; padding:0; margin:0 0 3px; letter-spacing:.3px; }
+.credential-card--event .credential-details h2 { color:#111827 !important; background:rgba(255,255,255,.78); text-shadow:none; border-radius:0; border-bottom:1px solid #334155; padding:3px 2px; font-size:15px; }
+.credential-card--event .credential-details p { color:#111827; font-weight:700; font-size:10px; }
+.credential-card--event .credential-details .credential-category { color:#475569; font-size:8px; font-weight:500; }
+.credential-card--event .credential-foot { color:#111827; border-top:1px solid #64748b; }
+.credential-card--event::before { top:auto; bottom:-115px; right:-70px; opacity:.12; }.credential-card--event::after { display:none; }
+.credential-access-code small,
+.credential-card--event .credential-category { display:none; }
+.credential-card--event .credential-qr { width:30px; height:30px; margin-top:-10px; border:1px solid #cbd5e1; transform:translateY(4px); }
+.card-settings .card-back-toggle { display:flex; align-items:center; gap:8px; font-weight:600; }.card-settings .card-back-toggle input { width:16px; height:16px; }
+.print-card-backs { display:none; }
+.credential-card--back { color:#111827; background:repeating-linear-gradient(150deg,rgba(148,163,184,.09) 0 2px,transparent 2px 10px),#fff; border:1px solid #dbe3ec; }
+.credential-card--back .credential-content { padding:16px 18px 12px; }
+.credential-back-head { display:flex; flex-direction:column; align-items:center; gap:5px; padding-bottom:8px; border-bottom:0; text-align:center; }.credential-back-head .credential-logo { width:44px; height:44px; flex-basis:44px; }.credential-back-head strong { color:#087fbd; font-size:12px; line-height:1.15; text-transform:uppercase; }
+.credential-card--back::after { display:none; }
+.credential-back-logos { display:flex; align-items:center; justify-content:center; gap:5px; }
+.credential-back-logos .credential-logo { width:34px; height:34px; flex-basis:34px; }
+.credential-legend { flex:1; display:flex; flex-direction:column; justify-content:center; gap:4px; padding:8px 3px; }.credential-legend-row { display:grid; grid-template-columns:38px 1fr; align-items:center; gap:9px; }.credential-legend-row b { display:grid; place-items:center; height:20px; color:#fff; border:2px double #fff; outline:1px solid currentColor; font-size:11px; }.credential-legend-row span { color:#111827; font-size:10px; font-weight:700; }
+.credential-card--back footer { color:#475569; border-top:1px solid #cbd5e1; padding-top:6px; text-align:center; font-size:8px; font-weight:700; letter-spacing:.6px; }
+@media print { .credential-foot { min-height:9mm; } .credential-qr { width:12mm; height:12mm; padding:.5mm; margin-top:-5mm; } }
+
+/* Event-card layout: long tournament names, labeled identity rows and sponsor strip. */
+.credential-card--labeled .credential-head--adaptive {
+  align-items:flex-start;
+  min-height:44px;
+}
+.credential-card--labeled .credential-head--adaptive > div {
+  flex:1;
+  min-width:0;
+}
+.credential-card--labeled .credential-head--adaptive .credential-event-logos {
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  gap:4px;
+}
+.credential-card--labeled .credential-event-logos .credential-logo,
+.credential-card--labeled .credential-event-logos .credential-logo--ksport {
+  width:38px;
+  height:38px;
+  max-width:38px;
+  max-height:38px;
+  flex:0 0 38px;
+  object-fit:contain;
+}
+.credential-card--labeled .credential-head--adaptive strong {
+  white-space:normal;
+  overflow-wrap:anywhere;
+  line-height:1.12;
+}
+.credential-card--long-title .credential-head--adaptive,
+.credential-card--very-long-title .credential-head--adaptive { min-height:56px; }
+.credential-card--long-title .credential-head--adaptive strong { font-size:10px; line-height:1.08; }
+.credential-card--very-long-title .credential-head--adaptive strong { font-size:8.5px; line-height:1.06; letter-spacing:.25px; }
+.credential-card--long-title .credential-photo { width:74px; height:99px; flex-basis:74px; }
+.credential-card--very-long-title .credential-photo { width:70px; height:93px; flex-basis:70px; }
+.credential-card--long-title .credential-access-code,
+.credential-card--very-long-title .credential-access-code { width:80px; height:54px; }
+.credential-card--labeled .credential-head--adaptive small {
+  max-width:none;
+  white-space:normal;
+}
+.credential-card--labeled .credential-main {
+  gap:6px;
+  padding:5px 0 3px;
+}
+.credential-card--labeled .credential-role {
+  margin:0;
+  line-height:1.1;
+}
+.credential-info {
+  width:100%;
+  display:grid;
+  gap:4px;
+  margin-top:1px;
+}
+.credential-info > div {
+  display:grid;
+  grid-template-columns:58px minmax(0,1fr);
+  align-items:end;
+  gap:5px;
+  min-height:20px;
+  border-bottom:0;
+  text-align:left;
+}
+.credential-info b {
+  padding-bottom:2px;
+  font-size:8px;
+  white-space:nowrap;
+}
+.credential-info span {
+  min-width:0;
+  padding-bottom:2px;
+  border-bottom:1px solid #334155;
+  font-size:9px;
+  font-weight:800;
+  line-height:1.12;
+  overflow-wrap:anywhere;
+}
+.credential-sponsors {
+  min-height:22px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  padding:2px 0 4px;
+  overflow:hidden;
+}
+.credential-sponsors img {
+  width:auto;
+  max-width:42px;
+  height:18px;
+  object-fit:contain;
+}
+.credential-sponsors--empty {
+  border:1px dashed #cbd5e1;
+  border-radius:4px;
+  background:rgba(255,255,255,.42);
+}
+.credential-sponsors--empty span {
+  color:#94a3b8;
+  font-size:6px;
+  font-weight:800;
+  letter-spacing:.45px;
+}
+.credential-card--compact .credential-sponsors--empty {
+  border-color:transparent;
+  background:transparent;
+}
+.credential-card--compact .credential-sponsors--empty span { visibility:hidden; }
+.credential-mats {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  min-height:25px;
+  padding:2px 0 4px;
+}
+.credential-mats > b {
+  color:#334155;
+  font-size:7px;
+  letter-spacing:.7px;
+}
+.credential-mats > div {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  min-width:0;
+}
+.credential-mats span {
+  width:19px;
+  height:21px;
+  display:grid;
+  place-items:center;
+  color:#fff;
+  border:1px solid rgba(255,255,255,.9);
+  box-shadow:0 0 0 1px rgba(15,23,42,.16);
+  font-size:11px;
+  font-weight:900;
+  line-height:1;
+}
+.credential-mats--pending em {
+  color:#64748b;
+  font-size:7px;
+  font-style:normal;
+  font-weight:800;
+  letter-spacing:.3px;
+}
+.credential-access-column {
+  width:86px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+}
+.credential-access-column .credential-access-code {
+  flex:0 0 auto;
+}
+.credential-mats--under-access {
+  width:100%;
+  min-height:0;
+  flex-direction:column;
+  gap:3px;
+  padding:0;
+}
+.credential-mats--under-access > div {
+  width:100%;
+  flex-wrap:wrap;
+}
+.credential-mats--under-access span {
+  width:18px;
+  height:19px;
+  font-size:10px;
+}
+.credential-card--labeled .credential-foot {
+  margin-top:0;
+}
+.credential-card--labeled .credential-logo--ksport,
+.credential-back-logos .credential-logo--ksport {
+  width:44px;
+  height:auto;
+  max-height:30px;
+  flex:0 0 44px;
+  align-self:center;
+  object-fit:contain;
+}
+.asset-settings {
+  display:grid;
+  gap:10px;
+  padding:11px;
+  border:1px solid #dbe3ec;
+  border-radius:9px;
+  background:#f8fafc;
+}
+.asset-settings > div {
+  display:grid;
+  gap:6px;
+}
+.asset-settings b {
+  color:#334155;
+  font-size:12px;
+}
+
+/* Production badge refinements: clear semantics, safe hierarchy and long titles. */
+.credential-lanyard-slot {
+  position:absolute;
+  z-index:3;
+  top:5px;
+  left:50%;
+  width:34px;
+  height:5px;
+  transform:translateX(-50%);
+  border:1px solid #94a3b8;
+  border-radius:999px;
+  background:rgba(255,255,255,.92);
+  box-shadow:inset 0 1px 2px rgba(15,23,42,.15);
+}
+.credential-card--labeled .credential-head--adaptive strong {
+  overflow-wrap:normal;
+  word-break:normal;
+  hyphens:none;
+}
+.credential-card--labeled .credential-head--adaptive small {
+  color:#1e293b;
+  font-weight:700;
+  opacity:1;
+}
+.credential-card--long-title .credential-head--adaptive,
+.credential-card--very-long-title .credential-head--adaptive {
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:7px;
+  min-height:48px;
+  text-align:left;
+  align-items:center;
+}
+.credential-card--long-title .credential-event-logos,
+.credential-card--very-long-title .credential-event-logos {
+  justify-content:flex-start;
+}
+.credential-card--long-title .credential-head--adaptive > div:last-child,
+.credential-card--very-long-title .credential-head--adaptive > div:last-child {
+  width:100%;
+}
+.credential-card--long-title .credential-head--adaptive strong { font-size:9.5px; line-height:1.08; }
+.credential-card--very-long-title .credential-head--adaptive strong { font-size:8.7px; line-height:1.07; letter-spacing:.15px; }
+.credential-card--long-title .credential-photo { width:68px; height:91px; flex-basis:68px; }
+.credential-card--very-long-title .credential-photo { width:62px; height:83px; flex-basis:62px; }
+.credential-photo-placeholder {
+  width:100%;
+  height:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  color:#64748b;
+}
+.credential-photo-placeholder strong {
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.5px;
+  text-align:center;
+}
+.credential-photo-placeholder b {
+  position:relative;
+  display:block;
+  width:34px;
+  height:28px;
+  border-radius:50% 50% 36% 36%;
+  background:#94a3b8;
+}
+.credential-photo-placeholder b::before {
+  content:"";
+  position:absolute;
+  left:9px;
+  top:-19px;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:#94a3b8;
+}
+.credential-photo-placeholder small {
+  font-size:6px;
+  font-weight:800;
+  letter-spacing:.4px;
+}
+.credential-card--event .credential-access-code small {
+  display:block;
+  margin-bottom:1px;
+  font-size:6px;
+  font-weight:900;
+  letter-spacing:.7px;
+}
+.credential-card--event .credential-access-code strong { font-size:30px; }
+.credential-info > div:first-child span {
+  font-size:11px;
+  font-weight:900;
+}
+.credential-info > div:nth-child(2) span { font-size:9.5px; }
+.credential-competitions {
+  width:100%;
+  display:grid;
+  grid-template-columns:52px minmax(0,1fr);
+  gap:5px;
+  padding-top:2px;
+  text-align:left;
+  color:#334155;
+}
+.credential-competitions b {
+  font-size:6.5px;
+  letter-spacing:.25px;
+}
+.credential-competitions span {
+  display:-webkit-box;
+  overflow:hidden;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  font-size:7px;
+  font-weight:700;
+  line-height:1.2;
+}
+.credential-mats--under-access > b {
+  color:#0f172a;
+  font-size:8px;
+  font-weight:900;
+}
+.credential-mats--under-access span {
+  width:20px;
+  height:22px;
+  font-size:12px;
+}
+.credential-card--event .credential-qr {
+  width:38px;
+  height:38px;
+  margin-top:-14px;
+}
+.credential-card--labeled .credential-logo--ksport,
+.credential-back-logos .credential-logo--ksport {
+  width:auto;
+  height:42px;
+  max-width:74px;
+  max-height:42px;
+  flex:0 0 auto;
+  object-fit:contain;
+}
+
+/* Fixed production zones prevent sponsor logos and footer content from overlapping identity data. */
+.credential-card--labeled .credential-content {
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr) 34px 46px;
+}
+.credential-card--labeled .credential-main {
+  min-height:0;
+  overflow:hidden;
+  align-self:stretch;
+  gap:4px;
+  padding:0 0 2px;
+}
+.credential-card--labeled .credential-info {
+  gap:2px;
+  margin-top:0;
+}
+.credential-card--labeled .credential-info > div { min-height:18px; }
+.credential-card--labeled .credential-role { font-size:14px; }
+.credential-card--labeled .credential-sponsors {
+  grid-row:3;
+  width:100%;
+  min-height:34px;
+  margin:0;
+  padding:3px 2px;
+  border-top:1px solid #cbd5e1;
+  border-bottom:1px solid #cbd5e1;
+  overflow:hidden;
+  display:grid;
+  grid-template-columns:repeat(var(--sponsor-count), minmax(0, 1fr));
+  gap:5px;
+}
+.credential-sponsor-slot {
+  min-width:0;
+  height:100%;
+  display:grid;
+  place-items:center;
+}
+.credential-card--labeled .credential-sponsors img {
+  width:100%;
+  max-width:none;
+  height:27px;
+  object-fit:contain;
+}
+.credential-card--labeled .credential-sponsors--empty { border-style:dashed; }
+.credential-card--compact .credential-sponsors--empty {
+  border-left-color:transparent;
+  border-right-color:transparent;
+  border-top-style:solid;
+  border-bottom-style:solid;
+}
+.credential-card--labeled .credential-foot {
+  grid-row:4;
+  height:46px;
+  min-height:0;
+  margin:0;
+  padding-top:4px;
+  align-items:center;
+}
+.credential-card--event .credential-qr {
+  width:38px;
+  height:38px;
+  margin:0;
+  padding:2px;
+  transform:none;
+}
+.credential-card--labeled .credential-foot > span {
+  max-width:calc(100% - 44px);
+  line-height:1.25;
+  overflow-wrap:anywhere;
+}
+.credential-mats--under-access {
+  gap:2px;
+}
+.credential-mats--under-access > b {
+  font-size:8.5px;
+  color:#0f172a;
+}
+.credential-mats--under-access > div { gap:3px; }
+.credential-mats--under-access span {
+  width:22px;
+  height:24px;
+  font-size:14px;
+  border-width:2px;
+}
+.credential-access-column { gap:3px; }
+.credential-card--long-title .credential-access-code,
+.credential-card--very-long-title .credential-access-code { height:46px; }
+.credential-card--long-title .credential-access-code strong,
+.credential-card--very-long-title .credential-access-code strong { font-size:27px; }
+
+/* Keep these two identity rows stable: label left, underlined value right. */
+.credential-card--labeled .credential-info {
+  width:100%;
+  display:grid;
+  gap:5px;
+  margin-top:2px;
+}
+.credential-card--labeled .credential-info > div {
+  display:grid;
+  grid-template-columns:58px minmax(0,1fr);
+  align-items:end;
+  gap:5px;
+  min-height:20px;
+  text-align:left;
+}
+.credential-card--labeled .credential-info b {
+  padding-bottom:2px;
+  font-size:8px;
+  font-weight:700;
+  white-space:nowrap;
+}
+.credential-card--labeled .credential-info span,
+.credential-card--labeled .credential-info > div:first-child span,
+.credential-card--labeled .credential-info > div:nth-child(2) span {
+  min-width:0;
+  padding-bottom:2px;
+  border-bottom:1px solid #334155;
+  font-size:9.5px;
+  font-weight:800;
+  line-height:1.12;
+  overflow-wrap:anywhere;
+}

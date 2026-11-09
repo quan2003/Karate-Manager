@@ -574,6 +574,8 @@ ipcMain.handle(
         filters = [{ name: "JSON File", extensions: ["json"] }];
       } else if (fileType === "kbackup") {
         filters = [{ name: "Karate Backup File", extensions: ["kbackup"] }];
+      } else if (fileType === "docx") {
+        filters = [{ name: "Microsoft Word Document", extensions: ["docx"] }];
       } else {
         filters = [{ name: "Excel File", extensions: ["xlsx"] }];
       }
@@ -589,7 +591,7 @@ ipcMain.handle(
       }
 
       // Content có thể là string (JSON) hoặc base64 (Excel)
-      if (fileType === "xlsx") {
+      if (fileType === "xlsx" || fileType === "docx") {
         const buffer = Buffer.from(content, "base64");
         fs.writeFileSync(result.filePath, buffer);
       } else {
@@ -661,9 +663,10 @@ ipcMain.handle("import:open", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: "Import file từ HLV",
       filters: [
-        { name: "Supported Files", extensions: ["json", "xlsx"] },
+        { name: "Gói đăng ký / Excel", extensions: ["json", "xlsx", "zip"] },
         { name: "JSON File", extensions: ["json"] },
         { name: "Excel File", extensions: ["xlsx"] },
+        { name: "Gói ảnh thẻ ZIP", extensions: ["zip"] },
       ],
       properties: ["openFile"],
     });
@@ -684,7 +687,7 @@ ipcMain.handle("import:open", async () => {
         success: true,
         content: content.toString("base64"),
         filePath,
-        fileType: "xlsx",
+        fileType: ext === ".zip" ? "zip" : "xlsx",
       };
     }
   } catch (error) {
@@ -799,6 +802,31 @@ function createWindow() {
 
 // Xử lý mở cửa sổ mới (popup) cho tất cả webContents
 app.on("web-contents-created", (event, contents) => {
+  // Intercept the close button of the Kata audience window.  The external
+  // monitor stays occupied by the K-SPORT logo instead of revealing Windows.
+  contents.on("did-create-window", (childWindow, details) => {
+    const isScoreboardDisplay =
+      details.url.includes("kata-scoreboard/display.html") ||
+      details.url.includes("kumite-scoreboard/display.html");
+    if (!isScoreboardDisplay) return;
+    const parentWindow = BrowserWindow.fromWebContents(contents);
+
+    childWindow.on("close", (closeEvent) => {
+      // Once its Admin window is gone, the logo display is no longer needed
+      // and the operator may close it normally from the taskbar or title bar.
+      if (childWindow.isDestroyed() || !parentWindow || parentWindow.isDestroyed()) {
+        return;
+      }
+
+      closeEvent.preventDefault();
+      const idleUrl = new URL(details.url);
+      idleUrl.searchParams.set("idle", "1");
+      childWindow.loadURL(idleUrl.toString()).catch((error) => {
+        console.error("Không thể hiển thị logo chờ trên màn hình khán giả:", error);
+      });
+    });
+  });
+
   contents.setWindowOpenHandler(({ url }) => {
     // Cho phép mở scoreboard windows bên trong Electron
     if (

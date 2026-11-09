@@ -4,6 +4,7 @@ const STORAGE_KEY = "kumite_scoreboard";
 // State management
 let state = {
   mode: "individual", // 'individual' or 'team'
+  showIdleLogo: true, // Audience display waits on the branded idle screen.
   displayLayout: "horizontal", // 'horizontal' or 'vertical'
   swapPositions: false,
   category: "KUMITE",
@@ -798,6 +799,7 @@ function formatTechniqueSummary(side) {
 }
 
 function addPoint(competitor, type) {
+  state.showIdleLogo = false;
   if (type === "senshu") {
     if (competitor === "aka") {
       state.akaSenshu = !state.akaSenshu;
@@ -1471,6 +1473,7 @@ function triggerFullscreenDisplay(
 
 // Reset functions
 function resetAll() {
+  state.showIdleLogo = true;
   state.akaScore = 0;
   state.aoScore = 0;
   state.techniqueCounts = {
@@ -1587,6 +1590,8 @@ function swapPositions() {
 }
 // Open display window
 function openDisplay() {
+  state.showIdleLogo = false;
+  saveState();
   displayWindow = window.open(
     "display.html",
     "KumiteDisplay",
@@ -2327,6 +2332,9 @@ async function loadPendingMatch() {
     // Logos must belong to the match's tournament. Never retain logos from
     // the previously opened match when the current tournament has none.
     sponsorLogos: pendingMatchData.sponsorLogos || { sponsors: [] },
+    // A newly loaded match must always replace the idle logo on the audience
+    // display, even before the operator presses the open-display button.
+    showIdleLogo: false,
     swapPositions: false,
     matchId: pendingMatchData.matchId || null,
     matchRound: pendingMatchData.roundName || "",

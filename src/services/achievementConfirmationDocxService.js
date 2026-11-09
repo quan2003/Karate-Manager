@@ -80,6 +80,13 @@ export function buildAchievementConfirmationRows(tournament, options = {}) {
   const grouped = new Map();
 
   getAwardedAthletes(tournament).forEach((record, index) => {
+    if (
+      Array.isArray(options.categoryIds) &&
+      options.categoryIds.length > 0 &&
+      !options.categoryIds.includes(record.categoryId)
+    ) {
+      return;
+    }
     const normalizedClubName = normalizeSpace(record.clubName);
     if (
       selectedClubs.size > 0 &&

@@ -161,9 +161,9 @@ export const CHECKLIST_STEPS = [
     id: "closing_ceremony",
     group: 4,
     label: "Bế mạc",
-    description: "Xuất bảng tổng sắp huy chương & in giấy chứng nhận",
+    description: "Xuất bảng tổng sắp huy chương & dữ liệu trộn giấy chứng nhận",
     icon: "🎖️",
-    actionLabel: "Tab 'Chứng nhận' → In giấy chứng nhận",
+    actionLabel: "Xuất GCN → chọn nội dung → xuất Excel/Word",
     getRoute: ({ firstTournamentId }) =>
       firstTournamentId
         ? { path: `/certificate/${firstTournamentId}`, hint: "closing_ceremony" }
@@ -220,7 +220,7 @@ export const NAVIGATION_HINTS = {
   publish_bracket:            "💡 Bấm '📄 Xuất PDF' ở trang Sơ đồ, hoặc '📄 Xuất tất cả PDF' ở trang Giải đấu để in kết quả.",
   update_results:             "💡 Bấm vào từng trận đấu để nhập kết quả từ bàn thư ký.",
   export_kmatch:              "💡 Bấm nút 'Xuất (.kmatch)' ở thanh công cụ để tạo file nạp cho máy Thư ký.",
-  closing_ceremony:           "💡 6 BƯỚC IN GCN:\n1. ➕ Tạo mẫu, chọn hướng giấy\n2. 🖼 Tải ảnh nền\n3. Kéo thả biến vào vị trí\n4. Lọc dữ liệu\n5. Xem trước\n6. In/Xuất PDF.",
+  closing_ceremony:           "💡 XUẤT GCN:\n1. Mở Xuất GCN\n2. Chọn nội dung đã có huy chương\n3. Xuất Excel\n4. Trộn vào mẫu Word của giải\n5. Xem trước và in.\nBạn cũng có thể xuất Word tổng hợp trực tiếp.",
   import_kmatch_secretary:    "💡 Dành cho Thư ký: Bấm '📂 Mở file .kmatch' rồi chọn file từ máy Admin gửi sang.",
   // Error states
   need_tournament:            "⚠️ Bạn cần tạo ít nhất một giải đấu trước. Bấm 'Tạo giải đấu mới'.",

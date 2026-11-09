@@ -20,12 +20,16 @@ import {
   estimateTotalScheduleTime,
   estimateRequiredDays,
   DEFAULT_MATCH_DURATIONS,
+  STANDARD_KARATE_AGE_GROUPS,
   detectScheduleConflicts,
   addMinutesToTime,
   estimateCategoryDuration,
   getCategoryAgeKey,
   getCategoryScheduleGroupKey,
   getCategoryCustomPlanGroupKey,
+  getCategoryAgeGroupInfo,
+  getTournamentAgeGroups,
+  getCategoryMatchDuration,
 } from "../services/scheduleService";
 import {
   exportScheduleToPDF,
@@ -83,6 +87,9 @@ export default function SchedulePage() {
   const [eventForm, setEventForm] = useState({ name: "", time: "07:00", mat: 0, icon: "🎉", date: "" });
   // Schedule Setup
   const [showSetupModal, setShowSetupModal] = useState(false);
+  const [showKataAgeSetup, setShowKataAgeSetup] = useState(false);
+  const [showCustomAgeInput, setShowCustomAgeInput] = useState(false);
+  const [customAgeInputLabel, setCustomAgeInputLabel] = useState("");
   const [showConflictInfo, setShowConflictInfo] = useState(false);
   const [activeConflicts, setActiveConflicts] = useState([]);
   const [showVerticalMatExportModal, setShowVerticalMatExportModal] = useState(false);
@@ -247,6 +254,42 @@ export default function SchedulePage() {
       }))
       .sort((a, b) => a.label.localeCompare(b.label, 'vi'));
   }, [categories]);
+
+  const tournamentAgeGroups = useMemo(() => {
+    const detected = getTournamentAgeGroups(categories);
+    const baseGroups = detected.length > 0 ? detected : STANDARD_KARATE_AGE_GROUPS.map((g) => ({
+      ...g,
+      totalCategories: 0,
+      kumiteCount: 0,
+      kumiteTeamCount: 0,
+      kataCount: 0,
+      kataTeamCount: 0,
+    }));
+
+    const configuredKeys = Object.keys(setupForm.durations?.byAgeGroup || {});
+    const existingKeySet = new Set(baseGroups.map((g) => g.key));
+    const extraGroups = [];
+
+    configuredKeys.forEach((key) => {
+      if (!existingKeySet.has(key)) {
+        extraGroups.push({
+          key,
+          label: key,
+          order: 99,
+          totalCategories: 0,
+          kumiteCount: 0,
+          kumiteTeamCount: 0,
+          kataCount: 0,
+          kataTeamCount: 0,
+        });
+      }
+    });
+
+    return [...baseGroups, ...extraGroups].sort((a, b) => {
+      if (a.order !== b.order) return a.order - b.order;
+      return a.label.localeCompare(b.label, 'vi');
+    });
+  }, [categories, setupForm.durations?.byAgeGroup]);
 
   const setupEstimations = useMemo(() => {
     if (!showSetupModal || !categories) return null;
@@ -458,7 +501,13 @@ export default function SchedulePage() {
   useEffect(() => {
     if (!showAssignModal || !selectedCategory) return;
     const w = checkScheduleConflicts(
-      schedule, categories, selectedCategory.id, assignForm.mat, assignForm.time, assignForm.date || selectedDate
+      schedule,
+      categories,
+      selectedCategory.id,
+      assignForm.mat,
+      assignForm.time,
+      assignForm.date || selectedDate,
+      tournament?.scheduleConfig?.durations || matchDurations
     );
     setWarnings(w);
   }, [assignForm, showAssignModal, selectedCategory]);
@@ -717,6 +766,128 @@ export default function SchedulePage() {
       plans[dayIndex] = { ...dayPlan, [sessionKey]: sessionPlan };
       return { ...prev, customMatPlanByDay: plans };
     });
+  };
+
+  const updateAgeDuration = (ageKey, field, value) => {
+    setSetupForm((prev) => {
+      const currentDurations = prev.durations || { ...DEFAULT_MATCH_DURATIONS };
+      const currentByAge = { ...(currentDurations.byAgeGroup || {}) };
+      const currentGroup = { ...(currentByAge[ageKey] || {}) };
+
+      if (value === "" || value === null || value === undefined) {
+        delete currentGroup[field];
+      } else {
+        const parsed = parseFloat(value);
+        if (!isNaN(parsed) && parsed > 0) {
+          currentGroup[field] = parsed;
+        } else {
+          delete currentGroup[field];
+        }
+      }
+
+      if (Object.keys(currentGroup).length === 0) {
+        delete currentByAge[ageKey];
+      } else {
+        currentByAge[ageKey] = currentGroup;
+      }
+
+      return {
+        ...prev,
+        durations: {
+          ...currentDurations,
+          byAgeGroup: currentByAge,
+        },
+      };
+    });
+  };
+
+  const clearAgeDuration = (ageKey) => {
+    setSetupForm((prev) => {
+      const currentDurations = prev.durations || { ...DEFAULT_MATCH_DURATIONS };
+      const currentByAge = { ...(currentDurations.byAgeGroup || {}) };
+      delete currentByAge[ageKey];
+      return {
+        ...prev,
+        durations: {
+          ...currentDurations,
+          byAgeGroup: currentByAge,
+        },
+      };
+    });
+  };
+
+  const handleApplyKumitePresets = () => {
+    setSetupForm((prev) => {
+      const currentDurations = prev.durations || { ...DEFAULT_MATCH_DURATIONS };
+      const newByAge = { ...(currentDurations.byAgeGroup || {}) };
+
+      tournamentAgeGroups.forEach((group) => {
+        const existing = newByAge[group.key] || {};
+        let indVal = 3.5;
+        let teamVal = 6;
+        if (group.order <= 11) {
+          indVal = 3;
+          teamVal = 5;
+        } else if (group.order <= 14) {
+          indVal = 3.5;
+          teamVal = 6;
+        } else if (group.order <= 17) {
+          indVal = 4;
+          teamVal = 8;
+        } else {
+          indVal = 5;
+          teamVal = 10;
+        }
+        newByAge[group.key] = {
+          ...existing,
+          kumite_individual: indVal,
+          kumite_team: teamVal,
+        };
+      });
+
+      return {
+        ...prev,
+        durations: {
+          ...currentDurations,
+          byAgeGroup: newByAge,
+        },
+      };
+    });
+    toast.success("Đã áp dụng gợi ý thời lượng chuẩn Kumite theo từng lứa tuổi!");
+  };
+
+  const handleResetDurations = () => {
+    setSetupForm((prev) => ({
+      ...prev,
+      durations: {
+        ...DEFAULT_MATCH_DURATIONS,
+      },
+    }));
+    toast.info("Đã đặt lại thời lượng trận đấu về mặc định chung.");
+  };
+
+  const handleAddCustomAgeGroup = () => {
+    const label = customAgeInputLabel.trim();
+    if (!label) return;
+    const key = label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    setSetupForm((prev) => {
+      const currentDurations = prev.durations || { ...DEFAULT_MATCH_DURATIONS };
+      const currentByAge = { ...(currentDurations.byAgeGroup || {}) };
+      if (!currentByAge[key]) {
+        currentByAge[key] = {
+          kumite_individual: currentDurations.kumite_individual || 5,
+        };
+      }
+      return {
+        ...prev,
+        durations: {
+          ...currentDurations,
+          byAgeGroup: currentByAge,
+        },
+      };
+    });
+    setCustomAgeInputLabel("");
+    setShowCustomAgeInput(false);
   };
 
   // Apply setup
@@ -1392,7 +1563,7 @@ export default function SchedulePage() {
                                     {item.time || '--:--'}
                                     {item.category && item.time && (
                                       <span className="scard-time-end"> 
-                                        - {item.endTime || addMinutesToTime(item.time, estimateCategoryDuration(item.category, currentTournament.setup?.durations))}
+                                        - {item.endTime || addMinutesToTime(item.time, estimateCategoryDuration(item.category, tournament?.scheduleConfig?.durations || tournament?.setup?.durations || matchDurations))}
                                       </span>
                                     )}
                                   </span>
@@ -1404,6 +1575,9 @@ export default function SchedulePage() {
                                   </div>
                                   <div className="scard-meta">
                                     <span>{item.category.athletes?.length || 0} VĐV</span>
+                                    <span style={{ color: '#64748b' }} title="Thời lượng ước tính theo lứa tuổi">
+                                      • ~{getCategoryMatchDuration(item.category, tournament?.scheduleConfig?.durations || tournament?.setup?.durations || matchDurations)}p/trận ({estimateCategoryDuration(item.category, tournament?.scheduleConfig?.durations || tournament?.setup?.durations || matchDurations)}p)
+                                    </span>
                                     {itemConflicts.length > 0 && (
                                       <span 
                                         className="scard-conflict-badge clickable" 
@@ -2196,28 +2370,293 @@ export default function SchedulePage() {
               </div>
             )}
 
-            <div style={{marginTop:'16px'}}>
-              <div className="input-label">⏱️ Thời lượng trận đấu dự kiến (phút)</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginTop:'8px'}}>
+            <div style={{marginTop:'18px', borderTop:'1px solid #e2e8f0', paddingTop:'16px'}}>
+              <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'6px', flexWrap:'wrap', gap:'8px'}}>
+                <div className="input-label" style={{margin:0, fontSize:'13px', fontWeight:700, color:'#1e293b'}}>
+                  ⏱️ Thời lượng trận đấu dự kiến (phút/trận)
+                </div>
+                <div style={{display:'flex', gap:'8px', alignItems:'center'}}>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    style={{fontSize:'11px', background:'#ecfdf5', borderColor:'#a7f3d0', color:'#065f46', fontWeight:600}}
+                    onClick={handleApplyKumitePresets}
+                    title="Tự động điền thời lượng Kumite chuẩn: nhỏ 3p, lớn 4-5p"
+                  >
+                    ⚡ Gợi ý chuẩn Kumite
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    style={{fontSize:'11px', background:'#f8fafc', borderColor:'#cbd5e1', color:'#475569'}}
+                    onClick={handleResetDurations}
+                    title="Khôi phục toàn bộ về thời lượng mặc định chung"
+                  >
+                    🔄 Đặt lại
+                  </button>
+                </div>
+              </div>
+
+              <div style={{fontSize:'11px', color:'#64748b', marginBottom:'8px'}}>
+                Thời lượng mặc định chung cho toàn giải đấu (áp dụng khi không cấu hình riêng theo lứa tuổi):
+              </div>
+
+              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'10px'}}>
                 <div className="input-group">
                   <label className="input-label" style={{fontSize:'11px'}}>Kata cá nhân</label>
-                  <input type="number" className="input" value={setupForm.durations?.kata_individual || 5}
-                    onChange={(e) => setSetupForm(prev => ({...prev, durations: {...prev.durations, kata_individual: parseInt(e.target.value) || 5}}))} />
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    className="input"
+                    value={setupForm.durations?.kata_individual ?? 5}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setSetupForm(prev => ({
+                        ...prev,
+                        durations: { ...prev.durations, kata_individual: !isNaN(val) && val > 0 ? val : 5 }
+                      }));
+                    }}
+                  />
                 </div>
                 <div className="input-group">
                   <label className="input-label" style={{fontSize:'11px'}}>Kata đồng đội</label>
-                  <input type="number" className="input" value={setupForm.durations?.kata_team || 5}
-                    onChange={(e) => setSetupForm(prev => ({...prev, durations: {...prev.durations, kata_team: parseInt(e.target.value) || 5}}))} />
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    className="input"
+                    value={setupForm.durations?.kata_team ?? 5}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setSetupForm(prev => ({
+                        ...prev,
+                        durations: { ...prev.durations, kata_team: !isNaN(val) && val > 0 ? val : 5 }
+                      }));
+                    }}
+                  />
                 </div>
                 <div className="input-group">
-                  <label className="input-label" style={{fontSize:'11px'}}>Kumite cá nhân</label>
-                  <input type="number" className="input" value={setupForm.durations?.kumite_individual || 5}
-                    onChange={(e) => setSetupForm(prev => ({...prev, durations: {...prev.durations, kumite_individual: parseInt(e.target.value) || 5}}))} />
+                  <label className="input-label" style={{fontSize:'11px', color:'#dc2626', fontWeight:700}}>Kumite cá nhân (chuẩn)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    className="input"
+                    value={setupForm.durations?.kumite_individual ?? 5}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setSetupForm(prev => ({
+                        ...prev,
+                        durations: { ...prev.durations, kumite_individual: !isNaN(val) && val > 0 ? val : 5 }
+                      }));
+                    }}
+                  />
                 </div>
                 <div className="input-group">
-                  <label className="input-label" style={{fontSize:'11px'}}>Kumite đồng đội</label>
-                  <input type="number" className="input" value={setupForm.durations?.kumite_team || 5}
-                    onChange={(e) => setSetupForm(prev => ({...prev, durations: {...prev.durations, kumite_team: parseInt(e.target.value) || 5}}))} />
+                  <label className="input-label" style={{fontSize:'11px', color:'#dc2626', fontWeight:700}}>Kumite đồng đội (chuẩn)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    className="input"
+                    value={setupForm.durations?.kumite_team ?? 5}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setSetupForm(prev => ({
+                        ...prev,
+                        durations: { ...prev.durations, kumite_team: !isNaN(val) && val > 0 ? val : 5 }
+                      }));
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* BẢNG CẤU HÌNH THỜI LƯỢNG THEO TỪNG LỨA TUỔI */}
+              <div style={{marginTop:'14px', background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'8px', padding:'12px'}}>
+                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'6px', flexWrap:'wrap', gap:'6px'}}>
+                  <div style={{fontSize:'12px', fontWeight:700, color:'#0f172a', display:'flex', alignItems:'center', gap:'6px'}}>
+                    <span>🥋</span>
+                    <span>Cấu hình thời lượng theo từng lứa tuổi (chủ yếu Kumite)</span>
+                  </div>
+                  <div style={{display:'flex', alignItems:'center', gap:'12px'}}>
+                    <label style={{display:'flex', alignItems:'center', gap:'5px', fontSize:'11px', color:'#475569', cursor:'pointer'}}>
+                      <input
+                        type="checkbox"
+                        checked={showKataAgeSetup}
+                        onChange={(e) => setShowKataAgeSetup(e.target.checked)}
+                      />
+                      <span>Tùy chỉnh cả Kata</span>
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      style={{fontSize:'11px', padding:'2px 8px'}}
+                      onClick={() => setShowCustomAgeInput(!showCustomAgeInput)}
+                    >
+                      {showCustomAgeInput ? "Đóng" : "+ Thêm lứa tuổi"}
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{fontSize:'11px', color:'#64748b', marginBottom:'10px'}}>
+                  💡 Các lứa tuổi nhỏ thường có thời gian đấu ngắn hơn (VD: 2.5 - 3 phút/trận), lứa tuổi lớn 4 - 5 phút/trận.
+                  Ô để trống sẽ tự động áp dụng thời lượng mặc định chung ở trên.
+                </div>
+
+                {showCustomAgeInput && (
+                  <div style={{display:'flex', gap:'8px', alignItems:'center', marginBottom:'10px', padding:'8px', background:'#fff', border:'1px dashed #3b82f6', borderRadius:'6px'}}>
+                    <input
+                      type="text"
+                      className="input"
+                      style={{flex:1, height:'32px', fontSize:'12px'}}
+                      placeholder="VD: 13-14 tuổi, U15, Lứa tuổi 6-8..."
+                      value={customAgeInputLabel}
+                      onChange={(e) => setCustomAgeInputLabel(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleAddCustomAgeGroup(); }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-primary"
+                      style={{height:'32px', fontSize:'12px'}}
+                      onClick={handleAddCustomAgeGroup}
+                    >
+                      Thêm
+                    </button>
+                  </div>
+                )}
+
+                <div style={{display:'grid', gap:'6px'}}>
+                  {tournamentAgeGroups.map((group) => {
+                    const groupDurations = setupForm.durations?.byAgeGroup?.[group.key] || {};
+                    const hasOverride = Object.keys(groupDurations).length > 0;
+                    const defaultKumiteIndiv = setupForm.durations?.kumite_individual || 5;
+                    const defaultKumiteTeam = setupForm.durations?.kumite_team || 5;
+                    const defaultKataIndiv = setupForm.durations?.kata_individual || 5;
+                    const defaultKataTeam = setupForm.durations?.kata_team || 5;
+
+                    return (
+                      <div
+                        key={group.key}
+                        style={{
+                          display:'grid',
+                          gridTemplateColumns: showKataAgeSetup
+                            ? 'minmax(140px, 1.4fr) repeat(4, 1fr) 28px'
+                            : 'minmax(160px, 1.5fr) 1fr 1fr 28px',
+                          gap:'8px',
+                          alignItems:'center',
+                          padding:'7px 10px',
+                          background: hasOverride ? '#fff' : '#fdfdfe',
+                          border: hasOverride ? '1px solid #93c5fd' : '1px solid #e2e8f0',
+                          borderRadius:'6px',
+                        }}
+                      >
+                        <div>
+                          <div style={{fontWeight:700, fontSize:'12px', color:'#0f172a'}}>
+                            {group.label}
+                          </div>
+                          <div style={{fontSize:'10px', color:'#64748b', display:'flex', gap:'5px', flexWrap:'wrap', marginTop:'1px'}}>
+                            {group.kumiteCount > 0 && (
+                              <span style={{color:'#dc2626', fontWeight:600}}>{group.kumiteCount} Kumite</span>
+                            )}
+                            {group.kumiteTeamCount > 0 && (
+                              <span style={{color:'#b91c1c'}}>{group.kumiteTeamCount} Kumite ĐĐ</span>
+                            )}
+                            {group.kataCount > 0 && (
+                              <span style={{color:'#2563eb', fontWeight:600}}>{group.kataCount} Kata</span>
+                            )}
+                            {group.kataTeamCount > 0 && (
+                              <span style={{color:'#1d4ed8'}}>{group.kataTeamCount} Kata ĐĐ</span>
+                            )}
+                            {group.totalCategories === 0 && (
+                              <span style={{color:'#94a3b8', fontStyle:'italic'}}>Chưa có nội dung</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{fontSize:'10px', color:'#dc2626', fontWeight:600, marginBottom:'2px'}}>
+                            Kumite cá nhân
+                          </div>
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0.5"
+                            className="input"
+                            style={{height:'28px', fontSize:'11px', padding:'2px 6px'}}
+                            placeholder={`Mặc định: ${defaultKumiteIndiv}`}
+                            value={groupDurations.kumite_individual ?? ''}
+                            onChange={(e) => updateAgeDuration(group.key, 'kumite_individual', e.target.value)}
+                          />
+                        </div>
+
+                        <div>
+                          <div style={{fontSize:'10px', color:'#b91c1c', fontWeight:600, marginBottom:'2px'}}>
+                            Kumite đồng đội
+                          </div>
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0.5"
+                            className="input"
+                            style={{height:'28px', fontSize:'11px', padding:'2px 6px'}}
+                            placeholder={`Mặc định: ${defaultKumiteTeam}`}
+                            value={groupDurations.kumite_team ?? ''}
+                            onChange={(e) => updateAgeDuration(group.key, 'kumite_team', e.target.value)}
+                          />
+                        </div>
+
+                        {showKataAgeSetup && (
+                          <>
+                            <div>
+                              <div style={{fontSize:'10px', color:'#2563eb', fontWeight:600, marginBottom:'2px'}}>
+                                Kata cá nhân
+                              </div>
+                              <input
+                                type="number"
+                                step="0.5"
+                                min="0.5"
+                                className="input"
+                                style={{height:'28px', fontSize:'11px', padding:'2px 6px'}}
+                                placeholder={`Mặc định: ${defaultKataIndiv}`}
+                                value={groupDurations.kata_individual ?? ''}
+                                onChange={(e) => updateAgeDuration(group.key, 'kata_individual', e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <div style={{fontSize:'10px', color:'#1d4ed8', fontWeight:600, marginBottom:'2px'}}>
+                                Kata đồng đội
+                              </div>
+                              <input
+                                type="number"
+                                step="0.5"
+                                min="0.5"
+                                className="input"
+                                style={{height:'28px', fontSize:'11px', padding:'2px 6px'}}
+                                placeholder={`Mặc định: ${defaultKataTeam}`}
+                                value={groupDurations.kata_team ?? ''}
+                                onChange={(e) => updateAgeDuration(group.key, 'kata_team', e.target.value)}
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        <div style={{textAlign:'center'}}>
+                          {hasOverride && (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              style={{height:'26px', width:'26px', padding:0, fontSize:'11px', color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer'}}
+                              title="Xóa cài đặt riêng cho lứa tuổi này (dùng lại mặc định chung)"
+                              onClick={() => clearAgeDuration(group.key)}
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

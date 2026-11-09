@@ -54,6 +54,9 @@ export default function AthletesPage() {
   const [customCloudId, setCustomCloudId] = useState("");
   const [showWithdrawAthletesModal, setShowWithdrawAthletesModal] = useState(false);
   const [withdrawClubName, setWithdrawClubName] = useState("");
+  const [showRenameClubModal, setShowRenameClubModal] = useState(false);
+  const [renameClubSource, setRenameClubSource] = useState("");
+  const [renameClubTarget, setRenameClubTarget] = useState("");
   const [selectedWithdrawAthleteIds, setSelectedWithdrawAthleteIds] = useState([]);
   const [withdrawingAthletes, setWithdrawingAthletes] = useState(false);
   const [photoPreview, setPhotoPreview] = useState({
@@ -193,6 +196,10 @@ export default function AthletesPage() {
         { headers: await getCloudAuthHeaders() },
       );
       const data = await response.json().catch(() => ({}));
+      if (response.status === 404) {
+        setPhotoPreview({ open: true, athleteId, athleteName: athlete.name, url: "", publicApproved: false });
+        return;
+      }
       if (!response.ok || !data?.viewUrl) {
         throw new Error(data?.message || "Không tìm thấy ảnh thẻ");
       }
@@ -342,6 +349,45 @@ export default function AthletesPage() {
 
   const normalizeClubName = (value) =>
     String(value || "").trim().normalize("NFC").toLowerCase();
+
+  const handleRenameClub = () => {
+    const oldClubName = renameClubSource.trim();
+    const newClubName = renameClubTarget.trim().replace(/\s+/g, " ");
+    if (!oldClubName || !newClubName) {
+      toast.error("Vui lòng chọn CLB và nhập tên mới.");
+      return;
+    }
+    if (normalizeClubName(oldClubName) === normalizeClubName(newClubName)) {
+      toast.error("Tên mới chưa khác tên CLB hiện tại.");
+      return;
+    }
+    if (uniqueClubs.some((club) => normalizeClubName(club) === normalizeClubName(newClubName))) {
+      toast.error("Tên CLB mới đã tồn tại. Hãy dùng tên khác để tránh gộp dữ liệu ngoài ý muốn.");
+      return;
+    }
+
+    const athleteCount = allAthletes.filter(
+      (athlete) => normalizeClubName(athlete.club) === normalizeClubName(oldClubName),
+    ).length;
+    setShowRenameClubModal(false);
+    setConfirmDialog({
+      open: true,
+      title: "Xác nhận đổi tên CLB",
+      message: `Đổi “${oldClubName}” thành “${newClubName}” cho ${athleteCount} VĐV? Tên CLB trong bảng đấu, kết quả, lệ phí và thông tin đoàn cũng được cập nhật.`,
+      type: "warning",
+      onConfirm: () => {
+        dispatch({
+          type: ACTIONS.RENAME_CLUB,
+          payload: { tournamentId: tournament.id, oldClubName, newClubName },
+        });
+        setFilterClub(newClubName);
+        setRenameClubSource("");
+        setRenameClubTarget("");
+        setConfirmDialog((current) => ({ ...current, open: false }));
+        toast.success(`Đã đổi tên CLB thành “${newClubName}”.`);
+      },
+    });
+  };
 
   const athletesInWithdrawClub = withdrawClubName
     ? allAthletes.filter(
@@ -570,6 +616,8 @@ export default function AthletesPage() {
 
     const data = filteredAthletes.map((a, index) => ({
       STT: index + 1,
+      "Mã VĐV K-SPORT": a.athleteId || "",
+      "Tên file ảnh thẻ": a.photoFileName || "",
       "Tên VĐV": a.name,
       "Loại": a.isTeam ? "Đồng đội" : "Cá nhân",
       "Giới tính": a.gender === "male" ? "Nam" : a.gender === "female" ? "Nữ" : "",
@@ -757,6 +805,29 @@ export default function AthletesPage() {
               {publishingAllPhotos ? "Đang duyệt ảnh..." : "Duyệt tất cả ảnh"}
             </button>
 
+            <Link
+              to={`/cards/${tournament.id}`}
+              className="btn btn-primary"
+              title="Thiết kế và in thẻ VĐV, HLV, Trưởng đoàn"
+              style={{ borderRadius: '8px' }}
+            >
+              🪪 In thẻ
+            </Link>
+
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                setRenameClubSource(filterClub === "all" ? "" : filterClub);
+                setRenameClubTarget("");
+                setShowRenameClubModal(true);
+              }}
+              disabled={uniqueClubs.length === 0}
+              title="Đổi tên CLB trên toàn bộ dữ liệu của giải"
+              style={{ borderRadius: '8px' }}
+            >
+              ✏️ Đổi tên CLB
+            </button>
+
             <button className="btn btn-secondary" onClick={handleExportExcel} style={{ borderRadius: '8px' }}>
               📥 Xuất Excel
             </button>
@@ -925,12 +996,12 @@ export default function AthletesPage() {
                     </td>
                     <td className="actions-col">
                       <button
-                        className="btn-icon text-purple"
+                        className="btn-photo-upload"
                         onClick={() => handleViewPhoto(a)}
                         disabled={loadingPhotoId === a.athleteId}
-                        title="Xem ảnh thẻ riêng tư"
+                        title="Xem hoặc tải ảnh thẻ VĐV"
                       >
-                        {loadingPhotoId === a.athleteId ? "…" : "📷"}
+                        {loadingPhotoId === a.athleteId ? "Đang mở..." : "📷 Tải ảnh thẻ"}
                       </button>
                       <button className="btn-icon text-blue" onClick={() => handleEdit(a)} title="Sửa thông tin">
                         ✏️
@@ -957,22 +1028,25 @@ export default function AthletesPage() {
           onClose={() => setPhotoPreview({ open: false, athleteId: "", athleteName: "", url: "", publicApproved: false })}
           title={`Ảnh thẻ VĐV${photoPreview.athleteName ? ` — ${photoPreview.athleteName}` : ""}`}
         >
-          {photoPreview.url && (
-            <>
+          <>
+            {photoPreview.url ? (
               <img
                 src={photoPreview.url}
                 alt={`Ảnh thẻ ${photoPreview.athleteName}`}
                 style={{ display: "block", width: "100%", maxHeight: "65vh", objectFit: "contain", borderRadius: "8px" }}
               />
-              <input
-                ref={photoFileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={handleReplacePhoto}
-                style={{ display: "none" }}
-              />
+            ) : (
+              <p style={{ color: "#64748b", margin: "8px 0 16px" }}>VĐV chưa có ảnh thẻ. Chọn tải ảnh để thêm ảnh đầu tiên.</p>
+            )}
+            <input
+              ref={photoFileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleReplacePhoto}
+              style={{ display: "none" }}
+            />
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", flexWrap: "wrap", marginTop: "16px" }}>
-                {photoPreview.publicApproved ? (
+                {photoPreview.url && (photoPreview.publicApproved ? (
                   <span style={{ alignSelf: "center", color: "#15803d", fontWeight: 600 }}>
                     ✓ Đã công khai
                   </span>
@@ -985,18 +1059,71 @@ export default function AthletesPage() {
                   >
                     {publishingPhoto ? "Đang công khai..." : "Duyệt & công khai"}
                   </button>
-                )}
+                ))}
                 <button
                   type="button"
                   className="btn btn-primary"
                   disabled={replacingPhoto}
                   onClick={() => photoFileInputRef.current?.click()}
                 >
-                  {replacingPhoto ? "Đang thay ảnh..." : "Thay ảnh"}
+                  {replacingPhoto ? "Đang tải ảnh..." : photoPreview.url ? "Thay ảnh thẻ" : "Tải ảnh thẻ"}
                 </button>
               </div>
-            </>
-          )}
+          </>
+        </Modal>
+
+        <Modal
+          isOpen={showRenameClubModal}
+          onClose={() => {
+            setShowRenameClubModal(false);
+            setRenameClubSource("");
+            setRenameClubTarget("");
+          }}
+          title="Đổi tên đơn vị / CLB"
+        >
+          <div style={{ padding: "10px" }}>
+            <p style={{ margin: "0 0 16px", color: "#64748b", lineHeight: 1.6 }}>
+              Tên mới sẽ được áp dụng cho VĐV, bảng đấu, kết quả, lệ phí và thông tin đoàn của giải này.
+            </p>
+            <div className="form-group">
+              <label>CLB hiện tại</label>
+              <select
+                className="form-control"
+                value={renameClubSource}
+                onChange={(event) => setRenameClubSource(event.target.value)}
+              >
+                <option value="">-- Chọn CLB --</option>
+                {uniqueClubs.map((club) => (
+                  <option key={club} value={club}>{club}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group" style={{ marginTop: "14px" }}>
+              <label>Tên CLB mới</label>
+              <input
+                className="form-control"
+                value={renameClubTarget}
+                onChange={(event) => setRenameClubTarget(event.target.value)}
+                placeholder="Nhập tên đơn vị / CLB mới"
+                autoFocus
+              />
+            </div>
+            <div className="modal-actions" style={{ marginTop: "20px" }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowRenameClubModal(false);
+                  setRenameClubSource("");
+                  setRenameClubTarget("");
+                }}
+              >
+                Hủy
+              </button>
+              <button className="btn btn-primary" onClick={handleRenameClub}>
+                Tiếp tục
+              </button>
+            </div>
+          </div>
         </Modal>
 
         <Modal

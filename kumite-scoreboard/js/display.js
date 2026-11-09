@@ -1,5 +1,6 @@
 // Kumite Scoreboard - Display JavaScript
 const STORAGE_KEY = "kumite_scoreboard";
+let applyInitialIdleLogo = new URLSearchParams(window.location.search).has("idle");
 
 // State management
 let state = {
@@ -59,6 +60,7 @@ let state = {
 
 const kumiteStateChannel = typeof BroadcastChannel === "function"
   ? new BroadcastChannel("kumite-scoreboard-state") : null;
+let lastLogoSignature = null;
 
 // Load state from localStorage
 function loadState() {
@@ -66,6 +68,13 @@ function loadState() {
   if (saved) {
     const parsedState = JSON.parse(saved);
     state = { ...state, ...parsedState };
+    // Persist the close-button idle state once. Admin can then clear it when
+    // the next match or spectator display is opened.
+    if (applyInitialIdleLogo) {
+      state.showIdleLogo = true;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      applyInitialIdleLogo = false;
+    }
     state.timer = { ...state.timer, ...parsedState.timer, hasStarted: parsedState.timer?.hasStarted === true };
     if (parsedState.medicalTimer) {
       state.medicalTimer = { ...state.medicalTimer, ...parsedState.medicalTimer };
@@ -76,6 +85,14 @@ function loadState() {
 
 // Update display from state
 function updateDisplay() {
+  const idleLogoScreen = document.getElementById("idleLogoScreen");
+  if (idleLogoScreen) {
+    const hasCompetitors = Boolean(String(state.akaName || "").trim() || String(state.aoName || "").trim());
+    const shouldShowIdleLogo = Boolean(state.showIdleLogo) || !hasCompetitors;
+    idleLogoScreen.classList.toggle("show", shouldShowIdleLogo);
+    idleLogoScreen.setAttribute("aria-hidden", String(!shouldShowIdleLogo));
+  }
+
   const displayLayout = state.displayLayout === "vertical"
     ? "vertical"
     : "horizontal";
@@ -167,30 +184,23 @@ function updateDisplay() {
       }
     }
 
-    const hasImageLogos = sLogos && (sLogos.systemLogo || sLogos.tournamentLogos || (sLogos.sponsors && sLogos.sponsors.length > 0));
-    
-    // Updated logic: Only show sponsors if they exist, otherwise fallback to icon.png
-    const sponsors = Array.isArray(state.sponsorLogos?.sponsors)
-      ? state.sponsorLogos.sponsors
-      : [];
-    
-    logoContainer.innerHTML = "";
-    logoContainer.style.display = "flex";
+    const sponsors = Array.isArray(sLogos?.sponsors) ? sLogos.sponsors.filter(Boolean) : [];
+    const logoSources = sponsors.length ? sponsors : ["../public/Logo_den.png"];
+    const logoSignature = JSON.stringify(logoSources);
 
-    if (sponsors.length > 0) {
-      // Show ONLY sponsor logos if configured
-      sponsors.forEach(src => {
+    // Timer state changes every decisecond. Do not remove and recreate image
+    // nodes unless the actual logo configuration changed, otherwise browser
+    // image decoding makes the logo visibly blink on the audience display.
+    if (logoSignature !== lastLogoSignature) {
+      lastLogoSignature = logoSignature;
+      logoContainer.replaceChildren();
+      logoContainer.style.display = "flex";
+      logoSources.forEach((src) => {
         const img = document.createElement("img");
         img.src = src;
         img.className = "sponsor-logo-img";
         logoContainer.appendChild(img);
       });
-    } else {
-      // No sponsors for this tournament: show the K-SPORT default logo.
-      const appImg = document.createElement("img");
-      appImg.src = "../public/Logo_den.png"; // Changed to Logo_den.png as requested
-      appImg.className = "sponsor-logo-img";
-      logoContainer.appendChild(appImg);
     }
   }
 

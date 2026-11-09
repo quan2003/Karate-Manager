@@ -21,6 +21,7 @@ fs.mkdirSync(serverDest, { recursive: true });
 
 const serverFilesToCopy = [
   'server.js',
+  'public-data.js',
   'package.json',
   'ecosystem.config.cjs',
   'setup-vps.sh',

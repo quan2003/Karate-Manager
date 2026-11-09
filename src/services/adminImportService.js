@@ -3,6 +3,7 @@
  * Import file từ HLV (JSON/Excel)
  */
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 
 /**
  * Mở và đọc file từ HLV
@@ -19,7 +20,7 @@ export async function importCoachFile() {
     if (result.fileType === 'json') {
       return parseJsonFile(result.content);
     } else {
-      return parseExcelFile(result.content);
+      return result.fileType === 'zip' ? await parseRegistrationPackage(result.content) : parseExcelFile(result.content);
     }
   }
   
@@ -27,7 +28,7 @@ export async function importCoachFile() {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json,.xlsx';
+    input.accept = '.json,.xlsx,.zip';
     
     input.onchange = async (e) => {
       const file = e.target.files[0];
@@ -44,7 +45,7 @@ export async function importCoachFile() {
           resolve(parseJsonFile(content));
         } else {
           const buffer = await file.arrayBuffer();
-          resolve(parseExcelFile(buffer));
+          resolve(ext === 'zip' ? await parseRegistrationPackage(buffer) : parseExcelFile(buffer));
         }
       } catch (error) {
         resolve({ success: false, error: error.message });
@@ -53,6 +54,35 @@ export async function importCoachFile() {
     
     input.click();
   });
+}
+
+// A registration package contains one .xlsx file plus optional card photos.
+// Photos remain separate from the spreadsheet to keep the roster editable and
+// avoid Excel image corruption/size limits.
+async function parseRegistrationPackage(content) {
+  try {
+    const bytes = typeof content === 'string'
+      ? Uint8Array.from(atob(content), (char) => char.charCodeAt(0)).buffer
+      : content;
+    const zip = await JSZip.loadAsync(bytes);
+    const workbooks = Object.values(zip.files).filter((file) => !file.dir && /\.xlsx$/i.test(file.name));
+    if (workbooks.length !== 1) return { success: false, error: 'Gói ZIP phải có đúng một file Excel (.xlsx).' };
+    const workbookBuffer = await workbooks[0].async('arraybuffer');
+    const parsed = parseExcelFile(workbookBuffer);
+    if (!parsed.success) return parsed;
+    const photoFiles = {};
+    for (const file of Object.values(zip.files)) {
+      if (file.dir || !/\.(jpe?g|png|webp)$/i.test(file.name)) continue;
+      photoFiles[file.name.split('/').pop()] = {
+        name: file.name.split('/').pop(),
+        type: /\.png$/i.test(file.name) ? 'image/png' : /\.webp$/i.test(file.name) ? 'image/webp' : 'image/jpeg',
+        data: await file.async('base64'),
+      };
+    }
+    return { ...parsed, fileType: 'registration-package', photoFiles };
+  } catch (error) {
+    return { success: false, error: `Gói ZIP không hợp lệ: ${error.message}` };
+  }
 }
 
 /**
@@ -169,6 +199,8 @@ function parseExcelFile(content) {
     const teamCol = findColumn(["dong doi"], 7);
     const teamCodeCol = findOptionalColumn(["ma doi", "team code", "teamcode"]);
     const seedCol = findColumn(["hat giong", "seed"], 9);
+    const athleteIdCol = findOptionalColumn(["ma vdv k-sport", "athlete id", "athleteid"]);
+    const photoFileNameCol = findOptionalColumn(["ten file anh the", "anh the", "photo file", "photo"]);
     
     // Skip header row
     const athletes = [];
@@ -185,7 +217,9 @@ function parseExcelFile(content) {
         weight: row[weightCol] ? parseFloat(row[weightCol]) : undefined,
         isTeam: String(row[teamCol] || '').trim().toLowerCase() === 'có',
         teamCode: teamCodeCol >= 0 ? String(row[teamCodeCol] ?? '').trim() : '',
-        seed: row[seedCol] || null
+        seed: row[seedCol] || null,
+        athleteId: athleteIdCol >= 0 && row[athleteIdCol] ? String(row[athleteIdCol]).trim() : null,
+        photoFileName: photoFileNameCol >= 0 && row[photoFileNameCol] ? String(row[photoFileNameCol]).trim() : ''
       });
     }
     

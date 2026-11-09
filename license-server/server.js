@@ -51,6 +51,7 @@ pool.query("SELECT NOW()", (err, res) => {
     initializeRequestsSchema();
     initializeCommerceSchema();
     initializeTournamentsSchema();
+    initializeAthleteProfilesSchema();
     initializeAthleteMediaSchema();
     initializePublicRegistrationSchema();
     // Start cleanup jobs after schemas are ready
@@ -335,6 +336,32 @@ const initializeTournamentsSchema = async () => {
     console.log("Tournaments schema initialized successfully.");
   } catch (err) {
     console.error("Error creating tournaments schema:", err);
+  }
+};
+
+// A durable athlete ID belongs to the license owner, not to a tournament or
+// registration row. It is the only identifier used to join later entries.
+const initializeAthleteProfilesSchema = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS athlete_profiles (
+        athlete_id UUID PRIMARY KEY,
+        owner_license_id UUID NOT NULL,
+        display_name VARCHAR(200) NOT NULL,
+        normalized_name VARCHAR(240) NOT NULL,
+        birth_date VARCHAR(20),
+        birth_year INTEGER,
+        gender VARCHAR(20),
+        club_name VARCHAR(240),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_athlete_profiles_lookup
+        ON athlete_profiles (owner_license_id, normalized_name, birth_date, birth_year, gender);
+    `);
+    console.log("Athlete profiles schema initialized successfully.");
+  } catch (err) {
+    console.error("Error creating athlete profiles schema:", err);
   }
 };
 
@@ -703,6 +730,95 @@ const cloudLicenseMiddleware = async (req, res, next) => {
     return res.status(500).json({ success: false, message: "Không thể xác thực Cloud sync" });
   }
 };
+
+const normalizeAthleteProfileValue = (value) => String(value || "")
+  .trim()
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/[đĐ]/g, "d")
+  .toLowerCase()
+  .replace(/\s+/g, " ");
+
+// Resolve imported rows to durable K-SPORT athlete IDs.  A row without an ID
+// is only auto-matched when its name, birth information and gender identify
+// exactly one existing profile. Ambiguous rows are returned for Admin review;
+// they are never silently merged.
+app.post("/api/athlete-profiles/resolve", cloudLicenseMiddleware, async (req, res) => {
+  const entries = Array.isArray(req.body?.athletes) ? req.body.athletes.slice(0, 2000) : [];
+  if (!entries.length) return res.status(400).json({ success: false, message: "Cần có danh sách VĐV để đối chiếu" });
+
+  try {
+    const items = [];
+    for (let index = 0; index < entries.length; index += 1) {
+      const source = entries[index] || {};
+      const athleteId = String(source.athleteId || "").trim();
+      const name = String(source.name || "").trim().slice(0, 200);
+      const normalizedName = normalizeAthleteProfileValue(name);
+      const birthDate = String(source.birthDate || "").trim().slice(0, 20) || null;
+      const birthYear = Number.isInteger(Number(source.birthYear)) ? Number(source.birthYear) : null;
+      const gender = normalizeAthleteProfileValue(source.gender).slice(0, 20) || null;
+      const club = String(source.club || "").trim().slice(0, 240) || null;
+      if (!normalizedName) {
+        items.push({ index, status: "invalid", message: "Thiếu họ tên VĐV" });
+        continue;
+      }
+
+      if (athleteId) {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(athleteId)) {
+          items.push({ index, status: "needs_review", message: "Mã VĐV K-SPORT không hợp lệ" });
+          continue;
+        }
+        const existing = await pool.query(
+          "SELECT athlete_id FROM athlete_profiles WHERE athlete_id=$1 AND owner_license_id=$2 LIMIT 1",
+          [athleteId, req.cloudLicense.id],
+        );
+        if (!existing.rowCount) {
+          await pool.query(
+            `INSERT INTO athlete_profiles (athlete_id, owner_license_id, display_name, normalized_name, birth_date, birth_year, gender, club_name)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [athleteId, req.cloudLicense.id, name, normalizedName, birthDate, birthYear, gender, club],
+          );
+        }
+        const countryCode = String(source.country || "").trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4) || "VDV";
+        const athleteCode = `${countryCode}-${crypto.createHash("sha256").update(`athlete\u001f${athleteId}`).digest("hex").slice(0, 8).toUpperCase()}`;
+        items.push({ index, status: "known", athleteId, athleteCode });
+        continue;
+      }
+
+      if (!birthDate && !birthYear) {
+        items.push({ index, status: "needs_review", message: "Thiếu ngày hoặc năm sinh để tạo/gộp hồ sơ an toàn" });
+        continue;
+      }
+      const matches = await pool.query(
+        `SELECT athlete_id FROM athlete_profiles
+         WHERE owner_license_id=$1 AND normalized_name=$2
+           AND COALESCE(birth_date, '')=COALESCE($3, '')
+           AND COALESCE(birth_year, 0)=COALESCE($4, 0)
+           AND COALESCE(gender, '')=COALESCE($5, '')`,
+        [req.cloudLicense.id, normalizedName, birthDate, birthYear, gender],
+      );
+      if (matches.rowCount > 1) {
+        items.push({ index, status: "needs_review", message: "Có nhiều hồ sơ trùng thông tin nhận dạng" });
+        continue;
+      }
+      const resolvedId = matches.rowCount ? matches.rows[0].athlete_id : crypto.randomUUID();
+      if (!matches.rowCount) {
+        await pool.query(
+          `INSERT INTO athlete_profiles (athlete_id, owner_license_id, display_name, normalized_name, birth_date, birth_year, gender, club_name)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [resolvedId, req.cloudLicense.id, name, normalizedName, birthDate, birthYear, gender, club],
+        );
+      }
+      const countryCode = String(source.country || "").trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4) || "VDV";
+      const athleteCode = `${countryCode}-${crypto.createHash("sha256").update(`athlete\u001f${resolvedId}`).digest("hex").slice(0, 8).toUpperCase()}`;
+      items.push({ index, status: matches.rowCount ? "matched" : "created", athleteId: resolvedId, athleteCode });
+    }
+    return res.json({ success: true, items });
+  } catch (err) {
+    console.error("Athlete profile resolution error:", err);
+    return res.status(500).json({ success: false, message: "Không thể đối chiếu hồ sơ VĐV" });
+  }
+});
 // --- Auth Routes ---
 // Google Auth Route (Updated to accept Access Token)
 
@@ -2137,6 +2253,27 @@ app.post("/api/media/athletes/:athleteId/complete", cloudLicenseMiddleware, asyn
   }
 });
 
+// Associates an admin-imported photo with its tournament so it can be reviewed
+// and published in the same batch as online registration photos.
+app.post("/api/media/tournaments/:tournamentId/athletes/:athleteId/photo-registration", cloudLicenseMiddleware, async (req, res) => {
+  const tournamentId = String(req.params.tournamentId || "").trim();
+  const athleteId = String(req.params.athleteId || "").trim();
+  const clubId = String(req.body?.clubId || "").trim() || "excel-import";
+  if (!tournamentId || !athleteId) return res.status(400).json({ success: false, message: "Thiếu mã giải hoặc mã VĐV" });
+  try {
+    await pool.query(
+      `INSERT INTO public_registration_media (athlete_id, tournament_id, club_id, owner_license_id, updated_at)
+       VALUES ($1,$2,$3,$4,NOW())
+       ON CONFLICT (athlete_id) DO UPDATE SET tournament_id=EXCLUDED.tournament_id, club_id=EXCLUDED.club_id, owner_license_id=EXCLUDED.owner_license_id, updated_at=NOW()`,
+      [athleteId, tournamentId, clubId, req.cloudLicense.id],
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("Imported card-photo registration error:", err);
+    return res.status(500).json({ success: false, message: "Không thể liên kết ảnh thẻ với giải" });
+  }
+});
+
 app.post("/api/media/athletes/:athleteId/publication", cloudLicenseMiddleware, async (req, res) => {
   const athleteId = String(req.params.athleteId || "").trim();
   const isPublic = req.body?.isPublic === true;
@@ -2262,7 +2399,22 @@ app.get("/api/public/events/:slug", publicReadMiddleware, async (req, res) => {
   }
 });
 
-app.get("/api/public/schedule", publicReadMiddleware, publicCollection("schedule"));
+// Trang Lịch thi đấu cần hiển thị cả lịch sắp tới lẫn lịch sử của các ngày
+// đã thi. API kết quả vẫn giữ riêng để phục vụ trang Kết quả/xếp hạng.
+app.get("/api/public/schedule", publicReadMiddleware, async (req, res) => {
+  try {
+    const datasets = await loadPublicData();
+    const items = datasets.flatMap((dataset) => [
+      ...(Array.isArray(dataset?.schedule) ? dataset.schedule : []),
+      ...(Array.isArray(dataset?.results) ? dataset.results : []),
+    ]);
+    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+    return res.json({ items });
+  } catch (err) {
+    console.error("Public API schedule error:", err);
+    return res.status(500).json({ items: [], message: "Không thể tải lịch thi đấu công khai" });
+  }
+});
 app.get("/api/public/results", publicReadMiddleware, publicCollection("results"));
 app.get(["/api/public/ranking", "/ranking"], publicReadMiddleware, async (req, res) => {
   try {

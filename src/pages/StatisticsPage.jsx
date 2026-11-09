@@ -554,10 +554,11 @@ export default function StatisticsPage() {
     return merged;
   };
 
-  const handleSaveResult = (categoryId) => {
+  const handleSaveResult = (categoryId, { confirm = false } = {}) => {
     const category = tournament.categories.find((item) => item.id === categoryId);
     const isTeam = isTeamCategoryMeta(category);
     let normalizedForm = { ...resultForm };
+    let awardTeams = tournament.categoryResults?.[categoryId]?.awardTeams || null;
 
     if (isTeam) {
       const teams = getTeamsFromAthletes(category?.athletes || [], category, tournament);
@@ -581,6 +582,15 @@ export default function StatisticsPage() {
           [clubField]: team.club,
         };
       }
+      awardTeams = Object.fromEntries(positions.map(([resultField]) => {
+        const team = teams.find((entry) => entry.name === normalizedForm[resultField]);
+        return [resultField, team ? { name: team.name, club: team.club, members: team.members } : null];
+      }));
+    }
+
+    if (confirm && (!normalizedForm.first?.trim() || !normalizedForm.second?.trim())) {
+      toast.error("Cần có HCV và HCB trước khi xác nhận công bố.");
+      return;
     }
 
     dispatch({
@@ -598,23 +608,53 @@ export default function StatisticsPage() {
             club2: normalizedForm.club2,
             club3a: normalizedForm.club3a,
             club3b: normalizedForm.club3b,
-            // Editing an already-confirmed result requires a fresh Admin review.
-            confirmedAt: null,
-            confirmedBy: null,
+            awardTeams,
+            // Saving edits requires another review; confirming publishes the
+            // values currently visible in this modal in the same action.
+            confirmedAt: confirm ? new Date().toISOString() : null,
+            confirmedBy: confirm ? "ADMIN" : null,
+            resultUpdatedAt: new Date().toISOString(),
           },
         },
       },
     });
     setShowResultModal(null);
-    toast.success("Đã lưu kết quả!");
+    toast.success(confirm ? "Đã xác nhận kết quả. Huy chương và ranking sẽ được công khai khi đồng bộ." : "Đã lưu kết quả!");
   };
 
-  const handleConfirmResult = (categoryId) => {
-    const saved = tournament.categoryResults?.[categoryId];
-    if (!saved?.first?.trim() || !saved?.second?.trim()) {
-      toast.error("Cần có HCV và HCB trước khi xác nhận công bố.");
+  const handleConfirmAllResults = () => {
+    const publishable = tournament.categories
+      .map((category) => ({ category, result: getCategoryResults(category.id) }))
+      .filter(({ category, result }) =>
+        result?.first?.trim() &&
+        result?.second?.trim() &&
+        !tournament.categoryResults?.[category.id]?.confirmedAt
+      );
+    if (publishable.length === 0) {
+      toast.error("Không có hạng mục nào đủ HCV và HCB để công bố.");
       return;
     }
+    if (!window.confirm(`Xác nhận công bố ${publishable.length} hạng mục đã đủ HCV và HCB?`)) return;
+
+    const confirmedAt = new Date().toISOString();
+    const categoryResults = { ...(tournament.categoryResults || {}) };
+    publishable.forEach(({ category, result }) => {
+      const { _fromBracket, ...savedResult } = result;
+      categoryResults[category.id] = {
+        ...savedResult,
+        confirmedAt,
+        confirmedBy: "ADMIN",
+        resultUpdatedAt: savedResult.resultUpdatedAt || confirmedAt,
+      };
+    });
+    dispatch({ type: ACTIONS.UPDATE_TOURNAMENT, payload: { id: tournament.id, categoryResults } });
+    toast.success(`Đã xác nhận công bố ${publishable.length} hạng mục.`);
+  };
+
+  const handleUnpublishResult = (categoryId) => {
+    const saved = tournament.categoryResults?.[categoryId];
+    if (!saved?.confirmedAt) return;
+    if (!window.confirm("Bỏ công bố kết quả hạng mục này? Kết quả vẫn được giữ trong phần mềm nhưng sẽ không còn xuất hiện công khai sau khi đồng bộ.")) return;
     dispatch({
       type: ACTIONS.UPDATE_TOURNAMENT,
       payload: {
@@ -623,13 +663,14 @@ export default function StatisticsPage() {
           ...(tournament.categoryResults || {}),
           [categoryId]: {
             ...saved,
-            confirmedAt: new Date().toISOString(),
-            confirmedBy: "ADMIN",
+            confirmedAt: null,
+            confirmedBy: null,
+            resultUpdatedAt: new Date().toISOString(),
           },
         },
       },
     });
-    toast.success("Đã xác nhận kết quả. Huy chương và ranking sẽ được công khai khi đồng bộ.");
+    toast.success("Đã bỏ công bố. Đồng bộ để cập nhật website.");
   };
 
   const handleOpenResultModal = (cat) => {
@@ -1963,7 +2004,12 @@ export default function StatisticsPage() {
       type: ACTIONS.UPDATE_TOURNAMENT,
       payload: {
         id: tournament.id,
-        categoryResults: newResults,
+        categoryResults: Object.fromEntries(
+          Object.entries(newResults).map(([categoryId, result]) => [
+            categoryId,
+            { ...result, resultUpdatedAt: result.resultUpdatedAt || new Date().toISOString() },
+          ]),
+        ),
       },
     });
 
@@ -5653,6 +5699,21 @@ export default function StatisticsPage() {
             </div>
             <div className="results-actions">
               {(() => {
+                const readyToPublish = tournament.categories.filter((category) => {
+                  const result = getCategoryResults(category.id);
+                  return result?.first?.trim() && result?.second?.trim() && !tournament.categoryResults?.[category.id]?.confirmedAt;
+                }).length;
+                return readyToPublish > 0 ? (
+                  <button
+                    className="btn btn-success"
+                    onClick={handleConfirmAllResults}
+                    title="Công bố tất cả hạng mục đã có đủ HCV và HCB"
+                  >
+                    ✓ Xác nhận công bố tất cả ({readyToPublish})
+                  </button>
+                ) : null;
+              })()}
+              {(() => {
                 const printedSet = tournament.printedResults || {};
                 const printedCount = tournament.categories.filter(c => printedSet[c.id]).length;
                 const total = tournament.categories.length;
@@ -6164,6 +6225,7 @@ export default function StatisticsPage() {
                   {filteredCategories.map((cat, idx) => {
                     const result = getCategoryResults(cat.id);
                     const isPrinted = !!(tournament.printedResults || {})[cat.id];
+                    const isPublished = Boolean(tournament.categoryResults?.[cat.id]?.confirmedAt);
                     return (
                       <tr
                         key={cat.id}
@@ -6243,6 +6305,21 @@ export default function StatisticsPage() {
                             >
                               {result ? "✏️ Sửa" : "➕ Nhập"}
                             </button>
+                            {isPublished && (
+                              <button
+                                className="btn btn-sm"
+                                style={{
+                                  background: "#fef2f2",
+                                  color: "#dc2626",
+                                  border: "1px solid #fecaca",
+                                  fontSize: "11px",
+                                }}
+                                onClick={() => handleUnpublishResult(cat.id)}
+                                title="Bỏ công bố kết quả hạng mục này"
+                              >
+                                ↩ Bỏ công bố
+                              </button>
+                            )}
                             {result?._fromBracket && (
                               <button
                                 className="btn btn-sm"
@@ -7204,14 +7281,19 @@ export default function StatisticsPage() {
                 </datalist>{" "}
                 <div className="modal-actions">
                   {tournament.categoryResults?.[showResultModal]?.confirmedAt ? (
-                    <span className="text-success" style={{ marginRight: "auto", fontSize: "12px", fontWeight: 700 }}>
-                      ✓ Đã xác nhận công bố
-                    </span>
+                    <>
+                      <span className="text-success" style={{ marginRight: "auto", fontSize: "12px", fontWeight: 700 }}>
+                        ✓ Đã xác nhận công bố
+                      </span>
+                      <button type="button" className="btn btn-sm btn-danger" onClick={() => handleUnpublishResult(showResultModal)}>
+                        ↩ Bỏ công bố
+                      </button>
+                    </>
                   ) : (
                     <button
                       type="button"
                       className="btn btn-success"
-                      onClick={() => handleConfirmResult(showResultModal)}
+                      onClick={() => handleSaveResult(showResultModal, { confirm: true })}
                     >
                       ✓ Xác nhận công bố
                     </button>

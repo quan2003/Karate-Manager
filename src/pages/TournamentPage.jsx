@@ -1830,14 +1830,23 @@ export default function TournamentPage() {
           </Link>
 
           <Link
+            to={`/cards/${tournament.id}`}
+            className="tournament-action-btn action-referee"
+            title="Thiết kế và in thẻ VĐV, HLV, Trưởng đoàn"
+          >
+            <span className="action-icon">🪪</span>
+            <span className="action-label">Thiết kế<br/>thẻ</span>
+          </Link>
+
+          <Link
             to={`/certificate/${tournament.id}`}
             className={`tournament-action-btn action-schedule ${activeHint === "closing_ceremony" ? "hint-pulse" : ""}`}
-            title="In giấy chứng nhận huy chương"
+            title="Xuất dữ liệu trộn Word và giấy chứng nhận"
             onClick={() => clearHint()}
-            data-hint="IN GIẤY CHỨNG NHẬN"
+            data-hint="XUẤT GIẤY CHỨNG NHẬN"
           >
             <span className="action-icon">🏅</span>
-            <span className="action-label">In<br/>GCN</span>
+            <span className="action-label">Xuất<br/>GCN</span>
           </Link>
 
           <button

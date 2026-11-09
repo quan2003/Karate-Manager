@@ -66,4 +66,21 @@ assert.equal(multipleTeams[0].teamFeeTotal, 200_000);
 assert.equal(multipleTeams[1].teamEntries, 2, "6 VĐV phải được tính là 2 đội");
 assert.equal(multipleTeams[1].teamFeeTotal, 400_000);
 
+const mixedIndividual = calculateClubFeeSummary({
+  categories: [{
+    id: "kata-individual-mixed",
+    name: "Kata cá nhân hỗn hợp",
+    // Legacy data may retain stale team metadata. The explicit category name
+    // must still determine that this is an individual event.
+    isTeam: true,
+    athletes: [{ name: "VĐV Hỗn hợp", club: "CLB Hỗn hợp" }],
+  }],
+  clubs: ["CLB Hỗn hợp"],
+  feeSettings: { individualFee: 120_000, teamFee: 200_000 },
+})[0];
+assert.equal(mixedIndividual.individualCount, 1, "Cá nhân hỗn hợp phải được tính là một lượt cá nhân");
+assert.equal(mixedIndividual.individualFeeTotal, 120_000, "Cá nhân hỗn hợp phải cộng lệ phí cá nhân");
+assert.equal(mixedIndividual.teamEntries, 0, "Cá nhân hỗn hợp không được tính là đội");
+assert.equal(mixedIndividual.totalFee, 120_000);
+
 console.log("Fee calculation regression tests passed.");

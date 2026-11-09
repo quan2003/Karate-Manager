@@ -1120,7 +1120,7 @@ function SecretaryPage() {
   };
 
   // Select a match to score - opens the external scoreboard
-  const handleSelectMatch = (match) => {
+  const handleSelectMatch = (match, { skipKataReminder = false } = {}) => {
     if (!canScore) {
       setError("Chức năng bấm điểm chưa được bật");
       return;
@@ -1136,7 +1136,7 @@ function SecretaryPage() {
     const isKataCategory = categoryType === "kata"
       || categoryName.includes("kata")
       || categoryName.includes("quyền");
-    if (isKataCategory) {
+    if (isKataCategory && !skipKataReminder) {
       const kataInfo = kataRegistrations[match.id] || {};
       const missingSlots = [
         match.athlete1 && !kataInfo.kata1 && !match.kata1 ? 1 : 0,
@@ -1157,7 +1157,12 @@ function SecretaryPage() {
             setDialog(null);
             handleContextAction("set_kata", match, missingSlots[0]);
           },
-          onCancel: () => setDialog(null),
+          // "Để sau" chỉ bỏ qua nhắc nhở cho lần mở trận này, không bắt
+          // thư ký phải nhập Kata trước khi có thể tiếp tục chấm điểm.
+          onCancel: () => {
+            setDialog(null);
+            handleSelectMatch(match, { skipKataReminder: true });
+          },
         });
         return;
       }

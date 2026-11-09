@@ -136,7 +136,7 @@ function buildScheduleHTML(schedule, categories, customEvents, mats, tournament,
         const typeBg = item.category.type === "kumite" ? "#fef2f2" : "#eff6ff";
         const typeColor = item.category.type === "kumite" ? "#dc2626" : "#2563eb";
         
-        const dur = estimateCategoryDuration(item.category, tournament.setup?.durations);
+        const dur = estimateCategoryDuration(item.category, tournament.scheduleConfig?.durations || tournament.setup?.durations);
         const endTime = item.endTime || addMinutesToTime(item.time, dur);
         const timeRange = `${item.time} - ${endTime}`;
 
@@ -190,7 +190,7 @@ function buildScheduleTableHTML(schedule, categories, customEvents, mats, tourna
     if (!cat) return;
     const mat = mats.find(m => m.id === s.mat);
     
-    const dur = estimateCategoryDuration(cat, tournament.setup?.durations);
+    const dur = estimateCategoryDuration(cat, tournament.scheduleConfig?.durations || tournament.setup?.durations);
     const endTime = s.endTime || addMinutesToTime(s.time, dur);
     const timeRange = `${s.time} - ${endTime}`;
 
@@ -330,7 +330,7 @@ export function exportScheduleToExcel(
       if (!cat) return;
       const mat = mats.find(m => m.id === s.mat);
       
-      const dur = estimateCategoryDuration(cat, tournament.setup?.durations);
+      const dur = estimateCategoryDuration(cat, tournament.scheduleConfig?.durations || tournament.setup?.durations);
       const endTime = s.endTime || addMinutesToTime(s.time, dur);
       const timeRange = `${s.time} - ${endTime}`;
 

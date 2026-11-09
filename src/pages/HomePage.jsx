@@ -14,6 +14,8 @@ import {
 import { createKmatchData, saveKmatchFile } from "../services/matchService";
 import { importCoachFile } from "../services/adminImportService";
 import { fetchSubmissions } from "../services/supabaseService";
+import { resolveAthleteProfiles } from "../services/athleteProfileRegistryService";
+import { uploadImportedCardPhoto } from "../services/athletePhotoImportService";
 import Modal from "../components/common/Modal";
 import ConfirmDialog from "../components/common/ConfirmDialog";
 import DateInput from "../components/common/DateInput";
@@ -355,14 +357,22 @@ export default function HomePage() {
   };
 
   // Chấp nhận import
-  const handleAcceptImport = () => {
+  const handleAcceptImport = async () => {
     if (!importResult) return;
 
     const tournament = tournaments.find(
       (t) => t.id === importResult.data.tournamentId
     );
     if (tournament) {
-      const data = importResult.data;
+      const data = { ...importResult.data };
+      if (tournament.identityRegistryEnabled === true && Array.isArray(data.athletes) && data.athletes.length) {
+        try {
+          data.athletes = await resolveAthleteProfiles(data.athletes);
+        } catch (error) {
+          alert(`Chưa nhập dữ liệu: ${error.message}`);
+          return;
+        }
+      }
       const clubName = data.clubName || data.coachName || "Chưa Rõ";
 
       // Save club registration info (coaches, team leader)
@@ -417,11 +427,20 @@ export default function HomePage() {
               payload: {
                 categoryId,
                 athletes: athletesByCat[categoryId],
+                identityRegistryEnabled: tournament.identityRegistryEnabled === true,
               },
             });
             importedCount += athletesByCat[categoryId].length;
           }
         });
+
+        const photos = importResult.photoFiles || {};
+        const uploadJobs = data.athletes
+          .filter((athlete) => athlete.photoFileName && photos[athlete.photoFileName])
+          .map((athlete) => uploadImportedCardPhoto(athlete.athleteId, photos[athlete.photoFileName], tournament.id, athlete.club || clubName));
+        const photoResults = await Promise.allSettled(uploadJobs);
+        const failedPhotos = photoResults.filter((result) => result.status === "rejected").length;
+        if (failedPhotos) alert(`Đã nhập danh sách, nhưng ${failedPhotos} ảnh thẻ chưa tải được. Bạn có thể thử nhập lại gói ZIP.`);
       }
 
       alert(

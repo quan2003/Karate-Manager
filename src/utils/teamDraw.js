@@ -28,7 +28,7 @@ function classifyCompetitionValue(value, booleanField = false) {
   const normalized = normalizeText(value);
   if (!normalized) return null;
   if (/\b(ca nhan|individual|single|solo)\b/.test(normalized)) return "individual";
-  if (/\b(dong doi|doi|team|teams|group)\b/.test(normalized)) return "team";
+  if (/\b(dong doi|team|teams|group)\b/.test(normalized) || (/\bdoi\b/.test(normalized) && !/\btuyet\s+doi\b/.test(normalized))) return "team";
   if (booleanField && ["true", "yes", "co"].includes(normalized)) return "team";
   if (booleanField && ["false", "no", "khong"].includes(normalized)) return "individual";
   return null;

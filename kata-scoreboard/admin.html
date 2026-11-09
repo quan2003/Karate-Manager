@@ -566,10 +566,18 @@
 
     <script src="js/admin.js"></script>
     <script>
-      // Close display window when admin page is closed
+      // Khi đóng bảng điều khiển, giữ màn hình phụ ở logo K-SPORT thay vì
+      // để lại bảng điểm cũ hoặc đóng cửa sổ để lộ Windows.
       window.addEventListener("beforeunload", function () {
-        if (typeof displayWindow !== "undefined" && displayWindow && !displayWindow.closed) {
-          displayWindow.close();
+        try {
+          const saved = localStorage.getItem("karate_scoreboard");
+          if (saved) {
+            const scoreboardState = JSON.parse(saved);
+            scoreboardState.showIdleLogo = true;
+            localStorage.setItem("karate_scoreboard", JSON.stringify(scoreboardState));
+          }
+        } catch (error) {
+          console.error("Không thể chuyển màn hình khán giả sang logo:", error);
         }
       });
     </script>

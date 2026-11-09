@@ -622,19 +622,17 @@
 
     <script src="js/admin.js"></script>
     <script>
-      // ============================================
-      // AUTO-CLOSE DISPLAY WHEN ADMIN CLOSES
-      // ============================================
-
-      // Close display window when admin page is closed
+      // Giữ logo K-SPORT trên màn hình phụ khi đóng Admin Kumite.
       window.addEventListener("beforeunload", function () {
-        // displayWindow is defined in admin.js
-        if (
-          typeof displayWindow !== "undefined" &&
-          displayWindow &&
-          !displayWindow.closed
-        ) {
-          displayWindow.close();
+        try {
+          const saved = localStorage.getItem("kumite_scoreboard");
+          if (saved) {
+            const scoreboardState = JSON.parse(saved);
+            scoreboardState.showIdleLogo = true;
+            localStorage.setItem("kumite_scoreboard", JSON.stringify(scoreboardState));
+          }
+        } catch (error) {
+          console.error("Không thể chuyển màn hình khán giả sang logo:", error);
         }
       });
     </script>

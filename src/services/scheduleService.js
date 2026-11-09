@@ -67,12 +67,11 @@ export function getEstimatedMatchCount(category) {
 }
 
 export function estimateCategoryDuration(category, durations = DEFAULT_MATCH_DURATIONS) {
-  const detailType = getCategoryDetailType(category);
   const participantCount = getEstimatedParticipantCount(category);
   if (participantCount === 0) return 5;
 
   const matchCount = getEstimatedMatchCount(category);
-  const matchDuration = Number(durations[detailType]) || 5;
+  const matchDuration = getCategoryMatchDuration(category, durations);
   return Math.max(5, Math.ceil(matchCount * matchDuration));
 }
 
@@ -417,6 +416,219 @@ export function getCategoryCustomPlanGroupKey(category) {
     parsed.gender,
     competitionClass,
   ].join(':');
+}
+
+export const STANDARD_KARATE_AGE_GROUPS = [
+  { key: "under-10", label: "Dưới 10 tuổi", order: 9.5, defaultKumiteDuration: 2.5, defaultKumiteTeamDuration: 5 },
+  { key: "10-11", label: "10 - 11 tuổi", order: 10, defaultKumiteDuration: 3, defaultKumiteTeamDuration: 5 },
+  { key: "12-14", label: "12 - 14 tuổi", order: 12, defaultKumiteDuration: 3.5, defaultKumiteTeamDuration: 6 },
+  { key: "15-17", label: "15 - 17 tuổi", order: 15, defaultKumiteDuration: 4, defaultKumiteTeamDuration: 8 },
+  { key: "18+", label: "18 tuổi trở lên (Senior)", order: 18, defaultKumiteDuration: 5, defaultKumiteTeamDuration: 10 },
+];
+
+export function getCategoryAgeGroupInfo(category) {
+  const explicitAge = String(category.ageGroup || "").trim();
+  const normalizedExplicit = normalizeAgeText(explicitAge);
+  const normalizedName = normalizeAgeText(category.name);
+  const text = normalizedExplicit || normalizedName;
+
+  if (text.includes("vo dich tuyet doi")) {
+    return {
+      key: "open",
+      label: explicitAge || "18 tuổi trở lên (Vô địch tuyệt đối)",
+      order: 18.5,
+    };
+  }
+
+  const labeledRange = text.match(/lua\s*tuoi\s*(\d+)\s*[-–]\s*(\d+)/);
+  if (labeledRange) {
+    const min = Number(labeledRange[1]);
+    const max = Number(labeledRange[2]);
+    return {
+      key: `${min}-${max}`,
+      label: explicitAge || `${min} - ${max} tuổi`,
+      order: min,
+    };
+  }
+
+  const rangeMatch = text.match(/(\d+)\s*[-–den\s]+\s*(\d+)(?:\s*tuoi)?/);
+  if (rangeMatch && (normalizedExplicit || text.includes("tuoi") || text.includes("-") || text.includes("–"))) {
+    const min = Number(rangeMatch[1]);
+    const max = Number(rangeMatch[2]);
+    return {
+      key: `${min}-${max}`,
+      label: explicitAge || `${min} - ${max} tuổi`,
+      order: min,
+    };
+  }
+
+  const overMatch = text.match(/(?:tren\s*(\d+)|(\d+)\s*tuoi\s*tro\s*len|(\d+)\s*\+)/);
+  if (overMatch) {
+    const age = Number(overMatch[1] || overMatch[2] || overMatch[3]);
+    return {
+      key: `${age}+`,
+      label: explicitAge || `${age} tuổi trở lên`,
+      order: age,
+    };
+  }
+
+  const underMatch = text.match(/(?:duoi\s*(\d+)(?:\s*tuoi)?)/);
+  if (underMatch) {
+    const age = Number(underMatch[1]);
+    return {
+      key: `under-${age}`,
+      label: explicitAge || `Dưới ${age} tuổi`,
+      order: age - 0.5,
+    };
+  }
+
+  const uMatch = text.match(/\bu(\d+)\b/);
+  if (uMatch) {
+    const age = Number(uMatch[1]);
+    return {
+      key: `u${age}`,
+      label: explicitAge || `U${age}`,
+      order: age,
+    };
+  }
+
+  const singleAge = text.match(/(\d+)\s*tuoi/);
+  if (singleAge) {
+    const age = Number(singleAge[1]);
+    return {
+      key: String(age),
+      label: explicitAge || `${age} tuổi`,
+      order: age,
+    };
+  }
+
+  const namedGroups = [
+    ["nhi dong", 6, "Nhi đồng"],
+    ["thieu nhi", 9, "Thiếu nhi"],
+    ["thieu nien", 12, "Thiếu niên"],
+    ["tre", 15, "Trẻ"],
+    ["thanh nien", 18, "Thanh niên"],
+    ["senior", 18, "Senior (18+)"],
+  ];
+  for (const [tag, ord, defaultLabel] of namedGroups) {
+    if (text.includes(tag)) {
+      return {
+        key: tag.replace(/\s+/g, "-"),
+        label: explicitAge || defaultLabel,
+        order: ord,
+      };
+    }
+  }
+
+  if (explicitAge) {
+    return {
+      key: normalizedExplicit.replace(/\s+/g, "_"),
+      label: explicitAge,
+      order: getCategoryAgeOrder(category) || 99,
+    };
+  }
+
+  return {
+    key: "unknown",
+    label: "Không xác định lứa tuổi",
+    order: Number.POSITIVE_INFINITY,
+  };
+}
+
+export function getTournamentAgeGroups(categories = []) {
+  const groupMap = new Map();
+
+  categories.forEach((category) => {
+    const info = getCategoryAgeGroupInfo(category);
+    const key = info.key;
+    const isKumite = category.type === "kumite" || String(category.name || "").toLowerCase().includes("kumite");
+    const isTeam = isTeamCategory(category);
+
+    if (!groupMap.has(key)) {
+      groupMap.set(key, {
+        key: info.key,
+        label: info.label,
+        order: info.order,
+        totalCategories: 0,
+        kumiteCount: 0,
+        kumiteTeamCount: 0,
+        kataCount: 0,
+        kataTeamCount: 0,
+      });
+    }
+
+    const g = groupMap.get(key);
+    g.totalCategories += 1;
+    if (isKumite) {
+      if (isTeam) g.kumiteTeamCount += 1;
+      else g.kumiteCount += 1;
+    } else {
+      if (isTeam) g.kataTeamCount += 1;
+      else g.kataCount += 1;
+    }
+  });
+
+  return [...groupMap.values()].sort((a, b) => {
+    if (a.order !== b.order) return a.order - b.order;
+    return a.label.localeCompare(b.label, "vi");
+  });
+}
+
+export function getCategoryMatchDuration(category, durations = DEFAULT_MATCH_DURATIONS) {
+  if (!durations) durations = DEFAULT_MATCH_DURATIONS;
+  const detailType = getCategoryDetailType(category);
+  const isKumite = category.type === "kumite" || detailType.startsWith("kumite");
+  const isTeam = isTeamCategory(category);
+  const defaultDuration = Number(durations[detailType]) || 5;
+
+  if (durations.byAgeGroup && typeof durations.byAgeGroup === "object") {
+    const ageInfo = getCategoryAgeGroupInfo(category);
+    const legacyAgeKey = getCategoryAgeKey(category);
+    const rawAge = String(category.ageGroup || "").trim();
+    const scheduleGroupKey = getCategoryScheduleGroupKey(category);
+
+    const candidateKeys = [
+      ageInfo.key,
+      legacyAgeKey,
+      rawAge,
+      rawAge.toLowerCase(),
+      scheduleGroupKey,
+      `${category.type}:${ageInfo.key}`,
+      `${category.type}:${legacyAgeKey}`,
+    ].filter(Boolean);
+
+    for (const key of candidateKeys) {
+      const entry = durations.byAgeGroup[key];
+      if (entry !== undefined && entry !== null) {
+        if (typeof entry === "number" || (typeof entry === "string" && !isNaN(parseFloat(entry)))) {
+          const val = parseFloat(entry);
+          if (val > 0) return val;
+        }
+        if (typeof entry === "object") {
+          const specificVal = entry[detailType];
+          if (specificVal !== undefined && specificVal !== null && !isNaN(parseFloat(specificVal))) {
+            const val = parseFloat(specificVal);
+            if (val > 0) return val;
+          }
+          if (isKumite) {
+            const kumiteVal = isTeam ? (entry.kumite_team ?? entry.team ?? entry.kumite) : (entry.kumite_individual ?? entry.individual ?? entry.kumite);
+            if (kumiteVal !== undefined && kumiteVal !== null && !isNaN(parseFloat(kumiteVal))) {
+              const val = parseFloat(kumiteVal);
+              if (val > 0) return val;
+            }
+          } else {
+            const kataVal = isTeam ? (entry.kata_team ?? entry.team ?? entry.kata) : (entry.kata_individual ?? entry.individual ?? entry.kata);
+            if (kataVal !== undefined && kataVal !== null && !isNaN(parseFloat(kataVal))) {
+              const val = parseFloat(kataVal);
+              if (val > 0) return val;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return defaultDuration;
 }
 
 function assignAgeGroupsToDays(categories, tournamentDays, durations, priorityMode) {
@@ -957,7 +1169,7 @@ export function findAthleteConflicts(category1, category2) {
 /**
  * Kiểm tra xung đột lịch thi đấu khi gán thảm + giờ
  */
-export function checkScheduleConflicts(schedule, categories, targetCategoryId, mat, time, date) {
+export function checkScheduleConflicts(schedule, categories, targetCategoryId, mat, time, date, durations = DEFAULT_MATCH_DURATIONS) {
   const warnings = [];
   const targetCategory = categories.find(c => c.id === targetCategoryId);
   if (!targetCategory) return warnings;
@@ -1006,7 +1218,7 @@ export function checkScheduleConflicts(schedule, categories, targetCategoryId, m
     ([catId, s]) => catId !== targetCategoryId && s.mat !== mat && s.date === date
   );
 
-  const targetDur = estimateCategoryDuration(targetCategory);
+  const targetDur = estimateCategoryDuration(targetCategory, durations);
   const targetStart = convertTimeToMins(time);
   const targetEnd = targetStart + targetDur;
 
@@ -1018,7 +1230,7 @@ export function checkScheduleConflicts(schedule, categories, targetCategoryId, m
     if (conflicts.length === 0) continue;
 
     const sStart = convertTimeToMins(s.time);
-    const sDur = estimateCategoryDuration(otherCategory);
+    const sDur = estimateCategoryDuration(otherCategory, durations);
     const sEnd = sStart + sDur;
 
     // KIỂM TRA SONG SONG (OVERLAP)

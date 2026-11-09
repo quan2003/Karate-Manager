@@ -306,6 +306,83 @@ function addAthleteToExistingTeamBracket(bracket, athlete) {
   return { ...bracket, matches: updatedMatches };
 }
 
+function renameClubInParticipant(participant, oldClubKey, oldClubName, newClubName) {
+  if (!participant) return participant;
+
+  const matchesClub = normalizeCategoryImportKey(participant.club) === oldClubKey;
+  const members = Array.isArray(participant.members)
+    ? participant.members.map((member) =>
+        normalizeCategoryImportKey(member.club) === oldClubKey
+          ? { ...member, club: newClubName }
+          : member,
+      )
+    : participant.members;
+
+  if (!matchesClub && members === participant.members) return participant;
+
+  const nextParticipant = {
+    ...participant,
+    ...(matchesClub ? { club: newClubName } : {}),
+    ...(members !== participant.members ? { members } : {}),
+  };
+
+  if (matchesClub && typeof participant.name === "string") {
+    if (participant.name === oldClubName) nextParticipant.name = newClubName;
+    else if (participant.name.startsWith(`${oldClubName} - `)) {
+      nextParticipant.name = `${newClubName}${participant.name.slice(oldClubName.length)}`;
+    }
+  }
+  return nextParticipant;
+}
+
+function renameClubInBracket(bracket, oldClubKey, oldClubName, newClubName) {
+  if (!bracket) return bracket;
+  const renameMatch = (match) => {
+    const nextMatch = { ...match };
+    let changed = false;
+    ["athlete1", "athlete2", "winner"].forEach((field) => {
+      const participant = renameClubInParticipant(
+        match[field],
+        oldClubKey,
+        oldClubName,
+        newClubName,
+      );
+      if (participant !== match[field]) {
+        nextMatch[field] = participant;
+        changed = true;
+      }
+    });
+    return changed ? nextMatch : match;
+  };
+
+  const matches = (bracket.matches || []).map(renameMatch);
+  const auxiliaryMatches = (bracket.auxiliaryMatches || []).map(renameMatch);
+  return {
+    ...bracket,
+    ...(bracket.matches ? { matches } : {}),
+    ...(bracket.auxiliaryMatches ? { auxiliaryMatches } : {}),
+  };
+}
+
+function renameClubRegistration(registrations = {}, oldClubKey, newClubName) {
+  const entries = Object.entries(registrations);
+  const oldEntry = entries.find(([club]) => normalizeCategoryImportKey(club) === oldClubKey);
+  if (!oldEntry) return registrations;
+
+  const [oldClubName, oldRegistration] = oldEntry;
+  const next = { ...registrations };
+  delete next[oldClubName];
+  const current = next[newClubName];
+  next[newClubName] = current
+    ? {
+        ...current,
+        coaches: Array.from(new Set([...(current.coaches || []), ...(oldRegistration.coaches || [])])),
+        teamLeader: current.teamLeader || oldRegistration.teamLeader || "",
+      }
+    : oldRegistration;
+  return next;
+}
+
 // Actions
 const ACTIONS = {
   LOAD_DATA: "LOAD_DATA",
@@ -319,6 +396,7 @@ const ACTIONS = {
   SET_CURRENT_CATEGORY: "SET_CURRENT_CATEGORY",
   ADD_ATHLETE: "ADD_ATHLETE",
   UPDATE_ATHLETE: "UPDATE_ATHLETE",
+  RENAME_CLUB: "RENAME_CLUB",
   DELETE_ATHLETE: "DELETE_ATHLETE",
   REMOVE_WITHDRAWN_ATHLETES: "REMOVE_WITHDRAWN_ATHLETES",
   SET_BRACKET: "SET_BRACKET",
@@ -716,9 +794,12 @@ function tournamentReducer(state, action) {
 
     case ACTIONS.ADD_ATHLETE: {
       const existingClubId = findKnownClubId(state.tournaments, action.payload.club);
+      const durableProfileId = action.payload.profileId || (action.payload.identityRegistryEnabled === true ? uuidv4() : null);
       const newAthlete = {
         id: uuidv4(),
-        athleteId: action.payload.identityRegistryEnabled === true ? uuidv4() : null,
+        athleteId: action.payload.athleteId || durableProfileId,
+        athleteCode: action.payload.athleteCode || null,
+        profileId: durableProfileId,
         clubId: action.payload.clubId || existingClubId || (action.payload.identityRegistryEnabled === true && action.payload.club ? uuidv4() : null),
         name: action.payload.name,
         gender: action.payload.gender || null,
@@ -785,6 +866,82 @@ function tournamentReducer(state, action) {
         newState.currentCategory = newState.currentTournament?.categories.find(
           (c) => c.id === state.currentCategory.id,
         );
+      }
+      break;
+    }
+
+    case ACTIONS.RENAME_CLUB: {
+      const { tournamentId, oldClubName, newClubName } = action.payload;
+      const oldClubKey = normalizeCategoryImportKey(oldClubName);
+      const nextClubName = String(newClubName || "").trim().replace(/\s+/g, " ");
+      if (!tournamentId || !oldClubKey || !nextClubName) return state;
+
+      newState = {
+        ...state,
+        tournaments: state.tournaments.map((t) => {
+          if (t.id !== tournamentId) return t;
+
+          const categories = t.categories.map((category) => ({
+            ...category,
+            athletes: (category.athletes || []).map((athlete) =>
+              normalizeCategoryImportKey(athlete.club) === oldClubKey
+                ? { ...athlete, club: nextClubName }
+                : athlete,
+            ),
+            bracket: renameClubInBracket(
+              category.bracket,
+              oldClubKey,
+              oldClubName,
+              nextClubName,
+            ),
+          }));
+
+          const categoryResults = Object.fromEntries(
+            Object.entries(t.categoryResults || {}).map(([categoryId, result]) => [
+              categoryId,
+              Object.fromEntries(
+                Object.entries(result || {}).map(([field, value]) => [
+                  field,
+                  field.startsWith("club") && normalizeCategoryImportKey(value) === oldClubKey
+                    ? nextClubName
+                    : value,
+                ]),
+              ),
+            ]),
+          );
+
+          const feePayments = { ...(t.feePayments || {}) };
+          const oldPaymentKeys = Object.keys(feePayments).filter(
+            (club) => normalizeCategoryImportKey(club) === oldClubKey,
+          );
+          if (oldPaymentKeys.length > 0) {
+            const wasPaid = oldPaymentKeys.some((club) => Boolean(feePayments[club]));
+            oldPaymentKeys.forEach((club) => delete feePayments[club]);
+            feePayments[nextClubName] = Boolean(feePayments[nextClubName]) || wasPaid;
+          }
+
+          return {
+            ...t,
+            categories,
+            categoryResults,
+            feePayments,
+            clubRegistrations: renameClubRegistration(
+              t.clubRegistrations,
+              oldClubKey,
+              nextClubName,
+            ),
+          };
+        }),
+      };
+      if (state.currentTournament?.id === tournamentId) {
+        newState.currentTournament = newState.tournaments.find(
+          (t) => t.id === tournamentId,
+        );
+        if (state.currentCategory) {
+          newState.currentCategory = newState.currentTournament?.categories.find(
+            (c) => c.id === state.currentCategory.id,
+          );
+        }
       }
       break;
     }
@@ -1152,6 +1309,8 @@ function tournamentReducer(state, action) {
                       .map((a) => ({
                         id: uuidv4(),
                         athleteId: a.athleteId || (action.payload.identityRegistryEnabled === true ? uuidv4() : null),
+                        athleteCode: a.athleteCode || null,
+                        profileId: a.profileId || null,
                         clubId: a.clubId || findKnownClubId(state.tournaments, a.club) || (() => {
                           if (action.payload.identityRegistryEnabled !== true || !a.club) return null;
                           const clubKey = normalizeCategoryImportKey(a.club);
@@ -1376,6 +1535,7 @@ function tournamentReducer(state, action) {
                   third2: medals.bronze2 || null,
                 },
                 _lanSyncedAt: syncedAt || new Date().toISOString(),
+                resultReceivedAt: syncedAt || new Date().toISOString(),
               },
             },
           };

@@ -81,8 +81,8 @@ const HelpModal = () => {
                 </div>
                 <div className="help-func-item">
                   <div className="func-info">
-                    <strong>🏅 In GCN (6 Bước)</strong>
-                    <span>1.➕Tạo {"->"} 2.🖼Nền {"->"} 3.📐Kéo thả {"->"} 4.🔍Lọc {"->"} 5.👁Xem {"->"} 6.🖨In</span>
+                    <strong>📄 Xuất GCN</strong>
+                    <span>1.Chọn nội dung {"->"} 2.Xuất Excel {"->"} 3.Trộn mẫu Word {"->"} 4.Xem trước {"->"} 5.In</span>
                   </div>
                   <button className="btn-repro" onClick={() => handleReproduceFunction('closing_ceremony', setRole, navigate)}>Tái hiện 🔄</button>
                 </div>

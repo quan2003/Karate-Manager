@@ -20,6 +20,27 @@ body {
   overflow: hidden;
 }
 
+/* Màn hình chờ: giữ logo trên màn hình phụ sau khi đóng Admin Kumite. */
+.idle-logo-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 5vh 6vw;
+  background: #000;
+}
+
+.idle-logo-screen.show { display: flex; }
+
+.idle-logo-aura { display: none; }
+.idle-logo-content { display: grid; justify-items: center; gap: 2.2vh; }
+.idle-logo-screen img { width: min(62vw, 990px); max-height: 70vh;
+  object-fit: contain;
+}
+.idle-logo-content p { margin: 0; color: rgba(255,255,255,.74); font-size: clamp(.72rem, 1vw, 1.1rem); font-weight: 800; letter-spacing: .42em; text-indent: .42em; }
+
 /* Header Section */
 .header-section {
   background: linear-gradient(180deg, #1a1a2e 0%, #16162a 100%);
