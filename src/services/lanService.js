@@ -61,6 +61,26 @@ export async function sendCategoryMedals(adminIp, port = 3000, medalData) {
     syncType: "category-medals",
   });
 }
+
+/** Subscribe to the Admin LAN hub for results entered by other Secretaries. */
+export function listenForSecretaryResults(adminIp, tournamentId, onResult) {
+  if (!adminIp || !tournamentId || typeof EventSource === "undefined") return () => {};
+  let finalIp = adminIp;
+  let finalPort = 3000;
+  if (adminIp.includes(":")) {
+    const parts = adminIp.split(":");
+    finalIp = parts[0];
+    finalPort = parts[1] || finalPort;
+  }
+  const source = new EventSource(
+    `http://${finalIp}:${finalPort}/api/secretary-results/events?tournamentId=${encodeURIComponent(tournamentId)}`
+  );
+  const handler = (event) => {
+    try { onResult(JSON.parse(event.data)); } catch { /* ignore malformed LAN event */ }
+  };
+  source.addEventListener("secretary-result", handler);
+  return () => source.close();
+}
 /**
  * Kiểm tra xem máy Admin có đang online không
  * @param {string} adminIp 

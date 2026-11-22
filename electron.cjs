@@ -23,6 +23,9 @@ let lanServer = null;
 const lanLiveStatusStore = createLiveStatusStore();
 const tvDisplayWindows = new Map();
 const lanLiveStatusClients = new Map();
+// Secretary clients subscribe here to receive results relayed by the Admin.
+const lanSecretaryResultClients = new Map();
+const lanSecretaryResultSnapshots = new Map();
 let lanCheckInSnapshot = {
   currentTournamentId: "",
   tournaments: [],
@@ -131,6 +134,26 @@ function broadcastLanLiveStatuses(changedRow = null) {
       }
     } catch {
       lanLiveStatusClients.delete(client);
+    }
+  }
+}
+
+function broadcastLanSecretaryResult(result) {
+  const tournamentId = String(result?.tournamentId || "");
+  if (!tournamentId) return;
+  if (result?.matchId) {
+    if (!lanSecretaryResultSnapshots.has(tournamentId)) {
+      lanSecretaryResultSnapshots.set(tournamentId, new Map());
+    }
+    lanSecretaryResultSnapshots.get(tournamentId).set(String(result.matchId), result);
+  }
+  for (const [client, subscribedTournamentId] of lanSecretaryResultClients) {
+    if (subscribedTournamentId !== tournamentId) continue;
+    try {
+      client.write(`event: secretary-result\n`);
+      client.write(`data: ${JSON.stringify(result)}\n\n`);
+    } catch {
+      lanSecretaryResultClients.delete(client);
     }
   }
 }
@@ -1472,6 +1495,34 @@ ipcMain.handle("lan:startServer", (event) => {
         return;
       }
 
+      // Admin is the LAN relay hub: every Secretary can subscribe to results
+      // submitted by every other Secretary for the same tournament.
+      if (req.method === "GET" && pathname === "/api/secretary-results/events") {
+        const tournamentId = String(requestUrl.searchParams.get("tournamentId") || "");
+        if (!tournamentId) {
+          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ success: false, error: "Thiếu mã giải đấu" }));
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        });
+        res.write("retry: 1500\n\n");
+        lanSecretaryResultClients.set(res, tournamentId);
+        for (const result of lanSecretaryResultSnapshots.get(tournamentId)?.values() || []) {
+          res.write(`event: secretary-result\n`);
+          res.write(`data: ${JSON.stringify(result)}\n\n`);
+        }
+        const heartbeatId = setInterval(() => res.write(": heartbeat\n\n"), 10000);
+        req.on("close", () => {
+          clearInterval(heartbeatId);
+          lanSecretaryResultClients.delete(res);
+        });
+        return;
+      }
+
       const jsonPostRoutes = [
         "/api/match-result",
         "/api/category-medals",
@@ -1504,6 +1555,7 @@ ipcMain.handle("lan:startServer", (event) => {
 
             if (mainWindow)
               mainWindow.webContents.send("lan:receive-result", data);
+            broadcastLanSecretaryResult(data);
             res.writeHead(200, {
               "Content-Type": "application/json; charset=utf-8",
             });
@@ -1551,6 +1603,9 @@ ipcMain.handle("lan:stopServer", () => {
     tvDisplayWindows.clear();
     for (const client of lanLiveStatusClients.keys()) client.end();
     lanLiveStatusClients.clear();
+    for (const client of lanSecretaryResultClients.keys()) client.end();
+    lanSecretaryResultClients.clear();
+    lanSecretaryResultSnapshots.clear();
     lanLiveStatusStore.clear();
     lanCheckInAccess = { enabled: false, pin: "", tournamentId: "" };
     lanCheckInSessions.clear();

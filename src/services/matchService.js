@@ -4,6 +4,7 @@
 
 import * as XLSX from "xlsx";
 import { resolveKataCatalog } from "../domain/kataCatalog.js";
+import { getSigmaSplitCount } from "../utils/sigmaSplit.js";
 
 // Version hiện tại
 const KMATCH_VERSION = "1.0.0";
@@ -37,6 +38,33 @@ export function createKmatchData(tournament, categories, settings = {}, targetRo
   }));
   const kataCatalog = resolveKataCatalog(tournament);
 
+  // Expand a configured Sigma into separately scoreable virtual branches.
+  // Their match IDs remain the original IDs, while sourceCategoryId lets
+  // Admin merge incoming results back into the real category.
+  const scoringCategories = categories.flatMap((category) => {
+    const totalSplits = getSigmaSplitCount(category, tournament.splitSettings || {});
+    if (totalSplits === 1 || !category.bracket?.matches) return [category];
+    return Array.from({ length: totalSplits }, (_, splitIndex) => ({
+      ...category,
+      id: `${category.id}__sigma_${splitIndex}`,
+      sourceCategoryId: category.id,
+      sigmaSplitIndex: splitIndex,
+      sigmaTotalSplits: totalSplits,
+      name: `${category.name} - Nhánh ${splitIndex + 1}/${totalSplits}`,
+      // Keep the complete graph here. Secretary filters it to the selected
+      // branch for display, while the complete graph still advances winners
+      // into the common semi-final/final rounds.
+      bracket: category.bracket,
+    }));
+  });
+  const scoringSchedule = { ...schedule };
+  scoringCategories.forEach((category) => {
+    if (!category.sourceCategoryId) return;
+    scoringSchedule[category.id] =
+      schedule[`${category.sourceCategoryId}_split${category.sigmaSplitIndex}`] ||
+      schedule[category.sourceCategoryId] || null;
+  });
+
   const data = {
     version: KMATCH_VERSION,
     exportId,
@@ -49,7 +77,7 @@ export function createKmatchData(tournament, categories, settings = {}, targetRo
     // từng hạng mục khi mở bảng điểm. Trước đây trường này bị bỏ sót,
     // khiến SecretaryPage không tìm thấy scheduleInfo và scoreboard
     // luôn rơi về giá trị mặc định "Thảm 1".
-    schedule,
+    schedule: scoringSchedule,
     scheduleConfig: tournament.scheduleConfig || null,
     mats,
     sponsorLogos: tournament.sponsorLogos || null,
@@ -63,10 +91,13 @@ export function createKmatchData(tournament, categories, settings = {}, targetRo
     scoringEnabled: settings.scoringEnabled !== false,
 
     // Danh sách hạng mục và trận đấu
-    categories: categories.map((cat) => {
+    categories: scoringCategories.map((cat) => {
       const bracket = createCleanKmatchBracket(cat.bracket);
       return {
         id: cat.id,
+        sourceCategoryId: cat.sourceCategoryId || null,
+        sigmaSplitIndex: cat.sigmaSplitIndex ?? null,
+        sigmaTotalSplits: cat.sigmaTotalSplits ?? 1,
         name: cat.name,
         type: cat.type || "kumite",
         gender: cat.gender || null,

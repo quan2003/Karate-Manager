@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { isTrialLicense, getCurrentLicense } from "./licenseService";
 import { BRONZE_MODES, resolveBronzeMode } from "../domain/bronzeMode.js";
+import packageJson from "../../package.json";
 
 /**
  * PDF Export Service - Client-side
@@ -758,7 +759,7 @@ function generateClubSigmaPageHTML(clubName, entries, tournamentName, sponsorLog
       </div>
     </div>
     <div style="position:absolute;bottom:10px;left:20px;right:20px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8;">
-      <span>© Karate Manager – Xuất sigma theo CLB</span>
+      <span>© K-SPORT – Xuất sigma theo CLB</span>
       <span>${new Date().toLocaleDateString('vi-VN')}</span>
     </div>
   </div>
@@ -1250,14 +1251,23 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
   }
   const license = getCurrentLicense();
   const year = new Date().getFullYear();
-  let licenseText = "Bản quyền: BẢN DÙNG THỬ / CHƯA KÍCH HOẠT";
+  let licenseText = "BẢN DÙNG THỬ / CHƯA KÍCH HOẠT";
   
   if (license && license.active && !license.isTrial) {
-      const expiry = license.expiryDate ? new Date(license.expiryDate).toLocaleDateString("vi-VN") : "Vĩnh viễn";
-      licenseText = `Bản quyền: ${license.organizationName || license.owner || "Khách hàng"} (Hết hạn: ${expiry})`;
+    const rawOwner = String(license.organizationName || license.owner || "").trim();
+    const owner = (!rawOwner || rawOwner.toLowerCase() === "admin") ? "Ban Tổ Chức" : rawOwner;
+
+    let expiryInfo = "";
+    if (license.expiryDate) {
+      const expDate = new Date(license.expiryDate);
+      if (!isNaN(expDate.getTime()) && expDate.getFullYear() <= 2099) {
+        expiryInfo = ` (Hết hạn: ${expDate.toLocaleDateString("vi-VN")})`;
+      }
+    }
+    licenseText = `Cấp quyền sử dụng: ${owner}${expiryInfo}`;
   }
 
-  const footerText = `(c) Karate Manager 2000-${year} v1.0.0. ${licenseText}`;
+  const footerText = `© ${year} K-SPORT v${packageJson.version} • ${licenseText}`;
 
   const css = `
     <style>

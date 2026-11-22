@@ -207,7 +207,11 @@ export default function LicenseManager({ onClose, onLicenseChanged, onBuyLicense
   const formatDate = (dateStr) => {
     if (!dateStr) return "—";
     try {
-      return new Date(dateStr).toLocaleDateString("vi-VN", {
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime()) && d.getFullYear() > 2099) {
+        return "Vĩnh viễn";
+      }
+      return d.toLocaleDateString("vi-VN", {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",

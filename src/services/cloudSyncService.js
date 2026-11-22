@@ -7,6 +7,7 @@ import { createBackupData } from "./backupService.js";
 import { dbGetMachineId } from "./dbService.js";
 import { getComputedCategoryResults } from "../domain/bronzeIntegration.js";
 import { getCurrentLicense } from "./licenseService.js";
+import { getTierMultiplier, suggestTournamentTier } from "../utils/rankingTier.js";
 
 // Danh sách các VPS Base URL (Ưu tiên Domain HTTPS proxy, sau đó tới Direct IP Port)
 export const KSPORT_CLOUD_API_URL = "https://api.k-sport.net";
@@ -374,6 +375,10 @@ export async function pushTournamentToCloud(
       summary: {
         syncedFrom: "Client Admin App",
         clientAppVersion: "1.0.1",
+        rankingTier: tournamentData.rankingTier || suggestTournamentTier(tournamentData.name),
+        rankingMultiplier: getTierMultiplier(
+          tournamentData.rankingTier || suggestTournamentTier(tournamentData.name)
+        ),
         delegationRankings,
         medalists,
         totalClubs: Object.keys(clubMedals).length,

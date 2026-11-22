@@ -15,7 +15,7 @@ import {
   updateMatchResult as updateBracketWithResult,
   disqualifyAthlete,
 } from "../utils/drawEngine";
-import { sendMatchResult, sendCategoryMedals, checkAdminAvailability } from "../services/lanService";
+import { sendMatchResult, sendCategoryMedals, checkAdminAvailability, listenForSecretaryResults } from "../services/lanService";
 import { checkCloudResultRelay, pushResultsToCloudRelay } from "../services/cloudSyncService";
 import {
   publishLiveStatus,
@@ -31,11 +31,16 @@ import appIcon from "../assets/icon.png";
 import { updateAuxiliaryMatchResult } from "../domain/bronzeIntegration.js";
 import { selectCategoryMedalists } from "../domain/bronzeMedalSelection.js";
 import { getKataOptions } from "../domain/kataCatalog.js";
+import { getSigmaSplitBracket } from "../utils/sigmaSplit.js";
 import QRCode from "qrcode";
 import "./SecretaryPage.css";
 
 const getAthleteKey = (athlete) =>
   String(athlete?.id || athlete?.name || "").trim().toLowerCase();
+
+// A .kmatch file can expose one real category as several scoreable Sigma
+// branches. Results must still be routed back to the original Admin category.
+const getSourceCategoryId = (category) => category?.sourceCategoryId || category?.id || null;
 
 const getCategoryTeamParticipants = (category) => {
   const teams = new Map();
@@ -625,7 +630,7 @@ function SecretaryPage() {
         payload: {
           ...result,
           matchCode: info.match.matchCode,
-          categoryId: info.category.id,
+          categoryId: getSourceCategoryId(info.category),
           tournamentId: matchData.tournamentId,
           teamLineups: matchData.teamLineups?.[info.category.id] || [],
           syncedAt: new Date().toISOString(),
@@ -634,13 +639,15 @@ function SecretaryPage() {
     });
     const medalEvents = (getMatchExportData()?.categoryMedals || []).flatMap((item) => {
       const category = matchData.categories?.find((cat) => cat.id === item.categoryId);
-      if (!category || !isCategoryCompleted(category, matchResults)) return [];
+      // A Sigma branch has its own local final, but it is not the tournament
+      // medal result. Only the unsplit/original category may publish medals.
+      if (!category || category.sourceCategoryId || !isCategoryCompleted(category, matchResults)) return [];
       return [{
         eventKey: `medals:${item.categoryId}`,
         payload: {
           tournamentId: matchData.tournamentId,
           exportId: matchData.exportId,
-          categoryId: item.categoryId,
+            categoryId: getSourceCategoryId(category),
           categoryName: item.categoryName,
           medals: {
             gold: item.gold,
@@ -718,7 +725,7 @@ function SecretaryPage() {
             ...result,
             match,
             matchCode: match.matchCode,
-            categoryId: selectedCategory?.id || result.categoryId || null,
+            categoryId: getSourceCategoryId(selectedCategory) || result.categoryId || null,
             winner,
             categoryName: selectedCategory?.name,
             tournamentName: matchData?.tournamentName,
@@ -802,6 +809,17 @@ function SecretaryPage() {
     liveExtraRef.current = {};
   };
 
+  // Admin relays every LAN result to the other Secretary machines. Apply it
+  // locally without increasing the outbound revision, otherwise each receiver
+  // would post the same result back to Admin in a loop.
+  useEffect(() => {
+    if (!adminIp || !matchData?.tournamentId) return undefined;
+    return listenForSecretaryResults(adminIp, matchData.tournamentId, (data) => {
+      if (!data?.matchId) return;
+      updateMatchResult(data.matchId, { ...data, _lanRelayed: true });
+    });
+  }, [adminIp, matchData?.tournamentId, updateMatchResult]);
+
   // Keep this secretary machine visible on the Admin TV dashboard and recover
   // automatically when either machine or the LAN connection restarts.
   useEffect(() => {
@@ -847,6 +865,7 @@ function SecretaryPage() {
       // bracket completion state as the source of truth for LAN synchronization.
       return Boolean(
         category &&
+        !category.sourceCategoryId &&
         isCategoryCompleted(category, matchResults)
       );
     });
@@ -967,6 +986,14 @@ function SecretaryPage() {
 
     return clonedBracket;
   }, [selectedCategory, matchResults, kataRegistrations]);
+  const displayedBracket = useMemo(() => {
+    if (!bracketWithScores || !selectedCategory?.sourceCategoryId) return bracketWithScores;
+    return getSigmaSplitBracket(
+      bracketWithScores,
+      Number(selectedCategory.sigmaSplitIndex) || 0,
+      Number(selectedCategory.sigmaTotalSplits) || 1
+    );
+  }, [bracketWithScores, selectedCategory]);
   const matQueuePreview = useMemo(() => {
     if (!matchData || !selectedCategory) return null;
     return getCategoryLiveQueue(matchData, selectedCategory, {
@@ -1347,7 +1374,7 @@ function SecretaryPage() {
                     ...finishedMatch,
                     match: undefined,
                     winner: undefined,
-                    categoryId: finishedMatch.categoryId || selectedCategory?.id || null,
+                    categoryId: getSourceCategoryId(selectedCategory) || finishedMatch.categoryId || null,
                     tournamentId: finishedMatch.tournamentId || matchData?.tournamentId,
                     teamLineups: matchData?.teamLineups?.[
                       finishedMatch.categoryId || selectedCategory?.id
@@ -1816,7 +1843,7 @@ function SecretaryPage() {
                       <div className="secretary-bracket-wrapper">
                         {" "}
                         <Bracket
-                          bracket={bracketWithScores}
+                          bracket={displayedBracket}
                           categoryType={selectedCategory.type}
                           onMatchClick={handleSelectMatch}
                           onContextAction={handleContextAction}
@@ -1959,7 +1986,7 @@ function SecretaryPage() {
                                               await sendMatchResult(adminIp, 3000, {
                                                 ...result,
                                                 matchCode: info.match.matchCode,
-                                                categoryId: info.category.id,
+                                                categoryId: getSourceCategoryId(info.category),
                                                 tournamentId: matchData?.tournamentId,
                                                 teamLineups: matchData?.teamLineups?.[info.category.id] || [],
                                               });
@@ -2131,7 +2158,7 @@ function SecretaryPage() {
                       const res = await sendMatchResult(adminIp, 3000, {
                         ...result,
                         matchCode: info?.match.matchCode,
-                        categoryId: info?.category.id,
+                        categoryId: getSourceCategoryId(info?.category),
                         tournamentId: matchData?.tournamentId,
                         teamLineups: matchData?.teamLineups?.[info?.category.id] || [],
                       });

@@ -57,6 +57,7 @@ const categoryNameCollator = new Intl.Collator("vi", {
   sensitivity: "base",
   numeric: true,
 });
+const REGISTRATION_BASE_URL = "https://k-sport.net";
 const enableSingleBronzeCore = isSingleBronzeCoreEnabled();
 
 const normalizeCategorySortText = (value = "") =>
@@ -278,46 +279,55 @@ export default function TournamentPage() {
 
   // Keep shareable list state in the URL. Marking this history entry lets us
   // distinguish a child-page return from a fresh visit through the main menu.
+  // Debounced to prevent tearing IME (Unikey) and excessive re-renders while typing.
   useEffect(() => {
-    const nextParams = new URLSearchParams(location.search);
-    const setOrDelete = (key, value, defaultValue = "") => {
-      if (!value || value === defaultValue) nextParams.delete(key);
-      else nextParams.set(key, value);
-    };
+    const timer = setTimeout(() => {
+      const nextParams = new URLSearchParams(location.search);
+      const setOrDelete = (key, value, defaultValue = "") => {
+        if (!value || value === defaultValue) nextParams.delete(key);
+        else nextParams.set(key, value);
+      };
 
-    setOrDelete("q", searchQuery);
-    setOrDelete("type", filterType, "all");
-    setOrDelete("gender", filterGender, "all");
-    setOrDelete("session", filterSession, "all");
+      setOrDelete("q", searchQuery);
+      setOrDelete("type", filterType, "all");
+      setOrDelete("gender", filterGender, "all");
+      setOrDelete("session", filterSession, "all");
 
-    const nextSearch = nextParams.toString();
-    const currentSearch = location.search.replace(/^\?/, "");
-    const hasListMarker = location.state?.smartListKey === listKey;
-    if (nextSearch !== currentSearch || !hasListMarker) {
-      navigate(
-        { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
-        {
-          replace: true,
-          state: createSmartListEntryState(location.state, listKey),
-        }
-      );
-    }
+      const nextSearch = nextParams.toString();
+      const currentSearch = location.search.replace(/^\?/, "");
+      const hasListMarker = location.state?.smartListKey === listKey;
+      if (nextSearch !== currentSearch || !hasListMarker) {
+        navigate(
+          { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
+          {
+            replace: true,
+            state: createSmartListEntryState(location.state, listKey),
+          }
+        );
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
   }, [filterGender, filterSession, filterType, listKey, location.pathname, location.search, location.state, navigate, searchQuery]);
 
-  // Keep session state current when filters are changed or explicitly cleared.
+  // Keep session state current when filters are changed or explicitly cleared (debounced).
   useEffect(() => {
-    const saved = readSmartListState(listKey) || {};
-    writeSmartListState(listKey, {
-      ...saved,
-      listKey,
-      route: `${location.pathname}${location.search}`,
-      filters: { searchQuery, filterType, filterGender, filterSession },
-      sort: saved.sort || "default",
-      page: saved.page || 1,
-      pendingRestore: shouldRestoreListRef.current
-        ? saved.pendingRestore === true
-        : false,
-    });
+    const timer = setTimeout(() => {
+      const saved = readSmartListState(listKey) || {};
+      writeSmartListState(listKey, {
+        ...saved,
+        listKey,
+        route: `${location.pathname}${location.search}`,
+        filters: { searchQuery, filterType, filterGender, filterSession },
+        sort: saved.sort || "default",
+        page: saved.page || 1,
+        pendingRestore: shouldRestoreListRef.current
+          ? saved.pendingRestore === true
+          : false,
+      });
+    }, 250);
+
+    return () => clearTimeout(timer);
   }, [filterGender, filterSession, filterType, listKey, location.pathname, location.search, searchQuery]);
 
   useEffect(() => {
@@ -2588,7 +2598,15 @@ export default function TournamentPage() {
                   </select>
                 </div>
               )}
-              <div className="search-filter">
+              <div
+                className="search-filter"
+                onClick={(e) => {
+                  const input = e.currentTarget.querySelector("input");
+                  if (input && document.activeElement !== input) {
+                    input.focus();
+                  }
+                }}
+              >
                 <input
                   type="text"
                   placeholder="🔍 Tìm kiếm hạng mục..."
@@ -3561,13 +3579,13 @@ export default function TournamentPage() {
               marginBottom: "20px",
             }}
           >
-            {`https://dang-ky-vdv.pages.dev/${publishedSlug || '...'}`}
+            {`${REGISTRATION_BASE_URL}/${publishedSlug || '...'}`}
           </div>
           <div className="modal-actions" style={{ flexDirection: 'column', gap: '8px' }}>
             <button
               className="btn btn-primary"
               onClick={() => {
-                const url = `https://dang-ky-vdv.pages.dev/${publishedSlug}`;
+                const url = `${REGISTRATION_BASE_URL}/${publishedSlug}`;
                 navigator.clipboard.writeText(url);
                 toast.success("Đã sao chép link!");
               }}

@@ -482,19 +482,21 @@ export function RoleProvider({ children }) {
         };
       }
 
+      const relayedFromLan = result?._lanRelayed === true;
+      const { _lanRelayed, ...storedResult } = result || {};
       setMatchResults((prev) => {
         const existing = prev.findIndex((r) => r.matchId === matchId);
         let updated;
         if (existing >= 0) {
           updated = prev.map((r, i) =>
             i === existing
-              ? { ...r, ...result, _confirmedInCurrentRun: true, updatedAt: new Date().toISOString() }
+              ? { ...r, ...storedResult, _confirmedInCurrentRun: true, updatedAt: new Date().toISOString() }
               : r
           );
         } else {
           updated = [
             ...prev,
-            { matchId, ...result, _confirmedInCurrentRun: true, createdAt: new Date().toISOString() },
+            { matchId, ...storedResult, _confirmedInCurrentRun: true, createdAt: new Date().toISOString() },
           ];
         }
         if (matchData) {
@@ -502,7 +504,9 @@ export function RoleProvider({ children }) {
         }
         return updated;
       });
-      setMatchResultsRevision((revision) => revision + 1);
+      // Relay updates are already distributed by Admin. Do not re-send them
+      // through LAN/Cloud and create a feedback loop.
+      if (!relayedFromLan) setMatchResultsRevision((revision) => revision + 1);
 
       return { success: true };
     },

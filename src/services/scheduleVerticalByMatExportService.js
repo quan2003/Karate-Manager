@@ -174,7 +174,7 @@ function buildPageHtml({ group, rows, tournament, tournamentDays, page, totalPag
         <thead><tr><th>STT</th><th style="text-align:left">Nội dung</th><th>Loại</th><th>VĐV</th><th>Thảm</th><th>Ngày</th><th>Giờ</th></tr></thead>
         <tbody>${bodyRows}</tbody>
       </table>
-      <div class="footer">Karate Manager · Xuất lịch A4 dọc theo thảm</div>
+      <div class="footer">K-SPORT · Xuất lịch A4 dọc theo thảm</div>
     </div>`;
 }
 

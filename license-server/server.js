@@ -47,6 +47,7 @@ pool.query("SELECT NOW()", (err, res) => {
     initializeSchema();
     initializeAdminSchema();
     initializeAccountsSchema();
+    initializeLicenseManagerPasscodeSchema();
     initializeContentSchema();
     initializeRequestsSchema();
     initializeCommerceSchema();
@@ -58,6 +59,8 @@ pool.query("SELECT NOW()", (err, res) => {
     setTimeout(() => {
       cleanupRevokedExpiredLicenses();
       cleanupResolvedRequests();
+      cleanupExpiredCloudResultData();
+      deleteCloudTournamentsPastRetention();
     }, 5000);
   }
 });
@@ -176,6 +179,24 @@ const initializeRequestsSchema = async () => {
     console.log("Requests Schema initialized successfully.");
   } catch (err) {
     console.error("Error creating requests schema:", err);
+  }
+};
+
+// The secondary passcode protects high-risk license operations. Only a bcrypt
+// hash is persisted; the original six digits are never stored or logged.
+const initializeLicenseManagerPasscodeSchema = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS license_manager_passcode (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        passcode_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_by TEXT
+      );
+    `);
+    console.log("License manager passcode schema initialized successfully.");
+  } catch (err) {
+    console.error("Error creating license manager passcode schema:", err);
   }
 };
 
@@ -521,21 +542,93 @@ const normalizeVietQrBankId = (bankId) => {
 
 // === AUTO-CLEANUP FUNCTIONS ===
 
+// A tournament can have an ISO date (YYYY-MM-DD...) or an older free-form
+// date.  Prefer its end date when available; otherwise use the last sync so
+// legacy records are still cleaned up after they become inactive.
+const getExpiredCloudTournamentIds = async (retentionDays = 7) => {
+  const result = await pool.query(
+    `SELECT id
+     FROM cloud_tournaments
+     WHERE COALESCE(
+       CASE
+         WHEN end_date ~ '^\\d{4}-\\d{2}-\\d{2}'
+           THEN SUBSTRING(end_date FROM 1 FOR 10)::date
+         ELSE NULL
+       END,
+       last_synced_at::date
+     ) <= CURRENT_DATE - $1::integer`,
+    [retentionDays]
+  );
+  return result.rows.map((row) => row.id);
+};
+
 const autoPurgeOldTournaments = async (retentionDays = 7) => {
   try {
+    const expiredIds = await getExpiredCloudTournamentIds(retentionDays);
+    if (expiredIds.length === 0) return { purgedCount: 0, tournamentIds: [] };
+
     const result = await pool.query(
-      `UPDATE cloud_tournaments 
-       SET backup_data = NULL, is_purged = TRUE, status = 'PURGED' 
-       WHERE is_purged = FALSE 
-         AND last_synced_at < NOW() - INTERVAL '1 day' * $1 
+      `UPDATE cloud_tournaments
+       SET backup_data = NULL, is_purged = TRUE, status = 'PURGED'
+       WHERE id = ANY($1::text[]) AND is_purged = FALSE
        RETURNING id, name`,
-      [retentionDays]
+      [expiredIds]
     );
     if (result.rowCount > 0) {
       console.log(`[Auto-Purge] Purged heavy data for ${result.rowCount} old tournament(s)`);
     }
+    return { purgedCount: result.rowCount, tournamentIds: expiredIds };
   } catch (err) {
     console.error("[Auto-Purge] Error during auto purge:", err);
+    return { purgedCount: 0, tournamentIds: [] };
+  }
+};
+
+// Result-relay rows are only a delivery buffer between Secretary and Admin.
+// Once a tournament has been over for 7 days, Admin already has its synced
+// data, so remove the relay payloads as well to keep PostgreSQL storage bounded.
+const cleanupExpiredCloudResultData = async (retentionDays = 7) => {
+  try {
+    const { tournamentIds } = await autoPurgeOldTournaments(retentionDays);
+    if (tournamentIds.length === 0) return;
+
+    // The relay table is created lazily for installations that use Internet
+    // result sync.  Ensure it exists before attempting cleanup.
+    await ensureCloudResultRelayTable();
+    const result = await pool.query(
+      "DELETE FROM cloud_result_relay WHERE tournament_id = ANY($1::text[]) RETURNING id",
+      [tournamentIds]
+    );
+    if (result.rowCount > 0) {
+      console.log(`[Auto-Purge] Deleted ${result.rowCount} Secretary relay record(s) for expired tournament(s)`);
+    }
+  } catch (err) {
+    console.error("[Auto-Purge] Error cleaning Secretary relay data:", err);
+  }
+};
+
+// After one year, even the lightweight tournament metadata is no longer
+// needed. Delete the whole Cloud record (and any defensive leftover relay
+// rows) so historical tournaments cannot accumulate forever.
+const deleteCloudTournamentsPastRetention = async (retentionDays = 365) => {
+  try {
+    const tournamentIds = await getExpiredCloudTournamentIds(retentionDays);
+    if (tournamentIds.length === 0) return;
+
+    await ensureCloudResultRelayTable();
+    await pool.query(
+      "DELETE FROM cloud_result_relay WHERE tournament_id = ANY($1::text[])",
+      [tournamentIds]
+    );
+    const result = await pool.query(
+      "DELETE FROM cloud_tournaments WHERE id = ANY($1::text[]) RETURNING id, name",
+      [tournamentIds]
+    );
+    if (result.rowCount > 0) {
+      console.log(`[Auto-Delete] Permanently deleted ${result.rowCount} tournament record(s) older than ${retentionDays} days`);
+    }
+  } catch (err) {
+    console.error("[Auto-Delete] Error deleting expired Cloud tournaments:", err);
   }
 };
 
@@ -582,10 +675,13 @@ const cleanupResolvedRequests = async () => {
   }
 };
 
-// Run cleanup every hour
+// Run cleanup every hour. Backups/relay data are removed after 7 days; the
+// remaining Cloud tournament record is permanently deleted after one year.
 setInterval(() => {
   cleanupRevokedExpiredLicenses();
   cleanupResolvedRequests();
+  cleanupExpiredCloudResultData();
+  deleteCloudTournamentsPastRetention();
 }, 60 * 60 * 1000);
 
 // --- Email Notification ---
@@ -1159,6 +1255,68 @@ app.get("/api/public/pricing", async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+const licenseManagerPasscodeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Đã vượt quá số lần thử passcode. Vui lòng thử lại sau 15 phút." },
+});
+
+app.get("/api/license-manager/passcode/status", authMiddleware, async (_req, res) => {
+  try {
+    const result = await pool.query("SELECT 1 FROM license_manager_passcode WHERE id = 'default' LIMIT 1");
+    res.json({ success: true, configured: result.rowCount > 0 });
+  } catch (err) {
+    console.error("License manager passcode status error:", err);
+    res.status(500).json({ success: false, message: "Không thể kiểm tra trạng thái passcode." });
+  }
+});
+
+app.post("/api/license-manager/passcode/setup", authMiddleware, licenseManagerPasscodeLimiter, async (req, res) => {
+  const passcode = String(req.body?.passcode || "");
+  const confirmation = String(req.body?.confirmation || "");
+  if (!/^\d{6}$/.test(passcode) || passcode !== confirmation) {
+    return res.status(400).json({ success: false, message: "Passcode phải gồm đúng 6 chữ số và khớp xác nhận." });
+  }
+  try {
+    const hash = await bcrypt.hash(passcode, 12);
+    const createdBy = req.user?.username || req.user?.email || null;
+    const result = await pool.query(
+      `INSERT INTO license_manager_passcode (id, passcode_hash, created_by)
+       VALUES ('default', $1, $2)
+       ON CONFLICT (id) DO NOTHING
+       RETURNING id`,
+      [hash, createdBy]
+    );
+    if (!result.rowCount) {
+      return res.status(409).json({ success: false, message: "Passcode đã được thiết lập. Hãy nhập passcode để tiếp tục." });
+    }
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error("License manager passcode setup error:", err);
+    res.status(500).json({ success: false, message: "Không thể lưu passcode." });
+  }
+});
+
+app.post("/api/license-manager/passcode/verify", authMiddleware, licenseManagerPasscodeLimiter, async (req, res) => {
+  const passcode = String(req.body?.passcode || "");
+  if (!/^\d{6}$/.test(passcode)) {
+    return res.status(400).json({ success: false, message: "Passcode phải gồm đúng 6 chữ số." });
+  }
+  try {
+    const result = await pool.query("SELECT passcode_hash FROM license_manager_passcode WHERE id = 'default' LIMIT 1");
+    if (!result.rowCount) return res.status(409).json({ success: false, message: "Passcode chưa được thiết lập." });
+    if (!(await bcrypt.compare(passcode, result.rows[0].passcode_hash))) {
+      return res.status(401).json({ success: false, message: "Passcode không chính xác." });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("License manager passcode verify error:", err);
+    res.status(500).json({ success: false, message: "Không thể xác thực passcode." });
   }
 });
 
@@ -2737,9 +2895,42 @@ app.post(["/api/cloud-sync/tournament", "/cloud-sync/tournament"], cloudLicenseM
     if (!req.cloudLicense.activatedMachines.includes(requestedAuthorizedMachine)) {
       return res.status(400).json({ success: false, message: "Máy Nguồn Chính chưa được kích hoạt trên license này" });
     }
+
+    // Prevent two different machines from publishing duplicate copies of the same
+    // tournament (different tournamentId, identical normalized name + start_date).
+    if (!current && startDate) {
+      const duplicateCheck = await pool.query(
+        `SELECT id, machine_id, authorized_machine_id
+         FROM cloud_tournaments
+         WHERE id <> $1
+           AND LOWER(TRIM(name)) = LOWER(TRIM($2))
+           AND COALESCE(start_date, '') = $3
+           AND (owner_license_id = $4 OR is_public = true)
+         LIMIT 1`,
+        [String(tournamentId), String(tournamentName), String(startDate || ""), String(req.cloudLicense.id)]
+      );
+      if (duplicateCheck.rows.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: `Giải đấu "${tournamentName}" đã được đồng bộ từ một máy tính khác. Vui lòng gửi kết quả về máy tính chính của giải thay vì đồng bộ trực tiếp.`,
+        });
+      }
+    }
     const publicData = isPublic === true
       ? createPublicTournamentData({ tournamentId, tournamentName, startDate, endDate, location, backupData, summary })
       : null;
+    // Do not allow the desktop client's background sync to restore a heavy
+    // backup after the retention job has purged a tournament.
+    const endDateOnly = /^\d{4}-\d{2}-\d{2}/.test(String(endDate || ""))
+      ? String(endDate).slice(0, 10)
+      : null;
+    const purgeAfter = new Date();
+    purgeAfter.setDate(purgeAfter.getDate() - 7);
+    const isPastRetention = Boolean(
+      endDateOnly && new Date(`${endDateOnly}T23:59:59.999Z`) < purgeAfter
+    );
+    const storedBackupData = isPastRetention ? null : (backupData || {});
+    const cloudStatus = isPastRetention ? "PURGED" : "ACTIVE";
 
     const query = `
       INSERT INTO cloud_tournaments (
@@ -2748,7 +2939,7 @@ app.post(["/api/cloud-sync/tournament", "/cloud-sync/tournament"], cloudLicenseM
         status, is_purged, backup_data, summary, owner_license_id,
         authorized_machine_id, is_public, public_data
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), 'ACTIVE', FALSE, $10, $11, $12, $13, $14, $15)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10, $11, $12, $13, $14, $15, $16, $17)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         machine_id = EXCLUDED.machine_id,
@@ -2765,8 +2956,8 @@ app.post(["/api/cloud-sync/tournament", "/cloud-sync/tournament"], cloudLicenseM
         authorized_machine_id = EXCLUDED.authorized_machine_id,
         is_public = EXCLUDED.is_public,
         public_data = EXCLUDED.public_data,
-        is_purged = FALSE,
-        status = 'ACTIVE';
+        is_purged = EXCLUDED.is_purged,
+        status = EXCLUDED.status;
     `;
 
     await pool.query(query, [
@@ -2779,7 +2970,9 @@ app.post(["/api/cloud-sync/tournament", "/cloud-sync/tournament"], cloudLicenseM
       totalAthletes || 0,
       totalCategories || 0,
       dataSize,
-      backupData || {},
+      cloudStatus,
+      isPastRetention,
+      storedBackupData,
       summary || {},
       req.cloudLicense.id,
       requestedAuthorizedMachine,
@@ -2958,8 +3151,8 @@ app.delete(["/api/cloud-sync/tournaments/all", "/cloud-sync/tournaments/all"], a
 app.post(["/api/cloud-sync/trigger-auto-purge", "/cloud-sync/trigger-auto-purge"], authMiddleware, async (req, res) => {
   try {
     const { days = 7 } = req.body;
-    await autoPurgeOldTournaments(days);
-    res.json({ success: true, message: `Đã hoàn tất tự động dọn dẹp các giải quá ${days} ngày` });
+    await cleanupExpiredCloudResultData(days);
+    res.json({ success: true, message: `Đã hoàn tất dọn backup và dữ liệu relay của các giải quá ${days} ngày` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

@@ -1515,6 +1515,11 @@ function tournamentReducer(state, action) {
               c.id === categoryId || (categoryName && c.name === categoryName),
           );
           if (!category) return t;
+          // A result deliberately corrected by Admin is authoritative. The
+          // Secretary client keeps retrying its latest relay payload, so do
+          // not let that older source overwrite the correction on each poll.
+          const existingResult = t.categoryResults?.[category.id];
+          if (existingResult?._adminOverrideAt) return t;
           return {
             ...t,
             categoryResults: {

@@ -26,6 +26,7 @@ import { startAutoSyncEngine } from "../services/cloudSyncService";
 import { useOnboarding } from "../context/OnboardingContext";
 import appIcon from "../assets/icon.png";
 import { BRONZE_MODES } from "../domain/bronzeMode.js";
+import { suggestTournamentTier, TOURNAMENT_TIER_OPTIONS } from "../utils/rankingTier.js";
 import { isSingleBronzeCoreEnabled } from "../domain/bronzeIntegration.js";
 import "./HomePage.css";
 
@@ -59,6 +60,8 @@ export default function HomePage() {
     identityRegistryEnabled: true,
     default_bronze_mode: BRONZE_MODES.DUAL_BRONZE,
     defaultEligibilityPolicy: { version: 1 },
+    rankingTier: "club",
+    rankingTierManual: false,
   });
 
   // KRT Form Data
@@ -92,6 +95,8 @@ export default function HomePage() {
       identityRegistryEnabled: true,
       default_bronze_mode: BRONZE_MODES.DUAL_BRONZE,
       defaultEligibilityPolicy: { version: 1 },
+      rankingTier: "club",
+      rankingTierManual: false,
     });
     setEditingTournament(null);
   };
@@ -111,6 +116,8 @@ export default function HomePage() {
           new Date().toISOString().split("T")[0],
         location: tournament.location || "",
         isPublic: tournament.isPublic === true,
+        rankingTier: tournament.rankingTier || suggestTournamentTier(tournament.name),
+        rankingTierManual: Boolean(tournament.rankingTierManual),
         ...(Object.prototype.hasOwnProperty.call(tournament, "default_bronze_mode")
           ? { default_bronze_mode: tournament.default_bronze_mode }
           : {}),
@@ -831,7 +838,7 @@ export default function HomePage() {
                 className="input"
                 value={formData.name}
                 onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, name: e.target.value }))
+                  setFormData((prev) => ({ ...prev, name: e.target.value, rankingTier: prev.rankingTierManual ? prev.rankingTier : suggestTournamentTier(e.target.value) }))
                 }
                 placeholder="VD: Vô địch Karate Quốc gia 2026"
                 required
@@ -906,6 +913,31 @@ export default function HomePage() {
                 <option value={BRONZE_MODES.WKF_REPECHAGE}>WKF Repechage — hai nhánh RA/RB</option>
               </select>
               <small>Hạng mục tạo mới hoặc import không ghi chế độ riêng sẽ kế thừa lựa chọn này.</small>
+            </div>
+            <div className="input-group">
+              <label className="input-label">Cấp độ giải đấu (Hệ số điểm WKF)</label>
+              <select
+                className="input"
+                value={formData.rankingTier || suggestTournamentTier(formData.name)}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    rankingTier: e.target.value,
+                    rankingTierManual: true,
+                  }))
+                }
+              >
+                {TOURNAMENT_TIER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <small>
+                {formData.rankingTierManual
+                  ? "✓ Đã chọn cấp độ thủ công."
+                  : "Tự gợi ý theo tên giải — bạn có thể chỉnh lại trước khi công bố."}
+              </small>
             </div>
             {(formData.default_bronze_mode ?? BRONZE_MODES.DUAL_BRONZE) === BRONZE_MODES.WKF_REPECHAGE && (
               <div className="form-row">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   useTournament,
@@ -32,6 +32,7 @@ import { BRONZE_MODES, resolveBronzeMode } from "../domain/bronzeMode.js";
 import { selectCategoryMedalists } from "../domain/bronzeMedalSelection.js";
 import { updateAuxiliaryMatchResult } from "../domain/bronzeIntegration.js";
 import { getKataOptions } from "../domain/kataCatalog.js";
+import { getSigmaSplitBracket, getSigmaSplitCount } from "../utils/sigmaSplit.js";
 import "./BracketPage.css";
 
 const removeVietnameseAccents = (str) => {
@@ -117,6 +118,7 @@ export default function BracketPage() {
   const location = useLocation();
   // Custom dialog — replaces window.prompt / window.confirm (Electron blocks those)
   const [dialog, setDialog] = useState(null);
+  const [sigmaViewIndex, setSigmaViewIndex] = useState(null);
   const dialogInputRef = useRef(null);
   useEffect(() => {
     if (dialog?.type === "prompt" && dialogInputRef.current) {
@@ -138,6 +140,16 @@ export default function BracketPage() {
   const tournament =
     currentTournament ||
     tournaments.find((t) => t.categories.some((c) => c.id === id));
+
+  const sigmaTotal = getSigmaSplitCount(category, tournament?.splitSettings || {});
+  const displayBracket = useMemo(() => {
+    if (!category?.bracket || sigmaViewIndex === null || sigmaTotal <= 1) return category?.bracket;
+    return getSigmaSplitBracket(category.bracket, sigmaViewIndex, sigmaTotal);
+  }, [category?.bracket, sigmaTotal, sigmaViewIndex]);
+
+  useEffect(() => {
+    setSigmaViewIndex(null);
+  }, [category?.id]);
 
   // Recover and persist seed assignments from brackets corrupted by the old
   // match-level drag/drop implementation before another swap is attempted.
@@ -730,6 +742,18 @@ export default function BracketPage() {
                 ✓ {completedMatches}/{totalMatches} hoàn thành (
                 {progressPercent}%)
               </span>
+              {sigmaTotal > 1 && (
+                <select
+                  value={sigmaViewIndex ?? "all"}
+                  onChange={(event) => setSigmaViewIndex(event.target.value === "all" ? null : Number(event.target.value))}
+                  title="Chỉ xem một nhánh Sigma để chấm điểm"
+                >
+                  <option value="all">Tất cả nhánh</option>
+                  {Array.from({ length: sigmaTotal }, (_, index) => (
+                    <option key={index} value={index}>Nhánh {index + 1}/{sigmaTotal}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
@@ -882,7 +906,7 @@ export default function BracketPage() {
         <div className="bracket-scroll-container">
           {" "}
           <Bracket
-            bracket={category.bracket}
+            bracket={displayBracket}
             categoryType={category.type}
             onMatchClick={handleMatchClick}
             onContextAction={handleContextAction}

@@ -482,3 +482,64 @@
 @keyframes bulk-draw-spin {
   to { transform: rotate(360deg); }
 }
+
+/* Filter Bar & Search */
+.tournament-page .filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-4);
+  flex-wrap: wrap;
+}
+
+.tournament-page .filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tournament-page .filter-group label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.tournament-page .filter-select {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.tournament-page .search-filter {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  cursor: text;
+}
+
+.tournament-page .search-filter input {
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.tournament-page .search-filter input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}

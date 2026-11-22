@@ -614,6 +614,9 @@ export default function StatisticsPage() {
             confirmedAt: confirm ? new Date().toISOString() : null,
             confirmedBy: confirm ? "ADMIN" : null,
             resultUpdatedAt: new Date().toISOString(),
+            // Admin edits take precedence over the Secretary's continuously
+            // retried LAN/Cloud relay result for this category.
+            _adminOverrideAt: new Date().toISOString(),
           },
         },
       },
