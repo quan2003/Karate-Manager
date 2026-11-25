@@ -62,7 +62,7 @@ function collectMatRows(
     customEvents
       .filter((event) => Number(event.mat) === 0 || Number(event.mat) === Number(mat.id))
       .forEach((event) => {
-        const duration = Math.max(5, Number(event.duration) || 15);
+        const duration = Math.max(5, Number(event.duration) || 30);
         const eventDates = event.date
           ? [event.date]
           : (tournamentDays.length ? tournamentDays : [""]);

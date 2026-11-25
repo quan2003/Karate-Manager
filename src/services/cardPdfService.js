@@ -90,6 +90,43 @@ export async function exportCardsToPdf(cardsContainer, tournamentName, size = {}
     if (document.fonts?.ready) await document.fonts.ready;
     await waitForImages(staging);
 
+    // html2canvas does not respect CSS object-fit (contain or cover).
+    // Calculate exact proportional fitted dimensions for all images so logos and photos never stretch.
+    staging.querySelectorAll("img").forEach((img) => {
+      if (!img.naturalWidth || !img.naturalHeight) return;
+      const computed = window.getComputedStyle(img);
+      const fit = computed.objectFit;
+      if (fit === "contain" || fit === "cover") {
+        const boxWidth = img.offsetWidth || parseFloat(computed.width) || img.naturalWidth;
+        const boxHeight = img.offsetHeight || parseFloat(computed.height) || img.naturalHeight;
+        if (!boxWidth || !boxHeight) return;
+        const imgRatio = img.naturalWidth / img.naturalHeight;
+        const boxRatio = boxWidth / boxHeight;
+        let finalW = boxWidth;
+        let finalH = boxHeight;
+        if (fit === "contain") {
+          if (imgRatio > boxRatio) {
+            finalH = boxWidth / imgRatio;
+          } else {
+            finalW = boxHeight * imgRatio;
+          }
+        } else {
+          // cover
+          if (imgRatio > boxRatio) {
+            finalW = boxHeight * imgRatio;
+          } else {
+            finalH = boxWidth / imgRatio;
+          }
+        }
+        img.style.width = `${Math.round(finalW)}px`;
+        img.style.height = `${Math.round(finalH)}px`;
+        img.style.maxWidth = "none";
+        img.style.maxHeight = "none";
+        img.style.flex = `0 0 ${Math.round(finalW)}px`;
+        img.style.objectFit = "fill";
+      }
+    });
+
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
     const drawCropMarks = (x, y) => {
       const right = x + cardWidthMm;

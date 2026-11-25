@@ -829,7 +829,7 @@ export function smartAutoAssign(
       ? Array.from({ length: matCount }, (_, index) => index + 1)
       : [Number(event.mat)];
     const startMins = convertTimeToMins(event.time);
-    const duration = Math.max(5, Number(event.duration) || 15);
+    const duration = Math.max(5, Number(event.duration) || 30);
     eventDays.forEach((day) => {
       eventMats.forEach((mat) => addLogItem(day, {
         catId: `event_${event.id || event.name}`,

@@ -1377,6 +1377,35 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
         border-bottom: 1.5px solid #2563eb;
         border-top: 1.5px solid #2563eb;
       }
+      /* VĐV Kiken/loại: giữ tên để lưu vết trận đấu nhưng hiển thị rõ là đã loại. */
+      .pdf-cell.disqualified {
+        opacity: 0.62;
+        background: linear-gradient(to right, #fef2f2 0%, #f5f5f5 80%) !important;
+        border-color: #d1d5db !important;
+        border-left-color: #9ca3af !important;
+      }
+      .pdf-cell.disqualified .pdf-name {
+        color: #9ca3af;
+        text-decoration: line-through;
+        text-decoration-color: #ef4444;
+        text-decoration-thickness: 2px;
+      }
+      .pdf-cell.disqualified .pdf-club { color: #9ca3af; }
+      .pdf-dq-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        margin-left: auto;
+        border-radius: 50%;
+        flex-shrink: 0;
+        background: #ef4444;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1;
+      }
       
       .pdf-name { 
         font-size: inherit; font-weight: 700; color: #000; 
@@ -1607,17 +1636,19 @@ function generateBracketHTML(category, tournamentName = "", scheduleInfo = null,
       // Cell 1
       const name1 = athlete1?.name || "";
       const club1 = !isTeamBracket ? (athlete1?.club || "") : (athlete1?.members?.map(m => m.name.trim().split(/\s+/).pop()).join(', ') || "");
-      html += `<div class="pdf-cell aka ${isWinner1 ? "winner" : ""} ${!athlete1 ? "empty" : ""}" style="font-size: ${getFontSize(name1, "name")};">`;
+      html += `<div class="pdf-cell aka ${isWinner1 ? "winner" : ""} ${athlete1?.disqualified ? "disqualified" : ""} ${!athlete1 ? "empty" : ""}" style="font-size: ${getFontSize(name1, "name")};">`;
       html += `<span class="pdf-name">${name1}</span>`;
       if (club1) html += `<span class="pdf-club" style="font-size: ${getFontSize(club1, "club")};">(${club1})</span>`;
+      if (athlete1?.disqualified) html += `<span class="pdf-dq-badge" title="${athlete1.disqualifiedReason || "Loại"}">✕</span>`;
       html += `</div>`;
 
       // Cell 2
       const name2 = athlete2?.name || "";
       const club2 = !isTeamBracket ? (athlete2?.club || "") : (athlete2?.members?.map(m => m.name.trim().split(/\s+/).pop()).join(', ') || "");
-      html += `<div class="pdf-cell ao ${isWinner2 ? "winner" : ""} ${!athlete2 ? "empty" : ""}" style="margin-top: ${athleteGap}px; font-size: ${getFontSize(name2, "name")};">`;
+      html += `<div class="pdf-cell ao ${isWinner2 ? "winner" : ""} ${athlete2?.disqualified ? "disqualified" : ""} ${!athlete2 ? "empty" : ""}" style="margin-top: ${athleteGap}px; font-size: ${getFontSize(name2, "name")};">`;
       html += `<span class="pdf-name">${name2}</span>`;
       if (club2) html += `<span class="pdf-club" style="font-size: ${getFontSize(club2, "club")};">(${club2})</span>`;
+      if (athlete2?.disqualified) html += `<span class="pdf-dq-badge" title="${athlete2.disqualifiedReason || "Loại"}">✕</span>`;
       html += `</div>`;
 
       // Connectors

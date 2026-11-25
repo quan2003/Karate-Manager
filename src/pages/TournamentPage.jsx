@@ -275,6 +275,7 @@ export default function TournamentPage() {
   const [filterType, setFilterType] = useState(() => searchParams.get("type") || "all");
   const [filterGender, setFilterGender] = useState(() => searchParams.get("gender") || "all");
   const [filterSession, setFilterSession] = useState(() => searchParams.get("session") || "all");
+  const [filterAthleteCount, setFilterAthleteCount] = useState(() => searchParams.get("athletes") || "all");
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") || "");
 
   // Keep shareable list state in the URL. Marking this history entry lets us
@@ -292,6 +293,7 @@ export default function TournamentPage() {
       setOrDelete("type", filterType, "all");
       setOrDelete("gender", filterGender, "all");
       setOrDelete("session", filterSession, "all");
+      setOrDelete("athletes", filterAthleteCount, "all");
 
       const nextSearch = nextParams.toString();
       const currentSearch = location.search.replace(/^\?/, "");
@@ -308,7 +310,7 @@ export default function TournamentPage() {
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [filterGender, filterSession, filterType, listKey, location.pathname, location.search, location.state, navigate, searchQuery]);
+  }, [filterAthleteCount, filterGender, filterSession, filterType, listKey, location.pathname, location.search, location.state, navigate, searchQuery]);
 
   // Keep session state current when filters are changed or explicitly cleared (debounced).
   useEffect(() => {
@@ -318,7 +320,7 @@ export default function TournamentPage() {
         ...saved,
         listKey,
         route: `${location.pathname}${location.search}`,
-        filters: { searchQuery, filterType, filterGender, filterSession },
+        filters: { searchQuery, filterType, filterGender, filterSession, filterAthleteCount },
         sort: saved.sort || "default",
         page: saved.page || 1,
         pendingRestore: shouldRestoreListRef.current
@@ -328,7 +330,7 @@ export default function TournamentPage() {
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [filterGender, filterSession, filterType, listKey, location.pathname, location.search, searchQuery]);
+  }, [filterAthleteCount, filterGender, filterSession, filterType, listKey, location.pathname, location.search, searchQuery]);
 
   useEffect(() => {
     dispatch({ type: ACTIONS.SET_CURRENT_TOURNAMENT, payload: id });
@@ -465,6 +467,9 @@ export default function TournamentPage() {
     if (filterSession !== "all") {
       cats = cats.filter(c => (c.session || "buoi1") === filterSession);
     }
+    if (filterAthleteCount === "zero") {
+      cats = cats.filter(c => (c.athletes?.length || 0) === 0);
+    }
     if (searchQuery.trim() !== "") {
       const q = searchQuery.toLowerCase().trim();
       cats = cats.filter(c => c.name.toLowerCase().includes(q));
@@ -495,7 +500,7 @@ export default function TournamentPage() {
       ...saved,
       listKey,
       route: `${location.pathname}${location.search}`,
-      filters: { searchQuery, filterType, filterGender, filterSession },
+      filters: { searchQuery, filterType, filterGender, filterSession, filterAthleteCount },
       sort: saved.sort || "default",
       page: saved.page || 1,
       loadedCount: restorableCategories.length,
@@ -2587,6 +2592,13 @@ export default function TournamentPage() {
                   <option value="female">Nữ</option>
                 </select>
               </div>
+              <div className="filter-group">
+                <label>VĐV:</label>
+                <select value={filterAthleteCount} onChange={e => setFilterAthleteCount(e.target.value)} className="filter-select">
+                  <option value="all">Tất cả</option>
+                  <option value="zero">0 VĐV</option>
+                </select>
+              </div>
               {sessions.length > 1 && (
                 <div className="filter-group">
                   <label>Buổi:</label>
@@ -2614,8 +2626,8 @@ export default function TournamentPage() {
                   onChange={e => setSearchQuery(e.target.value)}
                 />
               </div>
-              {(filterType !== "all" || filterGender !== "all" || filterSession !== "all" || searchQuery !== "") && (
-                <button className="btn btn-sm btn-secondary" onClick={() => { setFilterType("all"); setFilterGender("all"); setFilterSession("all"); setSearchQuery(""); }}>
+              {(filterType !== "all" || filterGender !== "all" || filterSession !== "all" || filterAthleteCount !== "all" || searchQuery !== "") && (
+                <button className="btn btn-sm btn-secondary" onClick={() => { setFilterType("all"); setFilterGender("all"); setFilterSession("all"); setFilterAthleteCount("all"); setSearchQuery(""); }}>
                   ✕ Xóa lọc
                 </button>
               )}

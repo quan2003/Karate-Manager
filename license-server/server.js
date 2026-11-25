@@ -2802,9 +2802,10 @@ app.get("/api/public/banners", publicReadMiddleware, async (req, res) => {
 app.get("/api/public/athletes", publicReadMiddleware, publicCollection("athletes"));
 app.get("/api/public/athletes/:id", publicReadMiddleware, async (req, res) => {
   try {
+    const targetId = String(req.params.id || "").trim();
     const athlete = (await loadPublicData())
       .flatMap((dataset) => dataset.athletes || [])
-      .find((item) => item.id === req.params.id);
+      .find((item) => item.id === targetId || (item.athleteCode && item.athleteCode.toUpperCase() === targetId.toUpperCase()));
     if (!athlete) return res.status(404).json({ message: "Không tìm thấy vận động viên" });
     const media = await pool.query(
       "SELECT 1 FROM athlete_media WHERE public_athlete_id = $1 AND is_public = TRUE LIMIT 1",

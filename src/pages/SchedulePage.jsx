@@ -84,7 +84,7 @@ export default function SchedulePage() {
   const [customEvents, setCustomEvents] = useState([]);
   const [showEventModal, setShowEventModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
-  const [eventForm, setEventForm] = useState({ name: "", time: "07:00", mat: 0, icon: "🎉", date: "" });
+  const [eventForm, setEventForm] = useState({ name: "", time: "07:00", mat: 0, icon: "🎉", date: "", duration: 30 });
   // Schedule Setup
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [showKataAgeSetup, setShowKataAgeSetup] = useState(false);
@@ -458,10 +458,11 @@ export default function SchedulePage() {
       if ((evt.mat === 0 || evt.mat === matId) && (evt.date === targetDate || !evt.date)) {
         if (evt.time) {
           const [h, m] = evt.time.split(':').map(Number);
-          const endMins = h * 60 + m + 15; // Mặc định sự kiện chiếm 15p
+          const duration = Math.max(5, Number(evt.duration) || 30);
+          const endMins = h * 60 + m + duration;
           if (endMins > maxTimeMins) {
             maxTimeMins = endMins;
-            nextTime = addMinutesToTime(evt.time, 15);
+            nextTime = addMinutesToTime(evt.time, duration);
           }
         }
       }
@@ -995,10 +996,10 @@ export default function SchedulePage() {
   const handleOpenEventModal = (event = null) => {
     if (event) {
       setEditingEvent(event);
-      setEventForm({ name: event.name, time: event.time, mat: event.mat, icon: event.icon, date: event.date || selectedDate });
+      setEventForm({ name: event.name, time: event.time, mat: event.mat, icon: event.icon, date: event.date || selectedDate, duration: event.duration ?? 30 });
     } else {
       setEditingEvent(null);
-      setEventForm({ name: "", time: "07:00", mat: 0, icon: "🎉", date: selectedDate });
+      setEventForm({ name: "", time: "07:00", mat: 0, icon: "🎉", date: selectedDate, duration: 30 });
     }
     setShowEventModal(true);
   };

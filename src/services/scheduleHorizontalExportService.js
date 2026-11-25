@@ -76,7 +76,7 @@ function buildDaySection(schedule, categories, customEvents, mats, date, dayInde
         ];
         const timeRanges = [
           ...categoriesAtTime.map((item) => `${item.time} - ${item.endTime}`),
-          ...matEvents.map((event) => `${event.time || ""} - ${addMinutesToTime(event.time, Math.max(5, Number(event.duration) || 15))}`),
+          ...matEvents.map((event) => `${event.time || ""} - ${addMinutesToTime(event.time, Math.max(5, Number(event.duration) || 30))}`),
         ];
         return `
           <td class="time">${timeRanges.map(escapeHtml).join("<br>")}</td>

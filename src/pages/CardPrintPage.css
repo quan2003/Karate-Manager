@@ -1,6 +1,6 @@
 .card-print-page { padding: 28px 0 48px; }
 .card-print-heading { display:flex; justify-content:space-between; gap:20px; align-items:flex-end; margin-bottom:22px; }
-.card-print-heading h1 { font-size:28px; margin:4px 0; }.card-print-heading p,.back-link { color:var(--color-text-secondary); }.back-link { text-decoration:none; font-size:14px; }.card-designer { display:grid; grid-template-columns:minmax(280px,1fr) minmax(320px,1.2fr); gap:24px; background:#fff; border:1px solid var(--color-border); border-radius:14px; padding:20px; box-shadow:var(--shadow-sm); }.card-settings { display:flex; flex-direction:column; gap:13px; }.card-settings h3 { margin:0; }.card-settings label { display:grid; gap:5px; font-size:13px; font-weight:600; }.card-settings input:not([type="color"]) { width:100%; padding:9px 10px; border:1px solid #cbd5e1; border-radius:7px; }.card-settings input[type="color"] { width:54px; height:34px; padding:2px; border:1px solid #cbd5e1; border-radius:6px; }.template-actions { display:flex; gap:8px; flex-wrap:wrap; }.card-settings small { color:#64748b; line-height:1.45; }.card-preview { display:flex; align-items:center; justify-content:center; min-height:230px; padding:16px; background:#eef2ff; border-radius:10px; }
+.card-print-heading h1 { font-size:28px; margin:4px 0; }.card-print-heading p,.back-link { color:var(--color-text-secondary); }.back-link { text-decoration:none; font-size:14px; }.card-designer { display:grid; grid-template-columns:minmax(280px,1fr) minmax(320px,1.2fr); gap:24px; background:#fff; border:1px solid var(--color-border); border-radius:14px; padding:20px; box-shadow:var(--shadow-sm); }.card-settings { display:flex; flex-direction:column; gap:13px; }.card-settings h3 { margin:0; }.card-settings label { display:grid; gap:5px; font-size:13px; font-weight:600; }.card-settings input:not([type="color"]):not([type="checkbox"]):not([type="radio"]) { width:100%; padding:9px 10px; border:1px solid #cbd5e1; border-radius:7px; }.card-settings input[type="color"] { width:54px; height:34px; padding:2px; border:1px solid #cbd5e1; border-radius:6px; }.template-actions { display:flex; gap:8px; flex-wrap:wrap; }.card-settings small { color:#64748b; line-height:1.45; }.card-preview { display:flex; align-items:center; justify-content:center; min-height:230px; padding:16px; background:#eef2ff; border-radius:10px; }
 .credential-card { width:240px; height:380px; position:relative; overflow:hidden; border-radius:14px; color:#fff; background:linear-gradient(150deg,#0b1326 0%,#172554 56%,#111827 100%); box-shadow:0 13px 25px rgba(15,23,42,.3); isolation:isolate; }.credential-background { position:absolute; inset:0; z-index:-2; width:100%; height:100%; object-fit:cover; }.credential-shade { position:absolute; inset:0; z-index:-1; background:linear-gradient(158deg,rgba(3,7,18,.92),rgba(10,25,55,.68)); }.credential-content { height:100%; position:relative; padding:17px 18px 14px; display:flex; flex-direction:column; }.credential-head { display:flex; gap:10px; align-items:center; min-width:0; }.credential-head strong { font-size:13px; letter-spacing:.7px; display:block; line-height:1.1; }.credential-head small { display:block; max-width:160px; font-size:8px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:.8; }.credential-mark { display:grid; place-items:center; width:29px; height:29px; flex:0 0 29px; border:2px solid var(--card-accent); border-radius:50%; color:var(--card-accent); font-size:19px; font-weight:800; }.credential-main { display:flex; gap:11px; align-items:center; flex:1; flex-direction:column; justify-content:center; min-height:0; padding:10px 0; text-align:center; }.credential-photo { width:122px; height:163px; flex:0 0 122px; border:3px solid #fff; background:#e2e8f0; color:#334155; overflow:hidden; display:grid; place-items:center; font-size:54px; font-weight:700; }.credential-photo img { width:100%; height:100%; object-fit:cover; }.credential-details { min-width:0; }.credential-role { display:inline-block; color:#fff; background:var(--card-accent); font-size:8px; font-weight:800; letter-spacing:.55px; padding:3px 7px; margin-bottom:6px; }.credential-details h2 { font-size:17px; line-height:1.12; margin:0 0 6px; overflow-wrap:anywhere; }.credential-details p { margin:0; font-size:10px; color:#dbeafe; }.credential-details .credential-category { margin-top:3px; font-size:8px; }.credential-foot { margin-top:auto; padding-top:8px; border-top:1px solid rgba(255,255,255,.32); font-size:8px; font-weight:700; letter-spacing:.35px; display:flex; justify-content:space-between; }.credential-access { color:var(--card-accent); }.card-list-panel { margin-top:20px; padding:18px; background:#fff; border:1px solid var(--color-border); border-radius:14px; }.card-filters { display:flex; gap:9px; flex-wrap:wrap; }.card-filters select,.card-filters input { padding:8px 10px; min-width:155px; border:1px solid #cbd5e1; border-radius:7px; }.card-filters input { flex:1; }.card-person-list { margin-top:14px; max-height:380px; overflow:auto; border-top:1px solid #e2e8f0; }.card-person { display:flex; gap:10px; align-items:center; padding:9px 5px; border-bottom:1px solid #e2e8f0; cursor:pointer; }.card-person span { min-width:0; flex:1; }.card-person strong,.card-person small { display:block; }.card-person small { font-size:12px; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }.text-button { color:#0369a1; border:0; background:transparent; cursor:pointer; }.empty-state { color:#64748b; padding:20px; text-align:center; }.print-cards { display:none; }
 @media (max-width:720px) { .card-print-heading,.card-designer { grid-template-columns:1fr; flex-direction:column; align-items:stretch; }.card-print-button { align-self:stretch; } }
 @media print { @page { size:A4 portrait; margin:10mm; } body, #root, .app { background:#fff !important; min-height:0 !important; } body::before { display:none !important; } .app-footer, .card-print-heading, .card-designer, .card-list-panel, .onboarding-checklist, .help-floating-button { display:none !important; } .card-print-page { display:block !important; padding:0 !important; } .card-print-page .container { max-width:none !important; width:auto !important; padding:0 !important; margin:0 !important; } .print-cards { display:grid !important; grid-template-columns:repeat(3, 54mm); gap:5mm 7mm; align-content:start; } .credential-card { display:block !important; width:54mm; height:85.6mm; border-radius:2.5mm; box-shadow:none; break-inside:avoid; page-break-inside:avoid; } .credential-content { padding:4mm 4.2mm 3.2mm; }.credential-head strong { font-size:3mm; }.credential-head small { font-size:1.9mm; max-width:34mm; }.credential-mark { width:7mm; height:7mm; flex-basis:7mm; font-size:4mm; }.credential-main { gap:2.6mm; padding:2.5mm 0; }.credential-photo { width:28mm; height:37mm; flex-basis:28mm; border-width:.7mm; font-size:12mm; }.credential-role { font-size:2mm; padding:1mm 1.6mm; margin-bottom:1.5mm; }.credential-details h2 { font-size:3.8mm; margin-bottom:1.2mm; }.credential-details p { font-size:2.3mm; }.credential-details .credential-category { font-size:1.9mm; }.credential-foot { padding-top:1.8mm; font-size:1.9mm; } }
@@ -26,7 +26,8 @@
 .credential-qr { width:34px; height:34px; margin-top:-13px; }
 .credential-card--event { color:#111827; background:radial-gradient(circle at 20% 15%,rgba(14,165,233,.08),transparent 26%),repeating-linear-gradient(150deg,rgba(148,163,184,.08) 0 2px,transparent 2px 10px),#fff; border:1px solid #dbe3ec; }
 .credential-card--event .credential-shade { background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,.66)); }
-.credential-card--event .credential-background--cover + .credential-shade { background:rgba(255,255,255,.70); }
+.credential-card--event .credential-background--cover + .credential-shade { background:transparent; }
+.credential-card--event .credential-background--cover_soft + .credential-shade { background:rgba(255,255,255,.45); }
 .credential-card--event .credential-background--watermark + .credential-shade { background:rgba(255,255,255,.42); }
 .credential-card--event .credential-head { padding-bottom:7px; border-bottom:0; }
 .credential-card--event .credential-head .credential-logo { transform:none; }
@@ -47,14 +48,35 @@
 .credential-access-code small,
 .credential-card--event .credential-category { display:none; }
 .credential-card--event .credential-qr { width:30px; height:30px; margin-top:-10px; border:1px solid #cbd5e1; transform:translateY(4px); }
-.card-settings .card-back-toggle { display:flex; align-items:center; gap:8px; font-weight:600; }.card-settings .card-back-toggle input { width:16px; height:16px; }
+.card-settings .card-back-toggle {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  padding: 3px 0 !important;
+  margin: 2px 0 !important;
+}
+.card-settings .card-back-toggle input[type="checkbox"] {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 1.5px solid #64748b !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  accent-color: #2563eb !important;
+}
 .print-card-backs { display:none; }
 .credential-card--back { color:#111827; background:repeating-linear-gradient(150deg,rgba(148,163,184,.09) 0 2px,transparent 2px 10px),#fff; border:1px solid #dbe3ec; }
 .credential-card--back .credential-content { padding:16px 18px 12px; }
 .credential-back-head { display:flex; flex-direction:column; align-items:center; gap:5px; padding-bottom:8px; border-bottom:0; text-align:center; }.credential-back-head .credential-logo { width:44px; height:44px; flex-basis:44px; }.credential-back-head strong { color:#087fbd; font-size:12px; line-height:1.15; text-transform:uppercase; }
 .credential-card--back::after { display:none; }
 .credential-back-logos { display:flex; align-items:center; justify-content:center; gap:5px; }
-.credential-back-logos .credential-logo { width:34px; height:34px; flex-basis:34px; }
+.credential-back-logos .credential-logo { width:auto; height:32px; max-width:48px; max-height:32px; flex:0 0 auto; object-fit:contain; }
 .credential-legend { flex:1; display:flex; flex-direction:column; justify-content:center; gap:4px; padding:8px 3px; }.credential-legend-row { display:grid; grid-template-columns:38px 1fr; align-items:center; gap:9px; }.credential-legend-row b { display:grid; place-items:center; height:20px; color:#fff; border:2px double #fff; outline:1px solid currentColor; font-size:11px; }.credential-legend-row span { color:#111827; font-size:10px; font-weight:700; }
 .credential-card--back footer { color:#475569; border-top:1px solid #cbd5e1; padding-top:6px; text-align:center; font-size:8px; font-weight:700; letter-spacing:.6px; }
 @media print { .credential-foot { min-height:9mm; } .credential-qr { width:12mm; height:12mm; padding:.5mm; margin-top:-5mm; } }
@@ -76,11 +98,11 @@
 }
 .credential-card--labeled .credential-event-logos .credential-logo,
 .credential-card--labeled .credential-event-logos .credential-logo--ksport {
-  width:38px;
-  height:38px;
-  max-width:38px;
-  max-height:38px;
-  flex:0 0 38px;
+  width:auto;
+  height:36px;
+  max-width:52px;
+  max-height:36px;
+  flex:0 0 auto;
   object-fit:contain;
 }
 .credential-card--labeled .credential-head--adaptive strong {

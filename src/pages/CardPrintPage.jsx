@@ -9,28 +9,79 @@ import kSportWhiteLogo from "../assets/Logo_trang.jpg";
 import { exportCardsToPdf } from "../services/cardPdfService";
 import "./CardPrintPage.css";
 
+const REMOVED_PRESET_IMAGES = new Set([
+  "modern_sport",
+  "traditional_bushido",
+  "luxury_vip",
+  "cyber_neon",
+  "yama_ribbon",
+]);
+
+const resolveBackgroundImage = (img) => {
+  if (!img || typeof img !== "string") return "";
+  if (img.startsWith("/card-templates/") || REMOVED_PRESET_IMAGES.has(img)) return "";
+  return img;
+};
+
 const DEFAULT_SETTINGS = { backgroundImage: "", backgroundMode: "watermark", cardWidthCm: 10, cardHeightCm: 14, includeBackSide: true, title: "THẺ K-SPORT", accent: "#e11d48", qrBaseUrl: "https://k-sport.net" };
+
 const normalize = (value) => String(value || "").trim();
 const parseMatNumbers = (value) => Array.from(new Set(String(value || "").split(/[;,\s]+/).map((item) => item.trim()).filter(Boolean))).slice(0, 8);
 
-// Mirrors license-server/public-data.js, keeping printed cards aligned with
-// the code shown for the same athlete on k-sport-web.
-async function derivePublicAthleteCode(profileId, country) {
-  if (!profileId || !globalThis.crypto?.subtle) return "";
-  const source = new TextEncoder().encode(`athlete\u001f${profileId}`);
+const text = (v, max = 300) => String(v || "").slice(0, max);
+const normalizedLookupValue = (value) => text(value, 300)
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/[đĐ]/g, "d")
+  .toLowerCase()
+  .replace(/\s+/g, " ")
+  .trim();
+
+const publicClubIdentity = (value) => normalizedLookupValue(value)
+  .replace(/^(xa|phuong|thi tran)\s+/i, "");
+
+async function computeSha256Hex(...parts) {
+  if (!globalThis.crypto?.subtle) return "";
+  const textToHash = parts.map((part) => String(part || "")).join("\u001f");
+  const source = new TextEncoder().encode(textToHash);
   const digest = await globalThis.crypto.subtle.digest("SHA-256", source);
-  const publicId = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("").slice(0, 20);
-  const countryCode = normalize(country).toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4) || "VDV";
-  return `${countryCode}-${publicId.slice(0, 8).toUpperCase()}`;
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("").slice(0, 20);
+}
+
+// Mirrors license-server/public-data.js 1:1, keeping printed cards aligned with
+// the exact code shown for the same athlete on k-sport-web (e.g. VN-6977AE20).
+async function derivePublicAthleteCode(person) {
+  if (!person) return "";
+  if (normalize(person.code)) return normalize(person.code);
+  const profileId = normalize(person.profileId) || normalize(person.athleteId);
+  const identity = profileId || `person:${normalizedLookupValue(person.name)}\u001f${publicClubIdentity(person.club)}`;
+  const athleteId = await computeSha256Hex("athlete", identity);
+  if (!athleteId) return "";
+  const countryCode = normalize(person.country).toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4) || "VN";
+  return `${countryCode}-${athleteId.slice(0, 8).toUpperCase()}`;
 }
 
 async function createQrDataUrl(person, baseUrl, tournamentId) {
   if (!normalize(person.code)) return "";
   let url;
-  try { url = new URL(normalize(baseUrl) || "https://k-sport.net"); }
-  catch { url = new URL("https://k-sport.net"); }
-  if (person.code) url.searchParams.set("code", person.code);
-  url.searchParams.set("tournament", tournamentId || "");
+  const rawBase = normalize(baseUrl) || "https://k-sport.net";
+  try {
+    url = new URL(rawBase);
+  } catch {
+    url = new URL("https://k-sport.net");
+  }
+  const athleteCode = encodeURIComponent(normalize(person.code));
+  const cleanPath = url.pathname.replace(/\/+$/, "");
+
+  if (!cleanPath || cleanPath === "") {
+    url.pathname = `/athletes/${athleteCode}`;
+  } else if (cleanPath === "/athletes" || cleanPath === "/pass") {
+    url.pathname = `${cleanPath}/${athleteCode}`;
+  } else if (!cleanPath.endsWith(`/${athleteCode}`)) {
+    url.pathname = `${cleanPath}/${athleteCode}`;
+  }
+
+  if (tournamentId) url.searchParams.set("tournament", tournamentId);
   return QRCode.toDataURL(url.toString(), { width: 150, margin: 0, errorCorrectionLevel: "M" });
 }
 
@@ -45,7 +96,7 @@ function LegacyCard({ person, tournament, settings, photoUrl, qrDataUrl, compact
   const previewWidth = 240;
   const previewHeight = Math.round(previewWidth * heightCm / widthCm);
   return <article className={`credential-card credential-card--event ${compact ? "credential-card--compact" : ""}`} style={{ "--card-accent": settings.accent || "#e11d48", "--role-color": roleColor, width: `${previewWidth}px`, height: `${previewHeight}px` }}>
-    {settings.backgroundImage && <img className={`credential-background credential-background--${settings.backgroundMode || "watermark"}`} src={settings.backgroundImage} alt="" />}
+    {resolveBackgroundImage(settings.backgroundImage) && <img className={`credential-background credential-background--${settings.backgroundMode || "watermark"}`} src={resolveBackgroundImage(settings.backgroundImage)} alt="" />}
     <div className="credential-shade" />
     <div className="credential-content">
       <header className="credential-head"><img className="credential-logo" src={settings.logoImage || appIcon} alt="Logo" /><div><strong>{tournament.name}</strong><small>{title}</small></div></header>
@@ -69,7 +120,8 @@ function Card({ person, tournament, settings, photoUrl, qrDataUrl, compact = fal
   const previewHeight = Math.round((previewWidth * heightCm) / widthCm);
   const sponsorLogos = Array.isArray(settings.sponsorLogos) ? settings.sponsorLogos.filter((logo) => typeof logo === "string" && logo) : [];
   const eventLogos = (settings.eventLogos?.length ? settings.eventLogos : (settings.hideEventLogo ? [] : (settings.logoImage ? [settings.logoImage] : []))).filter((logo) => typeof logo === "string" && logo);
-  const headerLogos = [kSportWhiteLogo, ...eventLogos].filter((logo) => typeof logo === "string" && logo);
+  const baseLogos = settings.hideKsportLogo ? [] : [kSportWhiteLogo];
+  const headerLogos = [...baseLogos, ...eventLogos].filter((logo) => typeof logo === "string" && logo);
   const tournamentName = normalize(tournament.name);
   const titleLengthClass = tournamentName.length > 64 ? "credential-card--very-long-title" : tournamentName.length > 38 ? "credential-card--long-title" : "";
   const automaticMats = Array.from({ length: Math.min(8, Number(tournament.scheduleConfig?.matCount) || 0) }, (_, index) => String(index + 1));
@@ -80,18 +132,33 @@ function Card({ person, tournament, settings, photoUrl, qrDataUrl, compact = fal
   const matColors = ["#2563eb", "#16a34a", "#111827", "#eab308", "#dc2626", "#7c3aed", "#0891b2", "#ea580c"];
 
   return <article className={`credential-card credential-card--event credential-card--labeled ${titleLengthClass} ${compact ? "credential-card--compact" : ""}`} style={{ "--card-accent": settings.accent || "#e11d48", "--role-color": roleColor, width: `${previewWidth}px`, height: `${previewHeight}px` }}>
-    {settings.backgroundImage && <img className={`credential-background credential-background--${settings.backgroundMode || "watermark"}`} src={settings.backgroundImage} alt="" />}
+    {resolveBackgroundImage(settings.backgroundImage) && <img className={`credential-background credential-background--${settings.backgroundMode || "watermark"}`} src={resolveBackgroundImage(settings.backgroundImage)} alt="" />}
     <div className="credential-shade" />
     <div className="credential-lanyard-slot" aria-hidden="true" />
     <div className="credential-content">
-      <header className="credential-head credential-head--adaptive"><div className="credential-event-logos">{headerLogos.map((logo, index) => <img className={`credential-logo ${index === 0 ? "credential-logo--ksport" : ""}`} key={`${index}:${logo.slice(-16)}`} src={logo} alt={index === 0 ? "Logo K-SPORT" : `Logo giải ${index}`} />)}</div><div><strong>{tournament.name}</strong><small>{settings.title || "THẺ K-SPORT"}</small></div></header>
+      <header className="credential-head credential-head--adaptive">{headerLogos.length > 0 && <div className="credential-event-logos">{headerLogos.map((logo, index) => <img className={`credential-logo ${index === 0 && !settings.hideKsportLogo ? "credential-logo--ksport" : ""}`} key={`${index}:${logo.slice(-16)}`} src={logo} alt={index === 0 && !settings.hideKsportLogo ? "Logo K-SPORT" : `Logo giải ${index}`} />)}</div>}{!settings.hideHeaderTitle && <div><strong>{tournament.name}</strong><small>{settings.title || "THẺ K-SPORT"}</small></div>}</header>
       <div className="credential-main">
-        <div className="credential-identity-row"><div className="credential-photo">{photoUrl ? <img src={photoUrl} alt={`Ảnh ${person.name}`} /> : <span className="credential-photo-placeholder"><strong>ẢNH 3×4</strong></span>}</div><div className="credential-access-column"><div className="credential-access-code"><small>KHU VỰC</small><strong>{accessCode}</strong></div>{(matNumbers.length > 0 || matPending) && <div className={`credential-mats credential-mats--under-access ${matPending ? "credential-mats--pending" : ""}`}><b>THẢM</b>{matPending ? <em>CHƯA XẾP</em> : <div>{matNumbers.map((mat, index) => <span key={mat} style={{ background: matColors[index % matColors.length] }}>{mat}</span>)}</div>}</div>}</div></div>
-        <span className="credential-role">{roleLabel}</span>
-        <div className="credential-info"><div><b>Họ và tên:</b><span>{person.name || "Chưa cập nhật"}</span></div><div><b>Đơn vị:</b><span>{person.club || "Chưa cập nhật"}</span></div></div>
+        <div className="credential-identity-row">
+          <div className="credential-photo">{photoUrl ? <img src={photoUrl} alt={`Ảnh ${person.name}`} /> : <span className="credential-photo-placeholder"><strong>ẢNH 3×4</strong></span>}</div>
+          {!settings.hideAccessBox && (
+            <div className="credential-access-column">
+              <div className="credential-access-code"><small>KHU VỰC</small><strong>{accessCode}</strong></div>
+              {(matNumbers.length > 0 || matPending) && (
+                <div className={`credential-mats credential-mats--under-access ${matPending ? "credential-mats--pending" : ""}`}>
+                  <b>THẢM</b>{matPending ? <em>CHƯA XẾP</em> : <div>{matNumbers.map((mat, index) => <span key={mat} style={{ background: matColors[index % matColors.length] }}>{mat}</span>)}</div>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        {!settings.hideRoleBadge && <span className="credential-role">{roleLabel}</span>}
+        <div className="credential-info">
+          <div>{!settings.hideInfoLabels && <b>Họ và tên:</b>}<span>{person.name || "Chưa cập nhật"}</span></div>
+          <div>{!settings.hideInfoLabels && <b>Đơn vị:</b>}<span>{person.club || "Chưa cập nhật"}</span></div>
+        </div>
       </div>
       <div className={`credential-sponsors ${sponsorLogos.length === 0 ? "credential-sponsors--empty" : ""}`} style={{ "--sponsor-count": Math.max(sponsorLogos.length, 1) }}>{sponsorLogos.length === 0 && <span>VỊ TRÍ LOGO NHÀ TÀI TRỢ</span>}{sponsorLogos.map((logo, index) => <span className="credential-sponsor-slot" key={`${index}:${logo.slice(-16)}`}><img src={logo} alt={`Logo nhà tài trợ ${index + 1}`} /></span>)}</div>
-      <footer className="credential-foot"><span>{person.code ? `MÃ VĐV: ${person.code}` : "CHƯA CẤP MÃ VĐV"}</span>{person.code && qrDataUrl && <img className="credential-qr" src={qrDataUrl} alt="Mã QR VĐV" />}</footer>
+      <footer className="credential-foot"><span>{person.role === "athlete" ? (person.code ? `MÃ VĐV: ${person.code}` : "CHƯA CẤP MÃ VĐV") : "K-SPORT ACCESS"}</span>{person.code && qrDataUrl && <img className="credential-qr" src={qrDataUrl} alt="Mã QR VĐV" />}</footer>
     </div>
   </article>;
 }
@@ -150,7 +217,7 @@ export default function CardPrintPage() {
         const profileId = normalize(athlete.profileId) || normalize(athlete.athleteId);
         const identity = profileId || athleteCode || `${normalize(athlete.name).toLowerCase()}:${normalize(athlete.club).toLowerCase()}`;
         const key = `athlete:${identity}`;
-        const current = athleteMap.get(key) || { key, role: "athlete", name: athlete.name, club: athlete.club, code: athleteCode, profileId, mediaId: normalize(athlete.athleteId), country: athlete.country, categoryNames: [], matNumbers: [], competitions: [] };
+        const current = athleteMap.get(key) || { key, role: "athlete", name: athlete.name, club: athlete.club, code: athleteCode, profileId, athleteId: normalize(athlete.athleteId), mediaId: normalize(athlete.athleteId), country: athlete.country || "VN", categoryNames: [], matNumbers: [], competitions: [] };
         if (category.name && !current.categoryNames.includes(category.name)) current.categoryNames.push(category.name);
         const mat = normalize(tournament.schedule?.[category.id]?.mat);
         if (mat && !current.matNumbers.includes(mat)) current.matNumbers.push(mat);
@@ -164,12 +231,12 @@ export default function CardPrintPage() {
       ...(registration?.teamLeader ? [{ key: `leader:${club}:${registration.teamLeader}`, role: "leader", name: registration.teamLeader, club }] : []),
     ]);
     return [...athletes, ...staff];
-  }, [tournament]);
+  }, [tournament?.id, tournament?.categories, tournament?.schedule, tournament?.clubRegistrations, tournament?.scheduleConfig?.matCount]);
   useEffect(() => {
     let active = true;
-    const missing = people.filter((person) => person.role === "athlete" && !person.code && person.profileId && !derivedAthleteCodes[person.key]);
+    const missing = people.filter((person) => person.role === "athlete" && !person.code && !derivedAthleteCodes[person.key]);
     if (!missing.length) return undefined;
-    Promise.all(missing.map(async (person) => [person.key, await derivePublicAthleteCode(person.profileId, person.country)])).then((entries) => {
+    Promise.all(missing.map(async (person) => [person.key, await derivePublicAthleteCode(person)])).then((entries) => {
       if (active) setDerivedAthleteCodes((current) => ({ ...current, ...Object.fromEntries(entries.filter(([, code]) => code)) }));
     });
     return () => { active = false; };
@@ -194,16 +261,28 @@ export default function CardPrintPage() {
     });
   }, [people]);
   useEffect(() => {
+    setQrCodes({});
+  }, [settings.qrBaseUrl]);
+  useEffect(() => {
     const preview = { key: "preview", code: "VIE0001", role: "athlete" };
-    const targets = [preview, ...selectedPeople];
+    const targets = [preview, ...selectedPeople].filter((p) => p.code && !qrCodes[p.key]);
+    if (!targets.length) return;
+    let active = true;
     Promise.all(targets.map(async (person) => {
       return [person.key, await createQrDataUrl(person, settings.qrBaseUrl, tournament?.id)];
-    })).then((entries) => setQrCodes(Object.fromEntries(entries))).catch(() => {});
-  }, [selectedPeople, settings.qrBaseUrl, tournament?.id]);
+    })).then((entries) => {
+      if (active) setQrCodes((current) => ({ ...current, ...Object.fromEntries(entries) }));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [selectedPeople, settings.qrBaseUrl, tournament?.id, qrCodes]);
 
+  const saveTimeoutRef = useRef(null);
   const saveSettings = (next) => {
     setSettings(next);
-    dispatch({ type: ACTIONS.UPDATE_TOURNAMENT, payload: { id: tournament.id, cardPrinting: { ...stored, settings: next } } });
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      dispatch({ type: ACTIONS.UPDATE_TOURNAMENT, payload: { id: tournament.id, cardPrinting: { ...stored, settings: next } } });
+    }, 250);
   };
   const saveStaffPhotos = (next) => dispatch({ type: ACTIONS.UPDATE_TOURNAMENT, payload: { id: tournament.id, cardPrinting: { ...stored, settings, staffPhotos: next } } });
   const togglePerson = (key) => setSelected((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
@@ -268,6 +347,18 @@ export default function CardPrintPage() {
     setExportingPdf(true);
     try {
       await loadAthletePhotos();
+      const missingCodes = selectedPeople.filter((person) => person.role === "athlete" && !person.code);
+      if (missingCodes.length) {
+        const codeEntries = await Promise.all(missingCodes.map(async (person) => [
+          person.key,
+          await derivePublicAthleteCode(person)
+        ]));
+        const codeMap = Object.fromEntries(codeEntries.filter(([, code]) => code));
+        setDerivedAthleteCodes((current) => ({ ...current, ...codeMap }));
+        selectedPeople.forEach((person) => {
+          if (codeMap[person.key]) person.code = codeMap[person.key];
+        });
+      }
       const missingQrCodes = selectedPeople.filter((person) => !qrCodes[person.key]);
       if (missingQrCodes.length) {
         const entries = await Promise.all(missingQrCodes.map(async (person) => [
@@ -298,10 +389,15 @@ export default function CardPrintPage() {
         <h3>Mẫu thẻ</h3>
         <div className="card-size-fields"><label>Rộng (cm)<input type="number" min="4" max="20" step="0.1" value={settings.cardWidthCm ?? 10} onChange={(event) => saveSettings({ ...settings, cardWidthCm: event.target.value })} /></label><label>Cao (cm)<input type="number" min="6" max="28.7" step="0.1" value={settings.cardHeightCm ?? 14} onChange={(event) => saveSettings({ ...settings, cardHeightCm: event.target.value })} /></label></div>
         <label className="card-back-toggle"><input type="checkbox" checked={settings.includeBackSide !== false} onChange={(event) => saveSettings({ ...settings, includeBackSide: event.target.checked })} /> Xuất mặt sau bảng mã quyền truy cập</label>
+        <label className="card-back-toggle"><input type="checkbox" checked={Boolean(settings.hideHeaderTitle)} onChange={(event) => saveSettings({ ...settings, hideHeaderTitle: event.target.checked })} /> Ẩn tên giải đấu trên thẻ (cho phôi đã in sẵn tên giải)</label>
+        <label className="card-back-toggle"><input type="checkbox" checked={Boolean(settings.hideKsportLogo)} onChange={(event) => saveSettings({ ...settings, hideKsportLogo: event.target.checked })} /> Ẩn logo K-SPORT đầu thẻ (cho phôi đã có sẵn logo)</label>
+        <label className="card-back-toggle"><input type="checkbox" checked={Boolean(settings.hideRoleBadge)} onChange={(event) => saveSettings({ ...settings, hideRoleBadge: event.target.checked })} /> Ẩn nhãn VẬN ĐỘNG VIÊN (cho phôi đã có sẵn chữ VĐV)</label>
+        <label className="card-back-toggle"><input type="checkbox" checked={Boolean(settings.hideInfoLabels)} onChange={(event) => saveSettings({ ...settings, hideInfoLabels: event.target.checked })} /> Ẩn chữ "Họ và tên", "Đơn vị" (chỉ in chữ đè lên dòng kẻ của phôi)</label>
+        <label className="card-back-toggle"><input type="checkbox" checked={Boolean(settings.hideAccessBox)} onChange={(event) => saveSettings({ ...settings, hideAccessBox: event.target.checked })} /> Ẩn ô KHU VỰC A (cho phôi đã có sẵn ô khu vực)</label>
         <label>Tiêu đề<input value={settings.title} onChange={(event) => saveSettings({ ...settings, title: event.target.value })} /></label>
         <label>Đường dẫn QR K-SPORT<input type="url" value={settings.qrBaseUrl} onChange={(event) => saveSettings({ ...settings, qrBaseUrl: event.target.value })} /></label>
         <label>Thảm dành cho HLV/Trưởng đoàn<input value={settings.matNumbers ?? ""} placeholder={tournament.scheduleConfig?.matCount ? `Mặc định tất cả: ${Array.from({ length: tournament.scheduleConfig.matCount }, (_, index) => index + 1).join(", ")}` : "Ví dụ: 1, 2, 3, 4"} onChange={(event) => saveSettings({ ...settings, matNumbers: event.target.value })} /></label>
-        <label>Kiểu ảnh nền<select value={settings.backgroundMode || "watermark"} onChange={(event) => saveSettings({ ...settings, backgroundMode: event.target.value })}><option value="watermark">Watermark - dành cho logo/huy hiệu</option><option value="cover">Phủ toàn thẻ - dành cho phôi thiết kế</option></select></label>
+        <label>Kiểu ảnh nền<select value={settings.backgroundMode || "watermark"} onChange={(event) => saveSettings({ ...settings, backgroundMode: event.target.value })}><option value="watermark">Watermark - logo/huy hiệu mờ ở giữa</option><option value="cover">Phủ toàn thẻ - sắc nét 100% (cho phôi Canva/Photoshop)</option><option value="cover_soft">Phủ toàn thẻ - làm mờ nhẹ để nổi chữ</option></select></label>
         <label>Màu nhấn<input type="color" value={settings.accent} onChange={(event) => saveSettings({ ...settings, accent: event.target.value })} /></label>
         <div className="asset-settings">
           <div><b>Logo giải</b><div className="template-actions"><button className="btn btn-secondary" onClick={() => logoInputRef.current?.click()}>＋ Thêm logo giải</button>{(settings.eventLogos?.length || settings.logoImage) && <button className="btn btn-secondary" onClick={() => saveSettings({ ...settings, eventLogos: [], logoImage: "", hideEventLogo: true })}>Xóa logo giải</button>}</div></div>
