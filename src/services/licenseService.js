@@ -4,7 +4,7 @@
  */
 
 // ĐỊA CHỈ SERVER LICENSE - Cần thay đổi khi deploy lên VPS
-export const SERVER_URL = "https://admin.luuquancoder.id.vn";
+export const SERVER_URL = "https://api.k-sport.net";
 
 const SECURE_LICENSE_KEYS = new Set([
   "krt_active_license",
@@ -217,6 +217,7 @@ export async function validateLicenseKey(licenseKey, currentMachineId = null) {
           organizationName: result.data.clientName,
           expiryDate: result.data.expiryDate,
           maxMachines: result.data.maxMachines,
+          smartScheduleEnabled: Boolean(result.data.smartScheduleEnabled),
           features: LICENSE_CONFIG[result.data.type]?.features || [],
         },
         keyVersion: 1,
@@ -353,6 +354,15 @@ export async function revalidateLicenseWithServer() {
       detail: { type: "revalidated", license: refreshedLicense },
     })
   );
+}
+
+export function hasSmartSchedulePro() {
+  const license = getCurrentLicense();
+  if (!license || !license.active || license.isTrial) return false;
+  if (license.smartScheduleEnabled) return true;
+  const expiryYear = license.expiryDate ? new Date(license.expiryDate).getFullYear() : 0;
+  const orgName = String(license.organizationName || license.clientName || "").trim().toLowerCase();
+  return expiryYear > 2099 || orgName === "admin";
 }
 
 export function hasFeature(featureName) {
@@ -519,6 +529,8 @@ export async function getPublicPricing() {
   }
 }
 
+export const KSPORT_SMART_API_URL = "https://api.k-sport.net";
+
 export async function createPaymentOrder({
   planId,
   machineId,
@@ -526,9 +538,14 @@ export async function createPaymentOrder({
   customerPhone,
   customerEmail,
   note,
+  includeSmartSchedule = false,
+  orderKind = "new_license",
+  targetLicenseKey = "",
+  apiBaseUrl,
 }) {
+  const base = apiBaseUrl || ((orderKind === "addon_smart_schedule" || includeSmartSchedule) ? KSPORT_SMART_API_URL : SERVER_URL);
   try {
-    const response = await fetch(`${SERVER_URL}/api/payment/orders`, {
+    const response = await fetch(`${base}/api/payment/orders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -538,6 +555,9 @@ export async function createPaymentOrder({
         customerPhone,
         customerEmail,
         note,
+        includeSmartSchedule,
+        orderKind,
+        targetLicenseKey,
       }),
     });
     return await readJsonWithNormalizedMessage(response);
@@ -546,12 +566,12 @@ export async function createPaymentOrder({
   }
 }
 
-export async function getPaymentOrderStatus(orderCode, machineId) {
+export async function getPaymentOrderStatus(orderCode, machineId, apiBaseUrl = SERVER_URL) {
   try {
     const params = new URLSearchParams();
     if (machineId) params.set("machineId", machineId);
     const response = await fetch(
-      `${SERVER_URL}/api/payment/orders/${encodeURIComponent(
+      `${apiBaseUrl}/api/payment/orders/${encodeURIComponent(
         orderCode
       )}?${params.toString()}`
     );
@@ -559,6 +579,28 @@ export async function getPaymentOrderStatus(orderCode, machineId) {
   } catch (e) {
     return { success: false, message: "Không thể kiểm tra đơn thanh toán" };
   }
+}
+
+export async function createSmartScheduleUpgradeOrder({ customerName = "", customerPhone = "", note = "" } = {}) {
+  const license = getCurrentLicense();
+  const machineId = license?.machineId || generateMachineId();
+  if (!license?.active || license.isTrial || !license.licenseKey) {
+    return {
+      success: false,
+      requiresBaseLicense: true,
+      message: "Bạn cần kích hoạt License K-SPORT trước khi nâng cấp gói Smart Schedule Pro (100K).",
+    };
+  }
+  return createPaymentOrder({
+    planId: "smart_schedule_addon",
+    machineId,
+    customerName: customerName || license.organizationName || "",
+    customerPhone,
+    note: note || "Nâng cấp Smart Schedule Pro 100K từ trang Xếp lịch",
+    orderKind: "addon_smart_schedule",
+    targetLicenseKey: license.licenseKey,
+    apiBaseUrl: KSPORT_SMART_API_URL,
+  });
 }
 
 // Stubbed legacy function mocks

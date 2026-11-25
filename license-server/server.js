@@ -86,6 +86,8 @@ const initializeSchema = async () => {
   `;
   try {
     await pool.query(createTableQuery);
+    await pool.query("ALTER TABLE licenses ADD COLUMN IF NOT EXISTS smart_schedule_enabled BOOLEAN DEFAULT FALSE;");
+    await pool.query("ALTER TABLE licenses ADD COLUMN IF NOT EXISTS smart_schedule_activated_at TIMESTAMPTZ;");
     console.log("Schema initialized successfully.");
   } catch (err) {
     console.error("Error creating schema:", err);
@@ -295,10 +297,16 @@ const initializeCommerceSchema = async () => {
         status VARCHAR(20) DEFAULT 'pending',
         license_key TEXT,
         admin_note TEXT,
+        order_kind VARCHAR(40) DEFAULT 'new_license',
+        target_license_key TEXT,
+        include_smart_schedule BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         paid_at TIMESTAMPTZ
       );
     `);
+    await pool.query("ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS order_kind VARCHAR(40) DEFAULT 'new_license';");
+    await pool.query("ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS target_license_key TEXT;");
+    await pool.query("ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS include_smart_schedule BOOLEAN DEFAULT FALSE;");
 
     await pool.query(`
       INSERT INTO pricing_plans
@@ -307,7 +315,9 @@ const initializeCommerceSchema = async () => {
         ('tournament', 'Goi License theo giai', 'Dung cho mot giai dau', 'tournament', 30, 1, 400000,
           ARRAY['Quan ly VDV', 'Quan ly HLV', 'Boc tham tu dong', 'Xuat Sigma', 'Quan ly ket qua'], 1),
         ('support', 'Goi Ho tro Online toan giai', 'Kem ho tro van hanh online', 'yearly', 30, 1, 800000,
-          ARRAY['Ho tro nhap du lieu dau vao', 'Ho tro van hanh online', 'Xuat Sigma', 'Tong ket toan giai'], 2)
+          ARRAY['Ho tro nhap du lieu dau vao', 'Ho tro van hanh online', 'Xuat Sigma', 'Tong ket toan giai'], 2),
+        ('smart_schedule_addon', 'Smart Schedule Pro (CP-SAT)', 'Mo khoa xep lich toi uu CP-SAT cho License hien tai', 'addon', 0, 1, 100000,
+          ARRAY['Greedy + CP-SAT Optimization', 'Can bang tham & giam Sigma', 'Gian cach gio nghi VDV', 'Schedule Validator doc lap'], 3)
       ON CONFLICT (id) DO NOTHING;
     `);
 
@@ -444,6 +454,7 @@ const createLicenseRecord = async (
     clientPhone,
     clientEmail,
     notes,
+    smartScheduleEnabled = false,
   },
   db = pool
 ) => {
@@ -480,8 +491,8 @@ const createLicenseRecord = async (
 
   const result = await db.query(
     `
-      INSERT INTO licenses (id, key, raw_key, type, client_name, client_phone, client_email, notes, expiry_date, max_machines, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
+      INSERT INTO licenses (id, key, raw_key, type, client_name, client_phone, client_email, notes, expiry_date, max_machines, status, smart_schedule_enabled, smart_schedule_activated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', $11, CASE WHEN $11 THEN NOW() ELSE NULL END)
       RETURNING *;
     `,
     [
@@ -495,6 +506,7 @@ const createLicenseRecord = async (
       note,
       expiryDate,
       machines,
+      Boolean(smartScheduleEnabled),
     ]
   );
 
@@ -506,6 +518,7 @@ const createLicenseRecord = async (
     clientName: newLicense.client_name,
     expiryDate: newLicense.expiry_date,
     maxMachines: newLicense.max_machines,
+    smartScheduleEnabled: Boolean(newLicense.smart_schedule_enabled),
   };
 };
 
@@ -795,6 +808,16 @@ const authMiddleware = (req, res, next) => {
 // Desktop cloud writes use the customer's active license as a scoped
 // credential. The machine must already be activated through /api/license/verify;
 // this middleware never activates a new machine as a side effect.
+const isPermanentOrAdminLicense = (license) => {
+  if (!license) return false;
+  const expiryYear = license.expiry_date ? new Date(license.expiry_date).getFullYear() : 0;
+  const clientName = String(license.client_name || "").trim().toLowerCase();
+  return expiryYear > 2099 || clientName === "admin";
+};
+
+const hasSmartScheduleAccess = (license) =>
+  Boolean(license?.smart_schedule_enabled) || isPermanentOrAdminLicense(license);
+
 const cloudLicenseMiddleware = async (req, res, next) => {
   const licenseKey = String(req.headers["x-k-sport-license"] || "").trim();
   const machineId = String(req.headers["x-k-sport-machine"] || "").trim();
@@ -807,7 +830,7 @@ const cloudLicenseMiddleware = async (req, res, next) => {
 
   try {
     const result = await pool.query(
-      `SELECT id, activated_machines
+      `SELECT id, activated_machines, smart_schedule_enabled, expiry_date, client_name, key, raw_key
        FROM licenses
        WHERE (key = $1 OR raw_key = $1)
          AND status = 'active'
@@ -819,7 +842,13 @@ const cloudLicenseMiddleware = async (req, res, next) => {
     if (!license || !(license.activated_machines || []).includes(machineId)) {
       return res.status(403).json({ success: false, message: "License hoặc Machine ID không có quyền Cloud sync" });
     }
-    req.cloudLicense = { id: license.id, machineId, activatedMachines: license.activated_machines || [] };
+    req.cloudLicense = {
+      id: license.id,
+      machineId,
+      activatedMachines: license.activated_machines || [],
+      smartScheduleEnabled: hasSmartScheduleAccess(license),
+      licenseKey: license.raw_key || license.key,
+    };
     return next();
   } catch (err) {
     console.error("Cloud license authentication error:", err);
@@ -1328,6 +1357,9 @@ app.post("/api/payment/orders", async (req, res) => {
     customerPhone,
     customerEmail,
     note,
+    includeSmartSchedule = false,
+    orderKind = "new_license",
+    targetLicenseKey = "",
   } = req.body;
 
   if (!planId || !machineId) {
@@ -1348,28 +1380,65 @@ app.post("/api/payment/orders", async (req, res) => {
     }
 
     const plan = planRes.rows[0];
+    const isAddonOrder = orderKind === "addon_smart_schedule" || plan.id === "smart_schedule_addon";
+    let resolvedTargetKey = String(targetLicenseKey || "").trim() || null;
+    let resolvedOrderKind = isAddonOrder ? "addon_smart_schedule" : (includeSmartSchedule ? "bundle_smart_schedule" : "new_license");
+    let resolvedPlanName = plan.name;
+    let resolvedAmount = Number(plan.price_vnd) || 0;
+    let resolvedIncludeSmart = Boolean(includeSmartSchedule) || isAddonOrder;
+
+    if (isAddonOrder) {
+      if (!resolvedTargetKey) {
+        return res.status(400).json({ success: false, message: "Thiếu License Key hiện tại để nâng cấp Smart Schedule Pro" });
+      }
+      const licRes = await pool.query(
+        "SELECT id, key, raw_key, status, expiry_date, activated_machines, smart_schedule_enabled FROM licenses WHERE key = $1 OR raw_key = $1 LIMIT 1",
+        [resolvedTargetKey]
+      );
+      const existingLic = licRes.rows[0];
+      if (!existingLic || existingLic.status !== "active" || new Date() > new Date(existingLic.expiry_date)) {
+        return res.status(400).json({ success: false, message: "License hiện tại không hợp lệ hoặc đã hết hạn" });
+      }
+      if (!(existingLic.activated_machines || []).includes(machineId)) {
+        return res.status(403).json({ success: false, message: "Machine ID không khớp với License hiện tại" });
+      }
+      if (existingLic.smart_schedule_enabled) {
+        return res.status(400).json({ success: false, message: "License này đã kích hoạt Smart Schedule Pro rồi" });
+      }
+      resolvedTargetKey = existingLic.raw_key || existingLic.key;
+      resolvedPlanName = "Nâng cấp Smart Schedule Pro (100K)";
+      resolvedAmount = Number(plan.price_vnd) || 100000;
+    } else if (includeSmartSchedule) {
+      resolvedPlanName = `${plan.name} + Smart Schedule Pro`;
+      resolvedAmount = resolvedAmount + 100000;
+    }
+
     const orderCode = `KSP${Date.now().toString(36).toUpperCase()}`;
     const orderRes = await pool.query(
       `
         INSERT INTO payment_orders
           (order_code, plan_id, plan_name, license_type, duration_days, max_machines, amount_vnd,
-           machine_id, customer_name, customer_phone, customer_email, note)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+           machine_id, customer_name, customer_phone, customer_email, note,
+           order_kind, target_license_key, include_smart_schedule)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         RETURNING *;
       `,
       [
         orderCode,
         plan.id,
-        plan.name,
+        resolvedPlanName,
         plan.license_type,
         plan.duration_days,
         plan.max_machines,
-        plan.price_vnd,
+        resolvedAmount,
         machineId,
         customerName || null,
         customerPhone || null,
         customerEmail || null,
         note || null,
+        resolvedOrderKind,
+        resolvedTargetKey,
+        resolvedIncludeSmart,
       ]
     );
 
@@ -1390,7 +1459,12 @@ app.get("/api/payment/orders/:orderCode", async (req, res) => {
   const { machineId } = req.query;
   try {
     const result = await pool.query(
-      "SELECT order_code, status, license_key, amount_vnd, plan_name, machine_id, paid_at FROM payment_orders WHERE order_code = $1",
+      `SELECT po.order_code, po.status, po.license_key, po.amount_vnd, po.plan_name, po.machine_id, po.paid_at,
+              po.order_kind, po.target_license_key, po.include_smart_schedule,
+              COALESCE(l.smart_schedule_enabled, FALSE) AS smart_schedule_enabled
+       FROM payment_orders po
+       LEFT JOIN licenses l ON l.key = COALESCE(po.license_key, po.target_license_key) OR l.raw_key = COALESCE(po.license_key, po.target_license_key)
+       WHERE po.order_code = $1`,
       [req.params.orderCode]
     );
     if (result.rows.length === 0) {
@@ -1630,18 +1704,47 @@ app.post("/api/admin/payment-orders/:id/mark-paid", authMiddleware, async (req, 
       return res.json({ success: true, order });
     }
 
-    const license = await createLicenseRecord(
-      {
-        type: order.license_type,
-        days: order.duration_days,
-        maxMachines: order.max_machines,
-        clientName: order.customer_name || order.order_code,
-        clientPhone: order.customer_phone,
-        clientEmail: order.customer_email,
-        notes: `Paid order ${order.order_code}${adminNote ? ` - ${adminNote}` : ""}`,
-      },
-      clientDb
-    );
+    let license;
+    if (order.order_kind === "addon_smart_schedule" && order.target_license_key) {
+      const upgraded = await clientDb.query(
+        `
+          UPDATE licenses
+          SET smart_schedule_enabled = TRUE,
+              smart_schedule_activated_at = COALESCE(smart_schedule_activated_at, NOW())
+          WHERE key = $1 OR raw_key = $1
+          RETURNING *;
+        `,
+        [order.target_license_key]
+      );
+      if (!upgraded.rows[0]) {
+        await clientDb.query("ROLLBACK");
+        return res.status(404).json({ success: false, message: "Không tìm thấy License gốc để nâng cấp Smart Schedule Pro" });
+      }
+      const row = upgraded.rows[0];
+      license = {
+        key: row.key,
+        raw: row.raw_key,
+        type: row.type,
+        clientName: row.client_name,
+        expiryDate: row.expiry_date,
+        maxMachines: row.max_machines,
+        smartScheduleEnabled: true,
+      };
+    } else {
+      license = await createLicenseRecord(
+        {
+          type: order.license_type,
+          days: order.duration_days,
+          maxMachines: order.max_machines,
+          clientName: order.customer_name || order.order_code,
+          clientPhone: order.customer_phone,
+          clientEmail: order.customer_email,
+          notes: `Paid order ${order.order_code}${adminNote ? ` - ${adminNote}` : ""}`,
+          smartScheduleEnabled: Boolean(order.include_smart_schedule),
+        },
+        clientDb
+      );
+    }
 
     const updateRes = await clientDb.query(
       `
@@ -1686,6 +1789,7 @@ app.post("/api/license/create", authMiddleware, async (req, res) => {
       clientPhone,
       clientEmail,
       notes,
+      smartScheduleEnabled = false,
     } = req.body;
 
     const duration = parseInt(days) || 30;
@@ -1723,8 +1827,8 @@ app.post("/api/license/create", authMiddleware, async (req, res) => {
     const formattedKey = `KRT-${prefix}-${chunks.slice(0, 5).join("-")}`;
 
     const query = `
-      INSERT INTO licenses (id, key, raw_key, type, client_name, client_phone, client_email, notes, expiry_date, max_machines, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
+      INSERT INTO licenses (id, key, raw_key, type, client_name, client_phone, client_email, notes, expiry_date, max_machines, status, smart_schedule_enabled, smart_schedule_activated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', $11, CASE WHEN $11 THEN NOW() ELSE NULL END)
       RETURNING *;
     `;
 
@@ -1739,6 +1843,7 @@ app.post("/api/license/create", authMiddleware, async (req, res) => {
       note,
       expiryDate,
       machines,
+      Boolean(smartScheduleEnabled),
     ]);
 
     const newLicense = result.rows[0];
@@ -1751,6 +1856,7 @@ app.post("/api/license/create", authMiddleware, async (req, res) => {
       clientName: newLicense.client_name,
       expiryDate: newLicense.expiry_date,
       maxMachines: newLicense.max_machines,
+      smartScheduleEnabled: Boolean(newLicense.smart_schedule_enabled),
     };
 
     res.json({ success: true, license: responseLicense });
@@ -1823,6 +1929,7 @@ app.post("/api/license/verify", async (req, res) => {
           clientName: license.client_name,
           expiryDate: license.expiry_date,
           maxMachines: license.max_machines,
+          smartScheduleEnabled: hasSmartScheduleAccess(license),
         },
       });
     }
@@ -1850,6 +1957,7 @@ app.post("/api/license/verify", async (req, res) => {
           clientName: updatedLicense.client_name,
           expiryDate: updatedLicense.expiry_date,
           maxMachines: updatedLicense.max_machines,
+          smartScheduleEnabled: hasSmartScheduleAccess(updatedLicense),
         },
       });
     } else {
@@ -2009,7 +2117,7 @@ app.post("/api/license/info", async (req, res) => {
 
   try {
     const result = await pool.query(
-      "SELECT type, client_name, created_at, expiry_date, max_machines, activated_machines, status FROM licenses WHERE key = $1 OR raw_key = $1",
+      "SELECT type, client_name, created_at, expiry_date, max_machines, activated_machines, status, smart_schedule_enabled FROM licenses WHERE key = $1 OR raw_key = $1",
       [key]
     );
 
@@ -2037,10 +2145,214 @@ app.post("/api/license/info", async (req, res) => {
         status: license.status,
         daysRemaining,
         isExpired: now > expiry,
+        smartScheduleEnabled: hasSmartScheduleAccess(license),
       },
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * TOGGLE SMART SCHEDULE PRO ADD-ON (Admin)
+ */
+app.post("/api/license/smart-schedule", authMiddleware, async (req, res) => {
+  const { key, enabled } = req.body;
+  if (!key) {
+    return res.status(400).json({ success: false, message: "Thiếu license key" });
+  }
+  try {
+    const isEnabled = Boolean(enabled);
+    const result = await pool.query(
+      `
+        UPDATE licenses
+        SET smart_schedule_enabled = $1,
+            smart_schedule_activated_at = CASE WHEN $1 THEN COALESCE(smart_schedule_activated_at, NOW()) ELSE smart_schedule_activated_at END
+        WHERE key = $2 OR raw_key = $2
+        RETURNING *;
+      `,
+      [isEnabled, key]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy license" });
+    }
+    res.json({
+      success: true,
+      smartScheduleEnabled: Boolean(result.rows[0].smart_schedule_enabled),
+      license: result.rows[0],
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * SMART SCHEDULE PRO SOLVER (Greedy + CP-SAT + Validator)
+ * Runs on VPS for licensed machines. Returns preview stats if 100k add-on is not yet unlocked,
+ * or full optimized schedule when smartScheduleEnabled is true.
+ */
+let activeSmartScheduleSolvers = 0;
+const MAX_CONCURRENT_SMART_SOLVERS = 2;
+
+app.post("/api/smart-schedule/solve", cloudLicenseMiddleware, async (req, res) => {
+  const {
+    categories = [],
+    tournamentDays = [],
+    matCount = 4,
+    sessionConfig = {},
+    customEvents = [],
+    manualSchedule = null,
+    minRestMinutes = 20,
+    transitionMinutes = 0,
+    maxTimeSeconds = 30,
+    kataMode = "per_mat_kata_first",
+    intraAgeMode = "preferred",
+    strictTargetEndTime = false,
+    daySessionConfigs = null,
+    matOperatingWindows = null,
+    selectedStrategies = null,
+    multiPlan = true,
+    requireCpSat = false,
+    previewOnly = false,
+  } = req.body || {};
+
+  const isUnlocked = Boolean(req.cloudLicense?.smartScheduleEnabled);
+  if (!isUnlocked && !previewOnly) {
+    return res.status(403).json({
+      success: false,
+      requiresUpgrade: true,
+      upgradePriceVnd: 100000,
+      message: "Tính năng Smart Schedule Pro yêu cầu gói mở rộng 100.000đ.",
+    });
+  }
+
+  if (!Array.isArray(categories) || categories.length === 0 || !Array.isArray(tournamentDays) || tournamentDays.length === 0) {
+    return res.status(400).json({ success: false, message: "Thiếu danh sách nội dung hoặc ngày thi đấu." });
+  }
+  if (categories.length > 400) {
+    return res.status(400).json({ success: false, message: "Số lượng nội dung vượt quá giới hạn xử lý (tối đa 400)." });
+  }
+
+  if (activeSmartScheduleSolvers >= MAX_CONCURRENT_SMART_SOLVERS) {
+    return res.status(429).json({
+      success: false,
+      message: "Máy chủ tối ưu đang xử lý tối đa yêu cầu đồng thời. Vui lòng thử lại sau vài giây.",
+    });
+  }
+
+  const { spawn } = require("child_process");
+  const solverPath = path.join(__dirname, "smart_schedule_solver.py");
+  const pythonBin = process.env.KSPORT_PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
+  const boundedSeconds = Math.max(2, Math.min(120, Number(maxTimeSeconds) || 30));
+
+  const solverInput = JSON.stringify({
+    categories: categories.slice(0, 400),
+    tournamentDays: tournamentDays.slice(0, 14),
+    matCount: Math.max(1, Math.min(16, Number(matCount) || 4)),
+    sessionConfig,
+    customEvents: Array.isArray(customEvents) ? customEvents.slice(0, 100) : [],
+    manualSchedule,
+    minRestMinutes: Math.max(0, Math.min(180, Number(minRestMinutes) || 20)),
+    transitionMinutes: Math.max(0, Math.min(30, Number(transitionMinutes) || 0)),
+    maxTimeSeconds: boundedSeconds,
+    kataMode,
+    intraAgeMode,
+    strictTargetEndTime: Boolean(strictTargetEndTime),
+    daySessionConfigs: daySessionConfigs && typeof daySessionConfigs === "object" ? daySessionConfigs : null,
+    matOperatingWindows: matOperatingWindows && typeof matOperatingWindows === "object" ? matOperatingWindows : null,
+    selectedStrategies: Array.isArray(selectedStrategies) ? selectedStrategies : null,
+    workers: 2,
+    multiPlan: Boolean(multiPlan),
+    requireCpSat: Boolean(requireCpSat),
+  });
+
+  activeSmartScheduleSolvers += 1;
+  try {
+    const solved = await new Promise((resolve, reject) => {
+      const child = spawn(pythonBin, [solverPath], { stdio: ["pipe", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      const timeoutMs = (boundedSeconds + 15) * 1000;
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error("Smart Schedule Solver quá thời gian xử lý"));
+      }, timeoutMs);
+
+      req.on("close", () => {
+        if (!child.killed) child.kill("SIGTERM");
+      });
+
+      child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+      child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+      child.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        if (code !== 0) {
+          return reject(new Error(stderr || `Solver exited with code ${code}`));
+        }
+        try {
+          resolve(JSON.parse(stdout));
+        } catch {
+          reject(new Error("Không đọc được kết quả từ Smart Schedule Solver"));
+        }
+      });
+      child.stdin.write(solverInput);
+      child.stdin.end();
+    });
+
+    if (!solved?.success) {
+      return res.json({
+        success: false,
+        solverStatus: solved?.solverStatus || "INFEASIBLE",
+        diagnosis: solved?.diagnosis || null,
+        lowerBounds: solved?.lowerBounds || null,
+        hasOrtools: solved?.hasOrtools,
+        elapsedMs: solved?.elapsedMs,
+        greedyBaseline: solved?.greedyBaseline || null,
+        manualBaseline: solved?.manualBaseline || null,
+        message: solved?.message || "Không tìm được lịch hợp lệ với các ràng buộc hiện tại.",
+      });
+    }
+
+    if (!isUnlocked) {
+      return res.json({
+        success: true,
+        locked: true,
+        requiresUpgrade: true,
+        upgradePriceVnd: 100000,
+        hasOrtools: solved.hasOrtools,
+        usedFallback: Boolean(solved.usedFallback),
+        fallbackNotice: solved.fallbackNotice || null,
+        solverStatus: solved.solverStatus,
+        elapsedMs: solved.elapsedMs,
+        lowerBounds: solved.lowerBounds || null,
+        plans: (solved.plans || []).map((p) => ({ ...p, schedule: undefined })),
+        greedyBaseline: solved.greedyBaseline ? { validation: solved.greedyBaseline.validation } : null,
+        manualBaseline: solved.manualBaseline || null,
+      });
+    }
+
+    return res.json({
+      success: true,
+      locked: false,
+      hasOrtools: solved.hasOrtools,
+      usedFallback: Boolean(solved.usedFallback),
+      fallbackNotice: solved.fallbackNotice || null,
+      solverStatus: solved.solverStatus,
+      elapsedMs: solved.elapsedMs,
+      lowerBounds: solved.lowerBounds || null,
+      plans: solved.plans || [],
+      greedyBaseline: solved.greedyBaseline || null,
+      manualBaseline: solved.manualBaseline || null,
+    });
+  } catch (err) {
+    console.error("Smart Schedule solve error:", err);
+    return res.status(500).json({ success: false, message: err.message || "Lỗi máy chủ Smart Schedule" });
+  } finally {
+    activeSmartScheduleSolvers = Math.max(0, activeSmartScheduleSolvers - 1);
   }
 });
 

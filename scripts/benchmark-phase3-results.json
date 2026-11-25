@@ -1,0 +1,1487 @@
+{
+  "generatedAt": "2026-11-25T04:49:08.994Z",
+  "budgetResults": [
+    {
+      "budgetSeconds": 10,
+      "elapsedMs": 10592,
+      "wallMs": 11645,
+      "lowerBounds": {
+        "totalDurationMinutes": 955,
+        "totalDurationWithTransitionMinutes": 955,
+        "totalCapacityToTargetMinutes": 1080,
+        "perMatCapacityToTarget": {
+          "1": 360,
+          "2": 360,
+          "3": 360
+        },
+        "forcedLoadPerMat": {
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "longestAthleteChainMinutes": 245,
+        "makespanLowerBoundTime": "15:19",
+        "feasibleWithinTargetLikely": true
+      },
+      "greedy": {
+        "valid": true,
+        "validationScope": "category_level",
+        "hardViolations": 0,
+        "scheduledCount": 73,
+        "unscheduledCount": 0,
+        "totalCategories": 73,
+        "totalMatches": 259,
+        "matOverlaps": 0,
+        "athleteOverlaps": 0,
+        "athleteMatSwitches": 84,
+        "ageDispersion": 10,
+        "manualDisruptions": 0,
+        "restViolations": 0,
+        "blockedViolations": 0,
+        "matRuleViolations": 0,
+        "pinnedViolations": 0,
+        "issues": [],
+        "makespanAbs": 995,
+        "makespanTime": "16:35",
+        "sumEndMinutes": 52750,
+        "completionSpreadMinutes": 20,
+        "overtimeMinutes": 35,
+        "totalIdleMinutes": 555,
+        "workloadStdDevMinutes": 26.2,
+        "matLoads": [
+          {
+            "mat": 1,
+            "categoryCount": 22,
+            "totalMinutes": 305,
+            "idleMinutes": 210,
+            "lastEndTime": "16:35",
+            "utilizationPercent": 84.7
+          },
+          {
+            "mat": 2,
+            "categoryCount": 27,
+            "totalMinutes": 355,
+            "idleMinutes": 145,
+            "lastEndTime": "16:20",
+            "utilizationPercent": 98.6
+          },
+          {
+            "mat": 3,
+            "categoryCount": 24,
+            "totalMinutes": 295,
+            "idleMinutes": 200,
+            "lastEndTime": "16:15",
+            "utilizationPercent": 81.9
+          }
+        ]
+      },
+      "plans": [
+        {
+          "id": "balanced_time",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:30",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 395,
+          "athleteMatSwitches": 77,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 90850,
+          "bestBound": 35995,
+          "gapPercent": 60.38,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 748,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 930,
+              "bestBound": 535,
+              "gapPercent": 42.47,
+              "runtimeMs": 1010,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "completion_spread*1000 + sum(end_vars) + soft_penalties",
+              "status": "FEASIBLE",
+              "objectiveValue": 90850,
+              "bestBound": 35995,
+              "gapPercent": 60.38,
+              "runtimeMs": 1688,
+              "provenOptimal": false
+            }
+          ]
+        },
+        {
+          "id": "earliest_finish",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:30",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 4.7,
+          "totalIdleMinutes": 395,
+          "athleteMatSwitches": 85,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 543675,
+          "bestBound": 359950,
+          "gapPercent": 33.79,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "FEASIBLE",
+              "objectiveValue": 35070,
+              "bestBound": 0,
+              "gapPercent": 100,
+              "runtimeMs": 805,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 930,
+              "bestBound": 535,
+              "gapPercent": 42.47,
+              "runtimeMs": 1018,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "sum(end_vars)*10 + completion_spread*100 + soft_penalties",
+              "status": "FEASIBLE",
+              "objectiveValue": 543675,
+              "bestBound": 359950,
+              "gapPercent": 33.79,
+              "runtimeMs": 1677,
+              "provenOptimal": false
+            }
+          ]
+        },
+        {
+          "id": "organization_priority",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:30",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 395,
+          "athleteMatSwitches": 74,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 922717,
+          "bestBound": 35995,
+          "gapPercent": 96.1,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 700,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 930,
+              "bestBound": 535,
+              "gapPercent": 42.47,
+              "runtimeMs": 1016,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "soft_penalties*5 + completion_spread*100 + sum(end_vars)",
+              "status": "FEASIBLE",
+              "objectiveValue": 922717,
+              "bestBound": 35995,
+              "gapPercent": 96.1,
+              "runtimeMs": 1682,
+              "provenOptimal": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "budgetSeconds": 30,
+      "elapsedMs": 26570,
+      "wallMs": 27942,
+      "lowerBounds": {
+        "totalDurationMinutes": 955,
+        "totalDurationWithTransitionMinutes": 955,
+        "totalCapacityToTargetMinutes": 1080,
+        "perMatCapacityToTarget": {
+          "1": 360,
+          "2": 360,
+          "3": 360
+        },
+        "forcedLoadPerMat": {
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "longestAthleteChainMinutes": 245,
+        "makespanLowerBoundTime": "15:19",
+        "feasibleWithinTargetLikely": true
+      },
+      "greedy": {
+        "valid": true,
+        "validationScope": "category_level",
+        "hardViolations": 0,
+        "scheduledCount": 73,
+        "unscheduledCount": 0,
+        "totalCategories": 73,
+        "totalMatches": 259,
+        "matOverlaps": 0,
+        "athleteOverlaps": 0,
+        "athleteMatSwitches": 84,
+        "ageDispersion": 10,
+        "manualDisruptions": 0,
+        "restViolations": 0,
+        "blockedViolations": 0,
+        "matRuleViolations": 0,
+        "pinnedViolations": 0,
+        "issues": [],
+        "makespanAbs": 995,
+        "makespanTime": "16:35",
+        "sumEndMinutes": 52750,
+        "completionSpreadMinutes": 20,
+        "overtimeMinutes": 35,
+        "totalIdleMinutes": 555,
+        "workloadStdDevMinutes": 26.2,
+        "matLoads": [
+          {
+            "mat": 1,
+            "categoryCount": 22,
+            "totalMinutes": 305,
+            "idleMinutes": 210,
+            "lastEndTime": "16:35",
+            "utilizationPercent": 84.7
+          },
+          {
+            "mat": 2,
+            "categoryCount": 27,
+            "totalMinutes": 355,
+            "idleMinutes": 145,
+            "lastEndTime": "16:20",
+            "utilizationPercent": 98.6
+          },
+          {
+            "mat": 3,
+            "categoryCount": 24,
+            "totalMinutes": 295,
+            "idleMinutes": 200,
+            "lastEndTime": "16:15",
+            "utilizationPercent": 81.9
+          }
+        ]
+      },
+      "plans": [
+        {
+          "id": "balanced_time",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:20",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 365,
+          "athleteMatSwitches": 73,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 90185,
+          "bestBound": 35995,
+          "gapPercent": 60.09,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 796,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 920,
+              "bestBound": 535,
+              "gapPercent": 41.85,
+              "runtimeMs": 3017,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "completion_spread*1000 + sum(end_vars) + soft_penalties",
+              "status": "FEASIBLE",
+              "objectiveValue": 90185,
+              "bestBound": 35995,
+              "gapPercent": 60.09,
+              "runtimeMs": 5022,
+              "provenOptimal": false
+            }
+          ]
+        },
+        {
+          "id": "earliest_finish",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:20",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 365,
+          "athleteMatSwitches": 81,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 537355,
+          "bestBound": 359950,
+          "gapPercent": 33.01,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 742,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 920,
+              "bestBound": 535,
+              "gapPercent": 41.85,
+              "runtimeMs": 3009,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "sum(end_vars)*10 + completion_spread*100 + soft_penalties",
+              "status": "FEASIBLE",
+              "objectiveValue": 537355,
+              "bestBound": 359950,
+              "gapPercent": 33.01,
+              "runtimeMs": 5009,
+              "provenOptimal": false
+            }
+          ]
+        },
+        {
+          "id": "organization_priority",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:20",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 365,
+          "athleteMatSwitches": 73,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 883360,
+          "bestBound": 35995,
+          "gapPercent": 95.93,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 711,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 920,
+              "bestBound": 535,
+              "gapPercent": 41.85,
+              "runtimeMs": 3007,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "soft_penalties*5 + completion_spread*100 + sum(end_vars)",
+              "status": "FEASIBLE",
+              "objectiveValue": 883360,
+              "bestBound": 35995,
+              "gapPercent": 95.93,
+              "runtimeMs": 5017,
+              "provenOptimal": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "budgetSeconds": 120,
+      "elapsedMs": 98746,
+      "wallMs": 99756,
+      "lowerBounds": {
+        "totalDurationMinutes": 955,
+        "totalDurationWithTransitionMinutes": 955,
+        "totalCapacityToTargetMinutes": 1080,
+        "perMatCapacityToTarget": {
+          "1": 360,
+          "2": 360,
+          "3": 360
+        },
+        "forcedLoadPerMat": {
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "longestAthleteChainMinutes": 245,
+        "makespanLowerBoundTime": "15:19",
+        "feasibleWithinTargetLikely": true
+      },
+      "greedy": {
+        "valid": true,
+        "validationScope": "category_level",
+        "hardViolations": 0,
+        "scheduledCount": 73,
+        "unscheduledCount": 0,
+        "totalCategories": 73,
+        "totalMatches": 259,
+        "matOverlaps": 0,
+        "athleteOverlaps": 0,
+        "athleteMatSwitches": 84,
+        "ageDispersion": 10,
+        "manualDisruptions": 0,
+        "restViolations": 0,
+        "blockedViolations": 0,
+        "matRuleViolations": 0,
+        "pinnedViolations": 0,
+        "issues": [],
+        "makespanAbs": 995,
+        "makespanTime": "16:35",
+        "sumEndMinutes": 52750,
+        "completionSpreadMinutes": 20,
+        "overtimeMinutes": 35,
+        "totalIdleMinutes": 555,
+        "workloadStdDevMinutes": 26.2,
+        "matLoads": [
+          {
+            "mat": 1,
+            "categoryCount": 22,
+            "totalMinutes": 305,
+            "idleMinutes": 210,
+            "lastEndTime": "16:35",
+            "utilizationPercent": 84.7
+          },
+          {
+            "mat": 2,
+            "categoryCount": 27,
+            "totalMinutes": 355,
+            "idleMinutes": 145,
+            "lastEndTime": "16:20",
+            "utilizationPercent": 98.6
+          },
+          {
+            "mat": 3,
+            "categoryCount": 24,
+            "totalMinutes": 295,
+            "idleMinutes": 200,
+            "lastEndTime": "16:15",
+            "utilizationPercent": 81.9
+          }
+        ]
+      },
+      "plans": [
+        {
+          "id": "balanced_time",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:20",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 365,
+          "athleteMatSwitches": 77,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 86125,
+          "bestBound": 35995,
+          "gapPercent": 58.21,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 778,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 920,
+              "bestBound": 535,
+              "gapPercent": 41.85,
+              "runtimeMs": 12023,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "completion_spread*1000 + sum(end_vars) + soft_penalties",
+              "status": "FEASIBLE",
+              "objectiveValue": 86125,
+              "bestBound": 35995,
+              "gapPercent": 58.21,
+              "runtimeMs": 20020,
+              "provenOptimal": false
+            }
+          ]
+        },
+        {
+          "id": "earliest_finish",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:20",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 365,
+          "athleteMatSwitches": 81,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 532070,
+          "bestBound": 359950,
+          "gapPercent": 32.35,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 857,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 920,
+              "bestBound": 535,
+              "gapPercent": 41.85,
+              "runtimeMs": 12012,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "sum(end_vars)*10 + completion_spread*100 + soft_penalties",
+              "status": "FEASIBLE",
+              "objectiveValue": 532070,
+              "bestBound": 359950,
+              "gapPercent": 32.35,
+              "runtimeMs": 20026,
+              "provenOptimal": false
+            }
+          ]
+        },
+        {
+          "id": "organization_priority",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:20",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 365,
+          "athleteMatSwitches": 78,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 822425,
+          "bestBound": 35995,
+          "gapPercent": 95.62,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 755,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 920,
+              "bestBound": 535,
+              "gapPercent": 41.85,
+              "runtimeMs": 12021,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "soft_penalties*5 + completion_spread*100 + sum(end_vars)",
+              "status": "FEASIBLE",
+              "objectiveValue": 822425,
+              "bestBound": 35995,
+              "gapPercent": 95.62,
+              "runtimeMs": 20011,
+              "provenOptimal": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "budgetSeconds": 300,
+      "elapsedMs": 242709,
+      "wallMs": 243673,
+      "lowerBounds": {
+        "totalDurationMinutes": 955,
+        "totalDurationWithTransitionMinutes": 955,
+        "totalCapacityToTargetMinutes": 1080,
+        "perMatCapacityToTarget": {
+          "1": 360,
+          "2": 360,
+          "3": 360
+        },
+        "forcedLoadPerMat": {
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "longestAthleteChainMinutes": 245,
+        "makespanLowerBoundTime": "15:19",
+        "feasibleWithinTargetLikely": true
+      },
+      "greedy": {
+        "valid": true,
+        "validationScope": "category_level",
+        "hardViolations": 0,
+        "scheduledCount": 73,
+        "unscheduledCount": 0,
+        "totalCategories": 73,
+        "totalMatches": 259,
+        "matOverlaps": 0,
+        "athleteOverlaps": 0,
+        "athleteMatSwitches": 84,
+        "ageDispersion": 10,
+        "manualDisruptions": 0,
+        "restViolations": 0,
+        "blockedViolations": 0,
+        "matRuleViolations": 0,
+        "pinnedViolations": 0,
+        "issues": [],
+        "makespanAbs": 995,
+        "makespanTime": "16:35",
+        "sumEndMinutes": 52750,
+        "completionSpreadMinutes": 20,
+        "overtimeMinutes": 35,
+        "totalIdleMinutes": 555,
+        "workloadStdDevMinutes": 26.2,
+        "matLoads": [
+          {
+            "mat": 1,
+            "categoryCount": 22,
+            "totalMinutes": 305,
+            "idleMinutes": 210,
+            "lastEndTime": "16:35",
+            "utilizationPercent": 84.7
+          },
+          {
+            "mat": 2,
+            "categoryCount": 27,
+            "totalMinutes": 355,
+            "idleMinutes": 145,
+            "lastEndTime": "16:20",
+            "utilizationPercent": 98.6
+          },
+          {
+            "mat": 3,
+            "categoryCount": 24,
+            "totalMinutes": 295,
+            "idleMinutes": 200,
+            "lastEndTime": "16:15",
+            "utilizationPercent": 81.9
+          }
+        ]
+      },
+      "plans": [
+        {
+          "id": "balanced_time",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:20",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 365,
+          "athleteMatSwitches": 58,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 82670,
+          "bestBound": 36006,
+          "gapPercent": 56.45,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 736,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 920,
+              "bestBound": 535,
+              "gapPercent": 41.85,
+              "runtimeMs": 30025,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "completion_spread*1000 + sum(end_vars) + soft_penalties",
+              "status": "FEASIBLE",
+              "objectiveValue": 82670,
+              "bestBound": 36006,
+              "gapPercent": 56.45,
+              "runtimeMs": 50025,
+              "provenOptimal": false
+            }
+          ]
+        },
+        {
+          "id": "earliest_finish",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:20",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 365,
+          "athleteMatSwitches": 59,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 520285,
+          "bestBound": 359950,
+          "gapPercent": 30.82,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 715,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 920,
+              "bestBound": 535,
+              "gapPercent": 41.85,
+              "runtimeMs": 30018,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "sum(end_vars)*10 + completion_spread*100 + soft_penalties",
+              "status": "FEASIBLE",
+              "objectiveValue": 520285,
+              "bestBound": 359950,
+              "gapPercent": 30.82,
+              "runtimeMs": 50025,
+              "provenOptimal": false
+            }
+          ]
+        },
+        {
+          "id": "organization_priority",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:20",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 365,
+          "athleteMatSwitches": 58,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 763650,
+          "bestBound": 35995,
+          "gapPercent": 95.29,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 899,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 920,
+              "bestBound": 535,
+              "gapPercent": 41.85,
+              "runtimeMs": 30008,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "soft_penalties*5 + completion_spread*100 + sum(end_vars)",
+              "status": "FEASIBLE",
+              "objectiveValue": 763650,
+              "bestBound": 35995,
+              "gapPercent": 95.29,
+              "runtimeMs": 50019,
+              "provenOptimal": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "budgetSeconds": 600,
+      "elapsedMs": 482749,
+      "wallMs": 483719,
+      "lowerBounds": {
+        "totalDurationMinutes": 955,
+        "totalDurationWithTransitionMinutes": 955,
+        "totalCapacityToTargetMinutes": 1080,
+        "perMatCapacityToTarget": {
+          "1": 360,
+          "2": 360,
+          "3": 360
+        },
+        "forcedLoadPerMat": {
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "longestAthleteChainMinutes": 245,
+        "makespanLowerBoundTime": "15:19",
+        "feasibleWithinTargetLikely": true
+      },
+      "greedy": {
+        "valid": true,
+        "validationScope": "category_level",
+        "hardViolations": 0,
+        "scheduledCount": 73,
+        "unscheduledCount": 0,
+        "totalCategories": 73,
+        "totalMatches": 259,
+        "matOverlaps": 0,
+        "athleteOverlaps": 0,
+        "athleteMatSwitches": 84,
+        "ageDispersion": 10,
+        "manualDisruptions": 0,
+        "restViolations": 0,
+        "blockedViolations": 0,
+        "matRuleViolations": 0,
+        "pinnedViolations": 0,
+        "issues": [],
+        "makespanAbs": 995,
+        "makespanTime": "16:35",
+        "sumEndMinutes": 52750,
+        "completionSpreadMinutes": 20,
+        "overtimeMinutes": 35,
+        "totalIdleMinutes": 555,
+        "workloadStdDevMinutes": 26.2,
+        "matLoads": [
+          {
+            "mat": 1,
+            "categoryCount": 22,
+            "totalMinutes": 305,
+            "idleMinutes": 210,
+            "lastEndTime": "16:35",
+            "utilizationPercent": 84.7
+          },
+          {
+            "mat": 2,
+            "categoryCount": 27,
+            "totalMinutes": 355,
+            "idleMinutes": 145,
+            "lastEndTime": "16:20",
+            "utilizationPercent": 98.6
+          },
+          {
+            "mat": 3,
+            "categoryCount": 24,
+            "totalMinutes": 295,
+            "idleMinutes": 200,
+            "lastEndTime": "16:15",
+            "utilizationPercent": 81.9
+          }
+        ]
+      },
+      "plans": [
+        {
+          "id": "balanced_time",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:20",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 365,
+          "athleteMatSwitches": 52,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 82995,
+          "bestBound": 35997,
+          "gapPercent": 56.63,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 713,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 920,
+              "bestBound": 535,
+              "gapPercent": 41.85,
+              "runtimeMs": 60017,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "completion_spread*1000 + sum(end_vars) + soft_penalties",
+              "status": "FEASIBLE",
+              "objectiveValue": 82995,
+              "bestBound": 35997,
+              "gapPercent": 56.63,
+              "runtimeMs": 100015,
+              "provenOptimal": false
+            }
+          ]
+        },
+        {
+          "id": "earliest_finish",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:20",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 365,
+          "athleteMatSwitches": 44,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 521715,
+          "bestBound": 359950,
+          "gapPercent": 31.01,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 703,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 920,
+              "bestBound": 535,
+              "gapPercent": 41.85,
+              "runtimeMs": 60026,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "sum(end_vars)*10 + completion_spread*100 + soft_penalties",
+              "status": "FEASIBLE",
+              "objectiveValue": 521715,
+              "bestBound": 359950,
+              "gapPercent": 31.01,
+              "runtimeMs": 100029,
+              "provenOptimal": false
+            }
+          ]
+        },
+        {
+          "id": "organization_priority",
+          "engine": "ortools-cp-sat (FEASIBLE)",
+          "status": "FEASIBLE",
+          "selectedByBestSelector": false,
+          "lexicographicProven": false,
+          "makespanTime": "15:20",
+          "overtimeMinutes": 0,
+          "completionSpreadMinutes": 0,
+          "workloadStdDevMinutes": 2.4,
+          "totalIdleMinutes": 365,
+          "athleteMatSwitches": 55,
+          "athleteOverlaps": 0,
+          "hardViolations": 0,
+          "objectiveValue": 742905,
+          "bestBound": 36745,
+          "gapPercent": 95.05,
+          "stages": [
+            {
+              "stageName": "Stage 1: Overtime",
+              "objectiveName": "max_overtime*1000 + sum_overtime",
+              "status": "OPTIMAL",
+              "objectiveValue": 0,
+              "bestBound": 0,
+              "gapPercent": 0,
+              "runtimeMs": 960,
+              "provenOptimal": true
+            },
+            {
+              "stageName": "Stage 2: Makespan",
+              "objectiveName": "makespan",
+              "status": "FEASIBLE",
+              "objectiveValue": 920,
+              "bestBound": 535,
+              "gapPercent": 41.85,
+              "runtimeMs": 60017,
+              "provenOptimal": false
+            },
+            {
+              "stageName": "Stage 3: Secondary",
+              "objectiveName": "soft_penalties*5 + completion_spread*100 + sum(end_vars)",
+              "status": "FEASIBLE",
+              "objectiveValue": 742905,
+              "bestBound": 36745,
+              "gapPercent": 95.05,
+              "runtimeMs": 100025,
+              "provenOptimal": false
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "seedResults": [
+    {
+      "seed": 1,
+      "greedy": {
+        "valid": true,
+        "validationScope": "category_level",
+        "hardViolations": 0,
+        "scheduledCount": 73,
+        "unscheduledCount": 0,
+        "totalCategories": 73,
+        "totalMatches": 259,
+        "matOverlaps": 0,
+        "athleteOverlaps": 0,
+        "athleteMatSwitches": 84,
+        "ageDispersion": 10,
+        "manualDisruptions": 0,
+        "restViolations": 0,
+        "blockedViolations": 0,
+        "matRuleViolations": 0,
+        "pinnedViolations": 0,
+        "issues": [],
+        "makespanAbs": 995,
+        "makespanTime": "16:35",
+        "sumEndMinutes": 52750,
+        "completionSpreadMinutes": 20,
+        "overtimeMinutes": 35,
+        "totalIdleMinutes": 555,
+        "workloadStdDevMinutes": 26.2,
+        "matLoads": [
+          {
+            "mat": 1,
+            "categoryCount": 22,
+            "totalMinutes": 305,
+            "idleMinutes": 210,
+            "lastEndTime": "16:35",
+            "utilizationPercent": 84.7
+          },
+          {
+            "mat": 2,
+            "categoryCount": 27,
+            "totalMinutes": 355,
+            "idleMinutes": 145,
+            "lastEndTime": "16:20",
+            "utilizationPercent": 98.6
+          },
+          {
+            "mat": 3,
+            "categoryCount": 24,
+            "totalMinutes": 295,
+            "idleMinutes": 200,
+            "lastEndTime": "16:15",
+            "utilizationPercent": 81.9
+          }
+        ]
+      },
+      "balanced": {
+        "id": "balanced_time",
+        "engine": "ortools-cp-sat (FEASIBLE)",
+        "status": "FEASIBLE",
+        "selectedByBestSelector": false,
+        "lexicographicProven": false,
+        "makespanTime": "15:30",
+        "overtimeMinutes": 0,
+        "completionSpreadMinutes": 0,
+        "workloadStdDevMinutes": 9.4,
+        "totalIdleMinutes": 395,
+        "athleteMatSwitches": 76,
+        "athleteOverlaps": 0,
+        "hardViolations": 0,
+        "objectiveValue": 90547,
+        "bestBound": 35995,
+        "gapPercent": 60.25,
+        "stages": [
+          {
+            "stageName": "Stage 1: Overtime",
+            "objectiveName": "max_overtime*1000 + sum_overtime",
+            "status": "OPTIMAL",
+            "objectiveValue": 0,
+            "bestBound": 0,
+            "gapPercent": 0,
+            "runtimeMs": 747,
+            "provenOptimal": true
+          },
+          {
+            "stageName": "Stage 2: Makespan",
+            "objectiveName": "makespan",
+            "status": "FEASIBLE",
+            "objectiveValue": 930,
+            "bestBound": 535,
+            "gapPercent": 42.47,
+            "runtimeMs": 1008,
+            "provenOptimal": false
+          },
+          {
+            "stageName": "Stage 3: Secondary",
+            "objectiveName": "completion_spread*1000 + sum(end_vars) + soft_penalties",
+            "status": "FEASIBLE",
+            "objectiveValue": 90547,
+            "bestBound": 35995,
+            "gapPercent": 60.25,
+            "runtimeMs": 1689,
+            "provenOptimal": false
+          }
+        ]
+      }
+    },
+    {
+      "seed": 2,
+      "greedy": {
+        "valid": true,
+        "validationScope": "category_level",
+        "hardViolations": 0,
+        "scheduledCount": 73,
+        "unscheduledCount": 0,
+        "totalCategories": 73,
+        "totalMatches": 259,
+        "matOverlaps": 0,
+        "athleteOverlaps": 0,
+        "athleteMatSwitches": 75,
+        "ageDispersion": 10,
+        "manualDisruptions": 0,
+        "restViolations": 0,
+        "blockedViolations": 0,
+        "matRuleViolations": 0,
+        "pinnedViolations": 0,
+        "issues": [],
+        "makespanAbs": 965,
+        "makespanTime": "16:05",
+        "sumEndMinutes": 52440,
+        "completionSpreadMinutes": 15,
+        "overtimeMinutes": 5,
+        "totalIdleMinutes": 480,
+        "workloadStdDevMinutes": 2.4,
+        "matLoads": [
+          {
+            "mat": 1,
+            "categoryCount": 24,
+            "totalMinutes": 320,
+            "idleMinutes": 160,
+            "lastEndTime": "16:00",
+            "utilizationPercent": 88.9
+          },
+          {
+            "mat": 2,
+            "categoryCount": 24,
+            "totalMinutes": 315,
+            "idleMinutes": 155,
+            "lastEndTime": "15:50",
+            "utilizationPercent": 87.5
+          },
+          {
+            "mat": 3,
+            "categoryCount": 25,
+            "totalMinutes": 320,
+            "idleMinutes": 165,
+            "lastEndTime": "16:05",
+            "utilizationPercent": 88.9
+          }
+        ]
+      },
+      "balanced": {
+        "id": "balanced_time",
+        "engine": "ortools-cp-sat (FEASIBLE)",
+        "status": "FEASIBLE",
+        "selectedByBestSelector": false,
+        "lexicographicProven": false,
+        "makespanTime": "15:25",
+        "overtimeMinutes": 0,
+        "completionSpreadMinutes": 0,
+        "workloadStdDevMinutes": 2.4,
+        "totalIdleMinutes": 380,
+        "athleteMatSwitches": 71,
+        "athleteOverlaps": 0,
+        "hardViolations": 0,
+        "objectiveValue": 91572,
+        "bestBound": 35995,
+        "gapPercent": 60.69,
+        "stages": [
+          {
+            "stageName": "Stage 1: Overtime",
+            "objectiveName": "max_overtime*1000 + sum_overtime",
+            "status": "OPTIMAL",
+            "objectiveValue": 0,
+            "bestBound": 0,
+            "gapPercent": 0,
+            "runtimeMs": 708,
+            "provenOptimal": true
+          },
+          {
+            "stageName": "Stage 2: Makespan",
+            "objectiveName": "makespan",
+            "status": "FEASIBLE",
+            "objectiveValue": 925,
+            "bestBound": 535,
+            "gapPercent": 42.16,
+            "runtimeMs": 1009,
+            "provenOptimal": false
+          },
+          {
+            "stageName": "Stage 3: Secondary",
+            "objectiveName": "completion_spread*1000 + sum(end_vars) + soft_penalties",
+            "status": "FEASIBLE",
+            "objectiveValue": 91572,
+            "bestBound": 35995,
+            "gapPercent": 60.69,
+            "runtimeMs": 1690,
+            "provenOptimal": false
+          }
+        ]
+      }
+    },
+    {
+      "seed": 3,
+      "greedy": {
+        "valid": true,
+        "validationScope": "category_level",
+        "hardViolations": 0,
+        "scheduledCount": 73,
+        "unscheduledCount": 0,
+        "totalCategories": 73,
+        "totalMatches": 259,
+        "matOverlaps": 0,
+        "athleteOverlaps": 0,
+        "athleteMatSwitches": 82,
+        "ageDispersion": 10,
+        "manualDisruptions": 0,
+        "restViolations": 0,
+        "blockedViolations": 0,
+        "matRuleViolations": 0,
+        "pinnedViolations": 0,
+        "issues": [],
+        "makespanAbs": 1020,
+        "makespanTime": "17:00",
+        "sumEndMinutes": 53205,
+        "completionSpreadMinutes": 35,
+        "overtimeMinutes": 60,
+        "totalIdleMinutes": 595,
+        "workloadStdDevMinutes": 6.2,
+        "matLoads": [
+          {
+            "mat": 1,
+            "categoryCount": 25,
+            "totalMinutes": 325,
+            "idleMinutes": 215,
+            "lastEndTime": "17:00",
+            "utilizationPercent": 90.3
+          },
+          {
+            "mat": 2,
+            "categoryCount": 23,
+            "totalMinutes": 320,
+            "idleMinutes": 185,
+            "lastEndTime": "16:25",
+            "utilizationPercent": 88.9
+          },
+          {
+            "mat": 3,
+            "categoryCount": 25,
+            "totalMinutes": 310,
+            "idleMinutes": 195,
+            "lastEndTime": "16:25",
+            "utilizationPercent": 86.1
+          }
+        ]
+      },
+      "balanced": {
+        "id": "balanced_time",
+        "engine": "ortools-cp-sat (FEASIBLE)",
+        "status": "FEASIBLE",
+        "selectedByBestSelector": false,
+        "lexicographicProven": false,
+        "makespanTime": "15:25",
+        "overtimeMinutes": 0,
+        "completionSpreadMinutes": 5,
+        "workloadStdDevMinutes": 2.4,
+        "totalIdleMinutes": 375,
+        "athleteMatSwitches": 76,
+        "athleteOverlaps": 0,
+        "hardViolations": 0,
+        "objectiveValue": 99285,
+        "bestBound": 35995,
+        "gapPercent": 63.75,
+        "stages": [
+          {
+            "stageName": "Stage 1: Overtime",
+            "objectiveName": "max_overtime*1000 + sum_overtime",
+            "status": "OPTIMAL",
+            "objectiveValue": 0,
+            "bestBound": 0,
+            "gapPercent": 0,
+            "runtimeMs": 713,
+            "provenOptimal": true
+          },
+          {
+            "stageName": "Stage 2: Makespan",
+            "objectiveName": "makespan",
+            "status": "FEASIBLE",
+            "objectiveValue": 925,
+            "bestBound": 535,
+            "gapPercent": 42.16,
+            "runtimeMs": 1006,
+            "provenOptimal": false
+          },
+          {
+            "stageName": "Stage 3: Secondary",
+            "objectiveName": "completion_spread*1000 + sum(end_vars) + soft_penalties",
+            "status": "FEASIBLE",
+            "objectiveValue": 99285,
+            "bestBound": 35995,
+            "gapPercent": 63.75,
+            "runtimeMs": 1687,
+            "provenOptimal": false
+          }
+        ]
+      }
+    }
+  ],
+  "strictTargetTests": {
+    "impossible1000": {
+      "success": false,
+      "solverStatus": "UNKNOWN",
+      "lowerBounds": {
+        "totalDurationMinutes": 955,
+        "totalDurationWithTransitionMinutes": 955,
+        "totalCapacityToTargetMinutes": 360,
+        "perMatCapacityToTarget": {
+          "1": 120,
+          "2": 120,
+          "3": 120
+        },
+        "forcedLoadPerMat": {
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "longestAthleteChainMinutes": 245,
+        "makespanLowerBoundTime": "13:19",
+        "feasibleWithinTargetLikely": false
+      },
+      "diagnosis": null
+    },
+    "achievable1730": {
+      "success": true,
+      "solverStatus": "FEASIBLE",
+      "balancedMakespan": "15:25"
+    }
+  }
+}

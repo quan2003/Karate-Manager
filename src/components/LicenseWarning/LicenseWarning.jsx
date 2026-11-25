@@ -36,6 +36,8 @@ function PurchaseDialog({
   plans,
   selectedPlanId,
   setSelectedPlanId,
+  includeSmartSchedule,
+  setIncludeSmartSchedule,
   purchaseLoading,
   buyerInfo,
   setBuyerInfo,
@@ -261,6 +263,11 @@ function PurchaseDialog({
               </div>
             )}
 
+            <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "0.75rem", padding: "0.6rem 0.75rem", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontSize: "0.86rem", fontWeight: 600, color: "#1e40af" }}>
+              <input type="checkbox" checked={Boolean(includeSmartSchedule)} onChange={(e) => setIncludeSmartSchedule?.(e.target.checked)} />
+              <span>⚡ Kèm Smart Schedule Pro (CP-SAT) — +100.000đ</span>
+            </label>
+
             <button
               onClick={handleCreateOrder}
               disabled={purchaseLoading || !selectedPlanId}
@@ -448,6 +455,7 @@ export default function LicenseWarning({
   const [plans, setPlans] = useState([]);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState("");
+  const [includeSmartSchedule, setIncludeSmartSchedule] = useState(false);
   const [buyerInfo, setBuyerInfo] = useState({
     customerName: "",
     customerPhone: "",
@@ -496,7 +504,7 @@ export default function LicenseWarning({
     getPublicPricing().then((result) => {
       if (!mounted) return;
       if (result.success) {
-        const loadedPlans = result.plans || [];
+        const loadedPlans = (result.plans || []).filter((p) => p.id !== "smart_schedule_addon" && p.license_type !== "addon");
         setPlans(loadedPlans);
         setSelectedPlanId(loadedPlans[0]?.id || "");
       } else {
@@ -629,6 +637,7 @@ export default function LicenseWarning({
     const result = await createPaymentOrder({
       planId: selectedPlanId,
       machineId,
+      includeSmartSchedule,
       ...buyerInfo,
     });
     if (result.success) {
@@ -1116,6 +1125,11 @@ export default function LicenseWarning({
                     </div>
                   )}
 
+                  <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "0.75rem", padding: "0.6rem 0.75rem", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, cursor: "pointer", fontSize: "0.86rem", fontWeight: 600, color: "#1e40af" }}>
+                    <input type="checkbox" checked={Boolean(includeSmartSchedule)} onChange={(e) => setIncludeSmartSchedule(e.target.checked)} />
+                    <span>⚡ Kèm Smart Schedule Pro (CP-SAT) — +100.000đ</span>
+                  </label>
+
                   <button
                     onClick={handleCreateOrder}
                     disabled={purchaseLoading || !selectedPlanId}
@@ -1333,6 +1347,8 @@ export default function LicenseWarning({
           plans={plans}
           selectedPlanId={selectedPlanId}
           setSelectedPlanId={setSelectedPlanId}
+          includeSmartSchedule={includeSmartSchedule}
+          setIncludeSmartSchedule={setIncludeSmartSchedule}
           purchaseLoading={purchaseLoading}
           buyerInfo={buyerInfo}
           setBuyerInfo={setBuyerInfo}

@@ -38,6 +38,9 @@ import {
 import { exportScheduleHorizontalToPDF } from "../services/scheduleHorizontalExportService";
 import { exportScheduleVerticalByMatToPDF } from "../services/scheduleVerticalByMatExportService";
 import { useOnboarding } from "../context/OnboardingContext";
+import SmartScheduleProModal from "../components/SmartScheduleProModal";
+import { computeSigmaPageMap, validateScheduleLocally } from "../services/smartScheduleService";
+import { hasSmartSchedulePro } from "../services/licenseService";
 import appIcon from "../assets/icon.png";
 import "./SchedulePage.css";
 
@@ -91,6 +94,8 @@ export default function SchedulePage() {
   const [showCustomAgeInput, setShowCustomAgeInput] = useState(false);
   const [customAgeInputLabel, setCustomAgeInputLabel] = useState("");
   const [showConflictInfo, setShowConflictInfo] = useState(false);
+  const [showSmartScheduleModal, setShowSmartScheduleModal] = useState(false);
+  const [previousScheduleSnapshot, setPreviousScheduleSnapshot] = useState(null);
   const [activeConflicts, setActiveConflicts] = useState([]);
   const [showVerticalMatExportModal, setShowVerticalMatExportModal] = useState(false);
   const [exportingVerticalMat, setExportingVerticalMat] = useState(false);
@@ -1222,6 +1227,27 @@ export default function SchedulePage() {
             <button className="btn btn-secondary btn-sm" onClick={handleClearAll}>
               🗑️ Xóa hết
             </button>
+            <button
+              className="btn btn-sm"
+              style={{ background: "linear-gradient(135deg, #0f4c81, #0284c7)", color: "#fff", border: "none", fontWeight: 700 }}
+              onClick={() => setShowSmartScheduleModal(true)}
+              title="Tối ưu lịch thi đấu bằng CP-SAT trên api.k-sport.net"
+            >
+              {hasSmartSchedulePro() ? "⚡ Smart Schedule Pro" : "⚡ Smart Schedule Pro (100K)"}
+            </button>
+            {previousScheduleSnapshot && (
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  saveSchedule(previousScheduleSnapshot);
+                  setPreviousScheduleSnapshot(null);
+                  toast.info("↩️ Đã hoàn tác về lịch thi đấu trước khi tối ưu.");
+                }}
+                title="Khôi phục lịch trước khi áp dụng Smart Schedule Pro"
+              >
+                ↩️ Hoàn tác
+              </button>
+            )}
           </div>
           <div className="view-toggle">
             <button
@@ -2823,6 +2849,49 @@ export default function SchedulePage() {
           </div>
         </div>
       </Modal>
+      {/* Smart Schedule Pro (CP-SAT + 100K Upgrade) Modal */}
+      <SmartScheduleProModal
+        isOpen={showSmartScheduleModal}
+        onClose={() => setShowSmartScheduleModal(false)}
+        categories={categories}
+        existingSchedule={schedule}
+        tournamentDays={tournamentDays}
+        selectedDate={selectedDate}
+        matCount={matCount}
+        sessionConfig={sessionConfig}
+        customEvents={customEvents?.length ? customEvents : (tournament?.customEvents || [])}
+        scheduleConfig={tournament?.scheduleConfig}
+        matchDurations={tournament?.scheduleConfig?.durations || matchDurations}
+        onApplySchedule={(newSchedule, selectedPlan) => {
+          setPreviousScheduleSnapshot({ ...schedule });
+          const sigmaPageMap = computeSigmaPageMap(newSchedule, categories);
+          const syncedSchedule = Object.fromEntries(
+            Object.entries(newSchedule).map(([catId, slot]) => [
+              catId,
+              {
+                ...slot,
+                sigmaPage: sigmaPageMap[catId] || null,
+              },
+            ])
+          );
+          const localAudit = validateScheduleLocally({
+            schedule: syncedSchedule,
+            categories,
+            customEvents,
+            matCount,
+            durations: matchDurations,
+            minRestMinutes: tournament?.scheduleConfig?.athleteRestMinutes ?? 15,
+          });
+          if (!localAudit.valid) {
+            toast.warning(`Lịch có ${localAudit.issues.length} cảnh báo kiểm định cục bộ: ${localAudit.issues[0]}`);
+          } else {
+            toast.success(
+              `⚡ Đã áp dụng ${selectedPlan?.title || "Smart Schedule Pro"} (${Object.keys(syncedSchedule).length} nội dung · Xong ${selectedPlan?.validation?.makespanTime || "—"} · 0 xung đột).`
+            );
+          }
+          saveSchedule(syncedSchedule);
+        }}
+      />
     </div>
   );
 }
